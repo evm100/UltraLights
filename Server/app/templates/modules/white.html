@@ -1,0 +1,38 @@
+<section class="glass rounded-2xl p-6">
+  <h3 class="text-lg font-semibold mb-3">White Channel</h3>
+  <div class="mb-2">
+    <label class="text-xs opacity-70">Channel</label>
+    <select id="wChannel" class="p-1 rounded bg-slate-900 border border-slate-700">
+      {% for i in range(4) %}
+      <option value="{{ i }}">{{ i }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="mb-3">
+    <label class="text-xs opacity-70">Effect</label>
+    <input id="wEffect" type="text" value="solid" class="w-full p-1 bg-slate-900 rounded border border-slate-700">
+    <label class="text-xs opacity-70 block mt-2">Brightness</label>
+    <input id="wBri" type="range" min="0" max="255" value="255" class="w-full">
+  </div>
+  <div class="flex gap-2">
+    <button id="wSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
+    <button id="wOn" class="px-4 py-2 pill bg-green-600 hover:bg-green-500 text-white">On</button>
+    <button id="wOff" class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white">Off</button>
+  </div>
+</section>
+<script>
+async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
+const ch=document.getElementById('wChannel');
+const eff=document.getElementById('wEffect');
+const bri=document.getElementById('wBri');
+
+document.getElementById('wSet').onclick=async()=>{
+  await post(`/api/node/{{ node.id }}/white/set`,{channel:parseInt(ch.value), effect:eff.value.trim(), brightness:parseInt(bri.value)});
+};
+document.getElementById('wOn').onclick=async()=>{
+  await post(`/api/node/{{ node.id }}/white/power`,{channel:parseInt(ch.value), on:true});
+};
+document.getElementById('wOff').onclick=async()=>{
+  await post(`/api/node/{{ node.id }}/white/power`,{channel:parseInt(ch.value), on:false});
+};
+</script>
