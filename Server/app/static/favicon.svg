@@ -1,0 +1,14 @@
+<!-- /home/evm100/Documents/UltraLights/MQTT/app/static/favicon.svg -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c3aed"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="12" fill="url(#g)"/>
+  <g fill="white">
+    <path d="M16 18h6v20c0 6 3 9 10 9s10-3 10-9V18h6v21c0 9-7 15-16 15S16 48 16 39V18z"/>
+    <rect x="16" y="48" width="32" height="4" opacity=".35"/>
+  </g>
+</svg>

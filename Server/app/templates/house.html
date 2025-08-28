@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-6 flex justify-between items-center">
+  <h2 class="text-2xl font-semibold">Rooms</h2>
+  <button id="addRoom" class="w-12 h-12 flex items-center justify-center text-2xl rounded-full bg-indigo-600 hover:bg-indigo-500">+</button>
+</div>
+<div class="grid md:grid-cols-3 gap-4">
+  {% for r in house.rooms %}
+  <a href="/house/{{ house.id }}/room/{{ r.id }}" class="glass rounded-xl p-4 block hover:ring-2 hover:ring-indigo-400">
+    <div class="text-xl font-semibold">{{ r.name }}</div>
+    <div class="opacity-60 text-xs mt-2">ID: {{ r.id }}</div>
+    <div class="text-sm mt-2">{{ r.nodes|length }} nodes</div>
+  </a>
+  {% endfor %}
+</div>
+<script>
+document.getElementById('addRoom').onclick = async () => {
+  const name = prompt('New room name');
+  if(!name) return;
+  const res = await fetch('/api/house/{{ house.id }}/rooms', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name})
+  });
+  if(res.ok) location.reload(); else alert('Failed to add room');
+};
+</script>
+{% endblock %}

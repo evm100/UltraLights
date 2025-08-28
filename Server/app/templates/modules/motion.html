@@ -1,0 +1,12 @@
+<section class="glass rounded-2xl p-6">
+  <h3 class="text-lg font-semibold mb-3">Motion Sensor</h3>
+  <label class="flex items-center gap-3">
+    <input id="motion" type="checkbox" class="w-5 h-5">
+    <span>Enabled</span>
+  </label>
+</section>
+<script>
+const motion=document.getElementById('motion');
+async function post(path, body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
+motion.addEventListener('change',async()=>{await post(`/api/node/{{ node.id }}/motion`,{enabled:motion.checked});});
+</script>

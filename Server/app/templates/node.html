@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="text-2xl font-semibold mb-4">{{ node.name }}</h2>
+<div class="grid md:grid-cols-2 gap-6">
+  {% for mod in node.modules %}
+    {% include 'modules/' ~ mod ~ '.html' %}
+  {% endfor %}
+</div>
+{% endblock %}
