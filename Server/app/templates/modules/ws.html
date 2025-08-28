@@ -1,0 +1,47 @@
+<section class="glass rounded-2xl p-6">
+  <h3 class="text-lg font-semibold mb-3">WS Strip Control</h3>
+  <div class="mb-2">
+    <label class="text-xs opacity-70">Strip</label>
+    <select id="wsStrip" class="p-1 rounded bg-slate-900 border border-slate-700">
+      {% for i in range(4) %}
+      <option value="{{ i }}">{{ i }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="flex items-center gap-4 mb-3">
+    <input id="wsColor" type="color" value="#ffffff" class="w-16 h-16 border-0 rounded-full">
+    <div class="flex-1">
+      <label class="text-xs opacity-70">Effect</label>
+      <input id="wsEffect" type="text" value="solid" class="w-full p-1 bg-slate-900 rounded border border-slate-700">
+      <label class="text-xs opacity-70 block mt-2">Brightness</label>
+      <input id="wsBri" type="range" min="0" max="255" value="255" class="w-full">
+    </div>
+  </div>
+  <div class="flex gap-2">
+    <button id="wsSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
+    <button id="wsOn" class="px-4 py-2 pill bg-green-600 hover:bg-green-500 text-white">On</button>
+    <button id="wsOff" class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white">Off</button>
+  </div>
+</section>
+<script>
+function hexToRgb(hex){hex=hex.replace('#','');if(hex.length===3)hex=hex.split('').map(x=>x+x).join('');const num=parseInt(hex,16);return[(num>>16)&255,(num>>8)&255,num&255];}
+async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
+const wsStrip=document.getElementById('wsStrip');
+const wsEffect=document.getElementById('wsEffect');
+const wsColor=document.getElementById('wsColor');
+const wsBri=document.getElementById('wsBri');
+
+document.getElementById('wsSet').onclick=async()=>{
+  const strip=parseInt(wsStrip.value);
+  const eff=wsEffect.value.trim();
+  const color=hexToRgb(wsColor.value);
+  const bri=parseInt(wsBri.value);
+  await post(`/api/node/{{ node.id }}/ws/set`,{strip, effect:eff, color, brightness:bri});
+};
+document.getElementById('wsOn').onclick=async()=>{
+  await post(`/api/node/{{ node.id }}/ws/power`,{strip:parseInt(wsStrip.value), on:true});
+};
+document.getElementById('wsOff').onclick=async()=>{
+  await post(`/api/node/{{ node.id }}/ws/power`,{strip:parseInt(wsStrip.value), on:false});
+};
+</script>

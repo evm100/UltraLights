@@ -21,12 +21,8 @@ class Settings:
     API_BEARER = os.getenv("API_BEARER", "")
     MANIFEST_HMAC_SECRET = os.getenv("MANIFEST_HMAC_SECRET", "")
 
-    MQTT_COMPAT_PUBLISH_BOTH = os.getenv("MQTT_COMPAT_PUBLISH_BOTH", "1") == "1"
-    # legacy/global topics
-    LEGACY_TOPIC_COLOR  = os.getenv("LEGACY_TOPIC_COLOR", "strip/cmd/color")
-    LEGACY_TOPIC_EFFECT = os.getenv("LEGACY_TOPIC_EFFECT", "strip/cmd/effect")
-    LEGACY_TOPIC_SPACEY = os.getenv("LEGACY_TOPIC_SPACEY", "strip/cmd/spacey")
-    LEGACY_TOPIC_OTA    = os.getenv("LEGACY_TOPIC_OTA",    "strip/cmd/ota")
+    # ------------------------------------------------------------------
+    # Device registry ---------------------------------------------------
 
     # registry of houses/rooms/nodes as JSON
     DEFAULT_REGISTRY = [
@@ -41,8 +37,8 @@ class Settings:
                         {
                             "id": "del-sur-kitchen-node1",
                             "name": "Kitchen Node",
-                            "kind": "rgb",
-                            "modules": ["color", "effect", "brightness", "motion", "ota"],
+                            "kind": "ultranode",
+                            "modules": ["ws", "white", "sensor", "ota"],
                         }
                     ],
                 },
@@ -53,8 +49,8 @@ class Settings:
                         {
                             "id": "del-sur-room-1-node1",
                             "name": "Room 1 Node",
-                            "kind": "rgb",
-                            "modules": ["color", "effect", "brightness", "motion", "ota"],
+                            "kind": "ultranode",
+                            "modules": ["ws", "white", "sensor", "ota"],
                         }
                     ],
                 },
@@ -71,8 +67,8 @@ class Settings:
                         {
                             "id": "sdsu-kitchen-node1",
                             "name": "Kitchen Node",
-                            "kind": "rgb",
-                            "modules": ["color", "effect", "brightness", "motion", "ota"],
+                            "kind": "ultranode",
+                            "modules": ["ws", "white", "sensor", "ota"],
                         }
                     ],
                 },
@@ -83,8 +79,8 @@ class Settings:
                         {
                             "id": "sdsu-room-1-node1",
                             "name": "Room 1 Node",
-                            "kind": "rgb",
-                            "modules": ["color", "effect", "brightness", "motion", "ota"],
+                            "kind": "ultranode",
+                            "modules": ["ws", "white", "sensor", "ota"],
                         }
                     ],
                 },

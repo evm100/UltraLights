@@ -10,12 +10,11 @@
           {
             "id": "del-sur-kitchen-node1",
             "name": "Kitchen Node",
-            "kind": "rgb",
+            "kind": "ultranode",
             "modules": [
-              "color",
-              "effect",
-              "brightness",
-              "motion",
+              "ws",
+              "white",
+              "sensor",
               "ota"
             ]
           }
@@ -28,24 +27,22 @@
           {
             "id": "del-sur-room-1-node1",
             "name": "Room 1 Node",
-            "kind": "rgb",
+            "kind": "ultranode",
             "modules": [
-              "color",
-              "effect",
-              "brightness",
-              "motion",
+              "ws",
+              "white",
+              "sensor",
               "ota"
             ]
           },
           {
             "id": "node",
             "name": "node",
-            "kind": "rgb",
+            "kind": "ultranode",
             "modules": [
-              "color",
-              "effect",
-              "brightness",
-              "motion",
+              "ws",
+              "white",
+              "sensor",
               "ota"
             ]
           }
@@ -64,12 +61,11 @@
           {
             "id": "sdsu-kitchen-node1",
             "name": "Kitchen Node",
-            "kind": "rgb",
+            "kind": "ultranode",
             "modules": [
-              "color",
-              "effect",
-              "brightness",
-              "motion",
+              "ws",
+              "white",
+              "sensor",
               "ota"
             ]
           }
@@ -82,12 +78,11 @@
           {
             "id": "sdsu-room-1-node1",
             "name": "Room 1 Node",
-            "kind": "rgb",
+            "kind": "ultranode",
             "modules": [
-              "color",
-              "effect",
-              "brightness",
-              "motion",
+              "ws",
+              "white",
+              "sensor",
               "ota"
             ]
           }
