@@ -6,7 +6,7 @@
 #include "esp_log.h"
 #include "led_strip.h"
 #include "led_strip_rmt.h"
-#include "led_strip_rmt.h"
+#include "esp_heap_caps.h"
 #include "led_strip_spi.h"
 #include "led_strip_types.h"
 #include <string.h>
@@ -140,10 +140,19 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
         .clk_src = RMT_CLK_SRC_DEFAULT,
         .resolution_hz = 10 * 1000 * 1000, // 10MHz
         .mem_block_symbols = 0,
+        .flags.with_dma = true,
     };
-    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strips[idx].handle));
+    esp_err_t err = led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strips[idx].handle);
+    if (err == ESP_ERR_NOT_SUPPORTED) {
+        rmt_config.flags.with_dma = false;
+        ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strips[idx].handle));
+    } else {
+        ESP_ERROR_CHECK(err);
+    }
     s_strips[idx].pixels = pixels;
-    s_strips[idx].frame = (uint8_t*)heap_caps_malloc(pixels*3, MALLOC_CAP_8BIT);
+    // Allocate DMA-capable memory so RMT can access the frame buffer without
+    // CPU intervention, reducing flicker during refreshes
+    s_strips[idx].frame = (uint8_t*)heap_caps_malloc(pixels * 3, MALLOC_CAP_8BIT | MALLOC_CAP_DMA);
     memset(s_strips[idx].frame, 0, pixels*3);
     // defaults
     int n=0; const ws_effect_t* tbl = ul_ws_get_effects(&n);
