@@ -63,8 +63,13 @@ def api_ws_set(node_id: str, payload: Dict[str, Any]):
     if effect not in WS_EFFECTS:
         raise HTTPException(400, "invalid effect")
     color = payload.get("color")
-    if not (isinstance(color, list) and len(color) == 3 and all(isinstance(c, int) and 0 <= c <= 255 for c in color)):
-        raise HTTPException(400, "invalid color")
+    if color is not None:
+        if not (
+            isinstance(color, list)
+            and len(color) == 3
+            and all(isinstance(c, int) and 0 <= c <= 255 for c in color)
+        ):
+            raise HTTPException(400, "invalid color")
     try:
         brightness = int(payload.get("brightness"))
     except Exception:
