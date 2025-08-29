@@ -28,21 +28,21 @@ typedef struct {
     uint8_t* frame; // rgb * pixels
 } ws_strip_t;
 
-static ws_strip_t s_strips[4];
+static ws_strip_t s_strips[2];
 static int s_current_strip_idx = 0;
 static SemaphoreHandle_t s_refresh_sem;
 
 int ul_ws_effect_current_strip(void) { return s_current_strip_idx; }
 
-static ul_ws_wave_cfg_t s_triple_wave_cfg[4][3];
+static ul_ws_wave_cfg_t s_triple_wave_cfg[2][3];
 
 void ul_ws_triple_wave_set(int strip, const ul_ws_wave_cfg_t waves[3]) {
-    if (strip < 0 || strip > 3) return;
+    if (strip < 0 || strip > 1) return;
     for (int i = 0; i < 3; ++i) s_triple_wave_cfg[strip][i] = waves[i];
 }
 
 const ul_ws_wave_cfg_t* ul_ws_triple_wave_get(int strip) {
-    if (strip < 0 || strip > 3) return NULL;
+    if (strip < 0 || strip > 1) return NULL;
     return s_triple_wave_cfg[strip];
 }
 
@@ -56,7 +56,7 @@ void ul_ws_apply_json(cJSON* root) {
     cJSON* jeffect = cJSON_GetObjectItem(root, "effect");
     if (jeffect && cJSON_IsString(jeffect)) {
         effect = jeffect->valuestring;
-        if (strip < 0 || strip > 3 || s_strips[strip].pixels <= 0) {
+        if (strip < 0 || strip > 1 || s_strips[strip].pixels <= 0) {
             ESP_LOGW(TAG, "Effect %s requested on disabled strip %d", effect, strip);
             effect = NULL;
         } else if (!ul_ws_set_effect(strip, effect)) {
@@ -215,12 +215,6 @@ static void ws_task(void*)
 #if CONFIG_UL_WS1_ENABLED
         render_one(&s_strips[1], 1);
 #endif
-#if CONFIG_UL_WS2_ENABLED
-        render_one(&s_strips[2], 2);
-#endif
-#if CONFIG_UL_WS3_ENABLED
-        render_one(&s_strips[3], 3);
-#endif
         if (s_refresh_sem) xSemaphoreGive(s_refresh_sem);
         vTaskDelayUntil(&last_wake, period_ticks);
     }
@@ -234,12 +228,6 @@ static void led_refresh_task(void *arg) {
 #endif
 #if CONFIG_UL_WS1_ENABLED
         if (s_strips[1].handle) led_strip_refresh(s_strips[1].handle);
-#endif
-#if CONFIG_UL_WS2_ENABLED
-        if (s_strips[2].handle) led_strip_refresh(s_strips[2].handle);
-#endif
-#if CONFIG_UL_WS3_ENABLED
-        if (s_strips[3].handle) led_strip_refresh(s_strips[3].handle);
 #endif
     }
 }
@@ -255,16 +243,6 @@ void ul_ws_engine_start(void)
     init_strip(1, CONFIG_UL_WS1_GPIO, CONFIG_UL_WS1_PIXELS, true);
 #else
     init_strip(1, 0, 0, false);
-#endif
-#if CONFIG_UL_WS2_ENABLED
-    init_strip(2, CONFIG_UL_WS2_GPIO, CONFIG_UL_WS2_PIXELS, true);
-#else
-    init_strip(2, 0, 0, false);
-#endif
-#if CONFIG_UL_WS3_ENABLED
-    init_strip(3, CONFIG_UL_WS3_GPIO, CONFIG_UL_WS3_PIXELS, true);
-#else
-    init_strip(3, 0, 0, false);
 #endif
     s_refresh_sem = xSemaphoreCreateBinary();
     xTaskCreatePinnedToCore(led_refresh_task, "ws_refresh", 2048, NULL, 24, NULL, 1);
@@ -291,7 +269,7 @@ bool ul_ws_hex_to_rgb(const char* hex, uint8_t* r, uint8_t* g, uint8_t* b) {
 // ---- Control & Status API ----
 
 static ws_strip_t* get_strip(int idx) {
-    if (idx < 0 || idx > 3) return NULL;
+    if (idx < 0 || idx > 1) return NULL;
     if (s_strips[idx].pixels <= 0) return NULL;
     return &s_strips[idx];
 }
@@ -332,12 +310,6 @@ int ul_ws_get_strip_count(void) {
 #endif
 #if CONFIG_UL_WS1_ENABLED
     if (s_strips[1].pixels>0) n++;
-#endif
-#if CONFIG_UL_WS2_ENABLED
-    if (s_strips[2].pixels>0) n++;
-#endif
-#if CONFIG_UL_WS3_ENABLED
-    if (s_strips[3].pixels>0) n++;
 #endif
     return n;
 }

@@ -45,7 +45,7 @@ static void publish_status_snapshot(void) {
 
     // WS strips
     cJSON* jws = cJSON_CreateArray();
-    for (int i=0;i<4;i++) {
+    for (int i=0;i<2;i++) {
         ul_ws_strip_status_t st;
         if (ul_ws_get_status(i, &st)) {
             cJSON* o = cJSON_CreateObject();
