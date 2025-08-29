@@ -10,6 +10,8 @@
 #include "led_strip.h"
 #include <string.h>
 #include <stdbool.h>
+#include <stdio.h>
+
 
 #define WIFI_SSID "yourssid"
 #define WIFI_PASS "yourpass"
@@ -24,9 +26,67 @@ static const int WIFI_CONNECTED_BIT = BIT0;
 static led_strip_handle_t strip;
 static uint8_t last_r = 0, last_g = 0, last_b = 0;
 static bool power_on = false;
+static uint8_t brightness = 255;
+
+typedef enum {
+    EFFECT_SOLID,
+    EFFECT_RAINBOW,
+} effect_t;
+
+static effect_t current_effect = EFFECT_SOLID;
+static TaskHandle_t effect_task = NULL;
+
+static void stop_effect_task(void)
+{
+    if (effect_task) {
+        vTaskDelete(effect_task);
+        effect_task = NULL;
+    }
+}
+
+static void rainbow_task(void *arg)
+{
+    uint16_t pos = 0;
+    while (1) {
+        for (int i = 0; i < LED_STRIP_LENGTH; i++) {
+            uint8_t wheel = (i * 256 / LED_STRIP_LENGTH + pos) & 255;
+            uint8_t r, g, b;
+            if (wheel < 85) {
+                r = wheel * 3;
+                g = 255 - wheel * 3;
+                b = 0;
+            } else if (wheel < 170) {
+                wheel -= 85;
+                r = 255 - wheel * 3;
+                g = 0;
+                b = wheel * 3;
+            } else {
+                wheel -= 170;
+                r = 0;
+                g = wheel * 3;
+                b = 255 - wheel * 3;
+            }
+            r = r * brightness / 255;
+            g = g * brightness / 255;
+            b = b * brightness / 255;
+            led_strip_set_pixel(strip, i, r, g, b);
+        }
+        led_strip_refresh(strip);
+        pos++;
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
+static void start_rainbow(void)
+{
+    xTaskCreate(rainbow_task, "rainbow", 2048, NULL, 5, &effect_task);
+}
 
 static void ws_set_color(uint8_t r, uint8_t g, uint8_t b)
 {
+    r = r * brightness / 255;
+    g = g * brightness / 255;
+    b = b * brightness / 255;
     for (int i = 0; i < LED_STRIP_LENGTH; i++) {
         led_strip_set_pixel(strip, i, r, g, b);
     }
@@ -35,11 +95,33 @@ static void ws_set_color(uint8_t r, uint8_t g, uint8_t b)
 
 static void handle_ws_set(cJSON *root)
 {
-    cJSON *color = cJSON_GetObjectItem(root, "color");
-    if (cJSON_IsArray(color) && cJSON_GetArraySize(color) == 3) {
-        last_r = (uint8_t)cJSON_GetArrayItem(color, 0)->valueint;
-        last_g = (uint8_t)cJSON_GetArrayItem(color, 1)->valueint;
-        last_b = (uint8_t)cJSON_GetArrayItem(color, 2)->valueint;
+    cJSON *b_item = cJSON_GetObjectItem(root, "brightness");
+    if (cJSON_IsNumber(b_item)) {
+        brightness = (uint8_t)b_item->valueint;
+    }
+
+    cJSON *effect = cJSON_GetObjectItem(root, "effect");
+    if (cJSON_IsString(effect) && strcmp(effect->valuestring, "rainbow") == 0) {
+        current_effect = EFFECT_RAINBOW;
+        stop_effect_task();
+        if (power_on) {
+            start_rainbow();
+        }
+        return;
+    }
+
+    if (cJSON_IsString(effect) && strcmp(effect->valuestring, "solid") == 0) {
+        cJSON *hex = cJSON_GetObjectItem(root, "hex");
+        if (cJSON_IsString(hex) && strlen(hex->valuestring) == 7) {
+            int r, g, b;
+            if (sscanf(hex->valuestring + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
+                last_r = (uint8_t)r;
+                last_g = (uint8_t)g;
+                last_b = (uint8_t)b;
+            }
+        }
+        current_effect = EFFECT_SOLID;
+        stop_effect_task();
         if (power_on) {
             ws_set_color(last_r, last_g, last_b);
         }
@@ -52,8 +134,13 @@ static void handle_ws_power(cJSON *root)
     if (cJSON_IsBool(on)) {
         power_on = cJSON_IsTrue(on);
         if (power_on) {
-            ws_set_color(last_r, last_g, last_b);
+            if (current_effect == EFFECT_RAINBOW) {
+                start_rainbow();
+            } else {
+                ws_set_color(last_r, last_g, last_b);
+            }
         } else {
+            stop_effect_task();
             ws_set_color(0, 0, 0);
         }
     }
