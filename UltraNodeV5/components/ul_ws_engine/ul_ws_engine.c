@@ -242,7 +242,10 @@ void ul_ws_engine_start(void)
 #else
     init_strip(3, 0, 0, false);
 #endif
-    xTaskCreatePinnedToCore(ws_task, "ws60fps", 6144, NULL, 8, NULL, 1);
+    // Run LED refresh on core 1 at very high priority so nothing else
+    // preempts precise WS2812 timings. Core 0 handles networking and other
+    // background work.
+    xTaskCreatePinnedToCore(ws_task, "ws60fps", 6144, NULL, 24, NULL, 1);
 }
 
 

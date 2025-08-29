@@ -249,10 +249,15 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 void ul_mqtt_start(void)
 {
+    // MQTT runs at modest priority. The esp-mqtt library does not expose
+    // an explicit core assignment, but its task defaults to core 0 keeping
+    // core 1 free for time-critical LED driving.
     esp_mqtt_client_config_t cfg = {
         .broker.address.uri = CONFIG_UL_MQTT_URI,
         .credentials.username = CONFIG_UL_MQTT_USER,
-        .credentials.authentication.password = CONFIG_UL_MQTT_PASS
+        .credentials.authentication.password = CONFIG_UL_MQTT_PASS,
+        .task.priority = 5,
+        .task.stack_size = 6144,
     };
     s_client = esp_mqtt_client_init(&cfg);
     esp_mqtt_client_register_event(s_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
