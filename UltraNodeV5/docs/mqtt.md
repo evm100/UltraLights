@@ -35,7 +35,10 @@ Effect‑specific fields:
 | Effect | Extra fields |
 |--------|-------------|
 | `solid` | `color` – RGB array `[r,g,b]` with 0‑255 ints, or `hex` – string `"#RRGGBB"` |
+| `triple_wave` | `waves` – array of three objects `{ "hex":"#RRGGBB", "freq":<number>, "velocity":<number> }` |
 | others (`breathe`, `rainbow`, `twinkle`, `theater_chase`, `wipe`, `gradient_scroll`) | *(none)* |
+
+`triple_wave` mixes three colored sine waves; each object's `freq` sets spatial frequency and `velocity` controls movement speed.
 
 Example – set strip 1 to a green solid color:
 
@@ -56,6 +59,21 @@ Example – same color specified with a hex string:
   "effect": "solid",
   "brightness": 255,
   "hex": "#00FF00"
+}
+```
+
+Example – triple wave with three colored sine waves:
+
+```json
+{
+  "strip": 0,
+  "effect": "triple_wave",
+  "brightness": 200,
+  "waves": [
+    {"hex": "#FF0000", "freq": 1.0, "velocity": 0.1},
+    {"hex": "#00FF00", "freq": 2.0, "velocity": 0.15},
+    {"hex": "#0000FF", "freq": 0.5, "velocity": 0.2}
+  ]
 }
 ```
 

@@ -8,6 +8,7 @@ void theater_chase_init(void);void theater_chase_render(uint8_t*,int,int);
 void wipe_init(void);         void wipe_render(uint8_t*,int,int);
 void noise_init(void);        void noise_render(uint8_t*,int,int);
 void gradient_scroll_init(void);void gradient_scroll_render(uint8_t*,int,int);
+void triple_wave_init(void);  void triple_wave_render(uint8_t*,int,int);
 
 static const ws_effect_t effects[] = {
     {"solid", solid_init, solid_render},
@@ -17,6 +18,7 @@ static const ws_effect_t effects[] = {
     {"theater_chase", theater_chase_init, theater_chase_render},
     {"wipe", wipe_init, wipe_render},
     {"gradient_scroll", gradient_scroll_init, gradient_scroll_render},
+    {"triple_wave", triple_wave_init, triple_wave_render},
 };
 
 const ws_effect_t* ul_ws_get_effects(int* count) {

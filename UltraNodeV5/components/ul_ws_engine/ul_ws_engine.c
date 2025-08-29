@@ -29,6 +29,21 @@ typedef struct {
 } ws_strip_t;
 
 static ws_strip_t s_strips[4];
+static int s_current_strip_idx = 0;
+
+int ul_ws_effect_current_strip(void) { return s_current_strip_idx; }
+
+static ul_ws_wave_cfg_t s_triple_wave_cfg[4][3];
+
+void ul_ws_triple_wave_set(int strip, const ul_ws_wave_cfg_t waves[3]) {
+    if (strip < 0 || strip > 3) return;
+    for (int i = 0; i < 3; ++i) s_triple_wave_cfg[strip][i] = waves[i];
+}
+
+const ul_ws_wave_cfg_t* ul_ws_triple_wave_get(int strip) {
+    if (strip < 0 || strip > 3) return NULL;
+    return s_triple_wave_cfg[strip];
+}
 
 static const ws_effect_t* find_effect_by_name(const char* name) {
     int n=0;
@@ -73,8 +88,9 @@ static void apply_brightness(uint8_t* f, int count, uint8_t bri) {
     }
 }
 
-static void render_one(ws_strip_t* s) {
+static void render_one(ws_strip_t* s, int idx) {
     if (!s->pixels || !s->handle) return;
+    s_current_strip_idx = idx;
     // Produce frame
     memset(s->frame, 0, s->pixels*3);
     if (s->eff && s->eff->render) {
@@ -115,16 +131,16 @@ static void ws_task(void*)
     const int frame_us = 1000000 / CONFIG_UL_WS2812_FPS;
     while (1) {
 #if CONFIG_UL_WS0_ENABLED
-        render_one(&s_strips[0]);
+        render_one(&s_strips[0], 0);
 #endif
 #if CONFIG_UL_WS1_ENABLED
-        render_one(&s_strips[1]);
+        render_one(&s_strips[1], 1);
 #endif
 #if CONFIG_UL_WS2_ENABLED
-        render_one(&s_strips[2]);
+        render_one(&s_strips[2], 2);
 #endif
 #if CONFIG_UL_WS3_ENABLED
-        render_one(&s_strips[3]);
+        render_one(&s_strips[3], 3);
 #endif
         vTaskDelayUntil(&last_wake, period_ticks);
     }

@@ -5,7 +5,6 @@
 #include "ul_core.h"
 #include "ul_ws_engine.h"
 #include "ul_white_engine.h"
-#include "ul_ws_engine.h"
 #include "ul_sensors.h"
 #include "ul_ota.h"
 #include <stdio.h>
@@ -161,6 +160,32 @@ static void handle_cmd_ws_set(cJSON* root) {
                     ESP_LOGW(TAG, "invalid hex color: %s", hex);
                 }
             }
+        }
+    } else if (effect && strcmp(effect, "triple_wave") == 0) {
+        cJSON* jwaves = cJSON_GetObjectItem(root, "waves");
+        if (jwaves && cJSON_IsArray(jwaves) && cJSON_GetArraySize(jwaves) == 3) {
+            ul_ws_wave_cfg_t waves[3];
+            bool ok = true;
+            for (int i = 0; i < 3; ++i) {
+                cJSON* jw = cJSON_GetArrayItem(jwaves, i);
+                const char* hex = NULL;
+                if (!j_is_string(jw, "hex", &hex)) { ok = false; break; }
+                cJSON* jfreq = cJSON_GetObjectItem(jw, "freq");
+                cJSON* jvel = cJSON_GetObjectItem(jw, "velocity");
+                if (!jfreq || !cJSON_IsNumber(jfreq) || !jvel || !cJSON_IsNumber(jvel)) { ok = false; break; }
+                uint8_t r, g, b;
+                if (!ul_ws_hex_to_rgb(hex, &r, &g, &b)) { ok = false; break; }
+                waves[i].r = r; waves[i].g = g; waves[i].b = b;
+                waves[i].freq = (float)jfreq->valuedouble;
+                waves[i].velocity = (float)jvel->valuedouble;
+            }
+            if (ok) {
+                ul_ws_triple_wave_set(strip, waves);
+            } else {
+                ESP_LOGW(TAG, "invalid triple_wave params");
+            }
+        } else {
+            ESP_LOGW(TAG, "triple_wave requires 3 waves");
         }
     }
 }
