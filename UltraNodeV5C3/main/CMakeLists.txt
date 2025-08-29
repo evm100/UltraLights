@@ -1,0 +1,2 @@
+idf_component_register(SRCS "app_main.c"
+                       REQUIRES ul_core ul_mqtt ul_ota ul_sensors ul_ws_engine ul_white_engine ul_common_effects)
