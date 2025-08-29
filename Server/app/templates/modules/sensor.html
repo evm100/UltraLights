@@ -1,0 +1,14 @@
+<section class="glass rounded-2xl p-6">
+  <h3 class="text-lg font-semibold mb-3">Sensor Cooldown</h3>
+  <div class="flex gap-3">
+    <input id="cooldown" type="number" min="10" max="3600" value="60" class="p-2 bg-slate-900 rounded-lg border border-slate-700">
+    <button id="btnCooldown" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
+  </div>
+</section>
+<script>
+async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
+const cd=document.getElementById('cooldown');
+document.getElementById('btnCooldown').onclick=async()=>{
+  await post(`/api/node/{{ node.id }}/sensor/cooldown`,{seconds:parseInt(cd.value)});
+};
+</script>

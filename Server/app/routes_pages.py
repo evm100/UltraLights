@@ -3,9 +3,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from .config import settings
 from . import registry
+from .effects import WS_EFFECTS, WHITE_EFFECTS
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
 
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
@@ -71,5 +73,12 @@ def node_page(request: Request, node_id: str):
         subtitle = None
     return templates.TemplateResponse(
         "node.html",
-        {"request": request, "node": node, "title": title, "subtitle": subtitle},
+        {
+            "request": request,
+            "node": node,
+            "title": title,
+            "subtitle": subtitle,
+            "ws_effects": WS_EFFECTS,
+            "white_effects": WHITE_EFFECTS,
+        },
     )

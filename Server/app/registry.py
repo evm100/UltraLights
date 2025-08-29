@@ -93,7 +93,7 @@ def add_node(
     house_id: str,
     room_id: str,
     name: str,
-    kind: str = "rgb",
+    kind: str = "ultranode",
     modules: Optional[list[str]] = None,
 ) -> Node:
     """Create and attach a new node under ``house_id``/``room_id``."""
@@ -101,7 +101,7 @@ def add_node(
     if not room:
         raise KeyError("room not found")
     node = {"id": slugify(name), "name": name, "kind": kind}
-    node["modules"] = modules or ["color", "effect", "brightness", "motion", "ota"]
+    node["modules"] = modules or ["ws", "white", "sensor", "ota"]
     room.setdefault("nodes", []).append(node)
     save_registry()
     return node

@@ -1,16 +1,12 @@
 import threading
 import json
+from typing import Optional, List, Dict
 import paho.mqtt.client as paho
 from .config import settings
 from . import registry
 
-# New per-node topics (clean naming)
-# lights/{id}/cmd/{color,effect,spacey,white,brightness,ota}
-def topic_node(id_: str, leaf: str) -> str:
-    return f"lights/{id_}/cmd/{leaf}"
-
-def topic_status(id_: str, leaf: str) -> str:
-    return f"lights/{id_}/status/{leaf}"
+def topic_cmd(node_id: str, path: str) -> str:
+    return f"ul/{node_id}/cmd/{path}"
 
 class MqttBus:
     def __init__(self):
@@ -19,55 +15,69 @@ class MqttBus:
         self.thread = threading.Thread(target=self.client.loop_forever, daemon=True)
         self.thread.start()
 
-    def pub(self, topic: str, payload: str, qos: int = 1, retain: bool = True):
-        self.client.publish(topic, payload=payload, qos=qos, retain=retain)
+    def pub(self, topic: str, payload: Dict[str, object]):
+        self.client.publish(topic, payload=json.dumps(payload), qos=1, retain=False)
 
-    # --------- Compatibility helpers ----------
-    def send_color(self, node_id: str, r: int, g: int, b: int):
-        msg_legacy = f"{r},{g},{b}"
-        msg = json.dumps({"r": int(r), "g": int(g), "b": int(b)})
-        if settings.MQTT_COMPAT_PUBLISH_BOTH:
-            self.pub(settings.LEGACY_TOPIC_COLOR, msg_legacy, retain=True)
-        self.pub(topic_node(node_id, "color"), msg, retain=True)
+    # ---- WS strip commands ----
+    def ws_set(
+        self,
+        node_id: str,
+        strip: int,
+        effect: Optional[str] = None,
+        color: Optional[List[int]] = None,
+        brightness: Optional[int] = None,
+        params: Optional[Dict[str, object]] = None,
+    ):
+        msg: Dict[str, object] = {"strip": int(strip)}
+        if effect:
+            msg["effect"] = effect
+        if color:
+            msg["color"] = [int(x) for x in color]
+        if brightness is not None:
+            msg["brightness"] = int(brightness)
+        if params:
+            msg["params"] = params
+        self.pub(topic_cmd(node_id, "ws/set"), msg)
 
-    def send_effect(self, node_id: str, name: str):
-        msg = json.dumps({"name": name})
-        if settings.MQTT_COMPAT_PUBLISH_BOTH:
-            self.pub(settings.LEGACY_TOPIC_EFFECT, name, retain=True)
-        self.pub(topic_node(node_id, "effect"), msg, retain=True)
+    def ws_power(self, node_id: str, strip: int, on: bool):
+        msg = {"strip": int(strip), "on": bool(on)}
+        self.pub(topic_cmd(node_id, "ws/power"), msg)
 
-    def send_spacey(self, node_id: str, c1: str, c2: str, c3: str):
-        # c1,c2,c3 are "r,g,b"
-        msg = json.dumps({"c1": c1, "c2": c2, "c3": c3})
-        if settings.MQTT_COMPAT_PUBLISH_BOTH:
-            self.pub(settings.LEGACY_TOPIC_SPACEY, f"{c1}|{c2}|{c3}", retain=True)
-        self.pub(topic_node(node_id, "spacey"), msg, retain=True)
+    # ---- White channel commands ----
+    def white_set(
+        self,
+        node_id: str,
+        channel: int,
+        effect: Optional[str] = None,
+        brightness: Optional[int] = None,
+        params: Optional[Dict[str, object]] = None,
+    ):
+        msg: Dict[str, object] = {"channel": int(channel)}
+        if effect:
+            msg["effect"] = effect
+        if brightness is not None:
+            msg["brightness"] = int(brightness)
+        if params:
+            msg["params"] = params
+        self.pub(topic_cmd(node_id, "white/set"), msg)
 
-    def send_brightness(self, node_id: str, level: int):
-        # 0-255
-        msg = json.dumps({"level": int(level)})
-        self.pub(topic_node(node_id, "brightness"), msg, retain=True)
+    def white_power(self, node_id: str, channel: int, on: bool):
+        msg = {"channel": int(channel), "on": bool(on)}
+        self.pub(topic_cmd(node_id, "white/power"), msg)
 
-    def send_white(self, node_id: str, level: int):
-        # level 0-255 for simple white strips
-        msg = json.dumps({"level": int(level)})
-        self.pub(topic_node(node_id, "white"), msg, retain=True)
+    # ---- Sensor commands ----
+    def sensor_cooldown(self, node_id: str, seconds: int):
+        msg = {"seconds": int(seconds)}
+        self.pub(topic_cmd(node_id, "sensor/cooldown"), msg)
 
-    def send_ota(self, node_id: str, url: str, retain: bool = False):
-        msg = json.dumps({"now": url})
-        if settings.MQTT_COMPAT_PUBLISH_BOTH:
-            self.pub(settings.LEGACY_TOPIC_OTA, url, retain=retain)
-        self.pub(topic_node(node_id, "ota"), msg, retain=retain)
-
-    def send_motion(self, node_id: str, enabled: bool):
-        msg = json.dumps({"enabled": bool(enabled)})
-        self.pub(topic_node(node_id, "motion"), msg, retain=True)
+    # ---- OTA ----
+    def ota_check(self, node_id: str):
+        self.pub(topic_cmd(node_id, "ota/check"), {})
 
     def all_off(self):
-        """Turn off all known nodes regardless of location."""
-        # Broadcast-style: set RGB to 0 and brightness to 0 for each node
+        """Turn off all known nodes."""
         for _, _, n in registry.iter_nodes():
             nid = n["id"]
-            self.send_color(nid, 0, 0, 0)
-            self.send_brightness(nid, 0)
-            self.send_effect(nid, "static")  # ensure static black holds
+            for i in range(4):
+                self.ws_power(nid, i, False)
+                self.white_power(nid, i, False)

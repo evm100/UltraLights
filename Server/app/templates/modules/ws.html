@@ -1,0 +1,68 @@
+<section class="glass rounded-2xl p-6">
+  <h3 class="text-lg font-semibold mb-3">WS Strip Control</h3>
+  <div class="mb-2">
+    <label class="text-xs opacity-70">Strip</label>
+    <select id="wsStrip" class="p-1 rounded bg-slate-900 border border-slate-700">
+      {% for i in range(4) %}
+      <option value="{{ i }}">{{ i }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="flex items-start gap-4 mb-3">
+    <input id="wsColor" type="color" value="#ffffff" class="w-16 h-16 border-0 rounded-full">
+    <div class="flex-1">
+      <label class="text-xs opacity-70">Effect</label>
+      <select id="wsEffect" class="w-full p-1 bg-slate-900 rounded border border-slate-700">
+        <option value="" selected disabled>Select effect</option>
+        {% for eff in ws_effects %}
+        <option value="{{ eff }}">{{ eff }}</option>
+        {% endfor %}
+      </select>
+      <div id="wsParams" class="mt-2 space-y-1"></div>
+      <button id="wsAddParam" class="mt-1 text-xs px-2 py-1 bg-slate-800 rounded">+ Param</button>
+      <label class="text-xs opacity-70 block mt-2">Brightness</label>
+      <input id="wsBri" type="range" min="0" max="255" value="255" class="w-full">
+    </div>
+  </div>
+  <div class="flex gap-2">
+    <button id="wsSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
+    <button id="wsOn" class="px-4 py-2 pill bg-green-600 hover:bg-green-500 text-white">On</button>
+    <button id="wsOff" class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white">Off</button>
+  </div>
+</section>
+<script>
+function hexToRgb(hex){hex=hex.replace('#','');if(hex.length===3)hex=hex.split('').map(x=>x+x).join('');const num=parseInt(hex,16);return[(num>>16)&255,(num>>8)&255,num&255];}
+async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
+const wsStrip=document.getElementById('wsStrip');
+const wsEffect=document.getElementById('wsEffect');
+const wsColor=document.getElementById('wsColor');
+const wsBri=document.getElementById('wsBri');
+const wsParams=document.getElementById('wsParams');
+const wsAddParam=document.getElementById('wsAddParam');
+
+function addParamRow(container){const row=document.createElement('div');row.className='flex gap-2';row.innerHTML=`<input type="text" placeholder="key" pattern="[a-zA-Z0-9_]+" class="flex-1 p-1 bg-slate-900 rounded border border-slate-700"><input type="number" placeholder="value" step="1" class="flex-1 p-1 bg-slate-900 rounded border border-slate-700">`;container.appendChild(row);}
+function collectParams(container){const obj={};let ok=true;container.querySelectorAll('div').forEach(r=>{const k=r.children[0].value.trim();const v=Number(r.children[1].value);if(!k&&r.children[1].value==='')return;if(!k||Number.isNaN(v)){ok=false;return;}obj[k]=v;});return ok?obj:null;}
+wsAddParam.onclick=()=>addParamRow(wsParams);
+wsEffect.onchange=()=>{wsParams.innerHTML='';};
+
+document.getElementById('wsSet').onclick=async()=>{
+  const strip=parseInt(wsStrip.value,10);
+  if(Number.isNaN(strip)){alert('Invalid strip');return;}
+  const eff=wsEffect.value.trim();
+  if(!eff){alert('Select an effect');return;}
+  const color=hexToRgb(wsColor.value);
+  const bri=parseInt(wsBri.value,10);
+  if(Number.isNaN(bri)){alert('Invalid brightness');return;}
+  const params=collectParams(wsParams);
+  if(params===null){alert('Invalid parameters');return;}
+  const msg={strip, effect:eff, color, brightness:bri};
+  if(Object.keys(params).length)msg.params=params;
+  await post(`/api/node/{{ node.id }}/ws/set`,msg);
+};
+document.getElementById('wsOn').onclick=async()=>{
+  const s=parseInt(wsStrip.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:true});
+};
+document.getElementById('wsOff').onclick=async()=>{
+  const s=parseInt(wsStrip.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:false});
+};
+</script>
