@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "ul_mqtt.h"
 #include "esp_rom_sys.h"
+#include "ul_task.h"
 
 static const char* TAG = "ul_sensors";
 
@@ -93,8 +94,8 @@ static void sensors_task(void*)
 
 void ul_sensors_start(void)
 {
-    // Pin sensor processing to core 0 so core 1 can be dedicated to LED work
-    xTaskCreatePinnedToCore(sensors_task, "sensors", 4096, NULL, 5, NULL, 0);
+    // Sensor processing pinned to core 0 when multiple cores are present
+    ul_task_create(sensors_task, "sensors", 4096, NULL, 5, NULL, 0);
 }
 
 void ul_sensors_set_cooldown(int seconds)

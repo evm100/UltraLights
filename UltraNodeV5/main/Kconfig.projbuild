@@ -1,5 +1,12 @@
 menu "UltraLights Configuration"
 
+menu "System"
+    config UL_CORE_COUNT
+        int "CPU core count"
+        range 1 2
+        default 2
+endmenu
+
 menu "Node / Network"
     config UL_NODE_ID
         string "Node ID"
