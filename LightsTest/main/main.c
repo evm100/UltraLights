@@ -263,7 +263,9 @@ void app_main(void)
     led_strip_spi_config_t spi_config = {
         .clk_src = SPI_CLK_SRC_DEFAULT,
         .spi_bus = SPI2_HOST,
-        .clock_speed_hz = 10 * 1000 * 1000,
+        .flags = {
+            .with_dma = true,
+        },
     };
     ESP_ERROR_CHECK(led_strip_new_spi_device(&strip_config, &spi_config, &strip));
     led_strip_clear(strip);
