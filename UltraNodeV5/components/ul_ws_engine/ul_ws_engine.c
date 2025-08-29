@@ -6,7 +6,7 @@
 #include "esp_log.h"
 #include "led_strip.h"
 #include "led_strip_rmt.h"
-#include "led_strip_rmt.h"
+#include "esp_heap_caps.h"
 #include "led_strip_spi.h"
 #include "led_strip_types.h"
 #include <string.h>
@@ -142,7 +142,13 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
         .mem_block_symbols = 0,
         .flags.with_dma = true,
     };
-    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strips[idx].handle));
+    esp_err_t err = led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strips[idx].handle);
+    if (err == ESP_ERR_NOT_SUPPORTED) {
+        rmt_config.flags.with_dma = false;
+        ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strips[idx].handle));
+    } else {
+        ESP_ERROR_CHECK(err);
+    }
     s_strips[idx].pixels = pixels;
     // Allocate DMA-capable memory so RMT can access the frame buffer without
     // CPU intervention, reducing flicker during refreshes
