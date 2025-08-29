@@ -14,8 +14,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#define WIFI_SSID "yourssid"
-#define WIFI_PASS "yourpass"
+#define WIFI_SSID "Verastegui"
+#define WIFI_PASS "6162988135"
 
 /*
  * Specify the MQTT host and port separately to avoid mistakes when
@@ -23,7 +23,7 @@
  * required "mqtt://" scheme, preventing runtime parsing errors such as
  * "mqtt:192.168.1.64" missing the double slash.
  */
-#define MQTT_HOST "localhost"
+#define MQTT_HOST "192.168.1.64"
 #define MQTT_PORT 1883
 
 #define STRINGIFY2(x) #x
@@ -31,8 +31,8 @@
 #define MQTT_URI "mqtt://" MQTT_HOST ":" STRINGIFY(MQTT_PORT)
 
 #define NODE_ID   "node"
-#define LED_STRIP_GPIO 18
-#define LED_STRIP_LENGTH 30
+#define LED_STRIP_GPIO 13
+#define LED_STRIP_LENGTH 300
 
 static const char *TAG = "lights";
 static EventGroupHandle_t s_wifi_event_group;
