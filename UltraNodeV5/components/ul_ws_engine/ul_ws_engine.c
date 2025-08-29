@@ -143,6 +143,7 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
     ESP_ERROR_CHECK(rmt_new_led_strip_encoder(&enc_conf, &s_strips[idx].encoder));
     s_strips[idx].pixels = pixels;
     // Allocate DMA-capable memory so RMT can access the frame buffer directly
+
     s_strips[idx].frame = (uint8_t*)heap_caps_malloc(pixels * 3, MALLOC_CAP_8BIT | MALLOC_CAP_DMA);
     memset(s_strips[idx].frame, 0, pixels*3);
     // defaults
