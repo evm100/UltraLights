@@ -1,6 +1,7 @@
+#include "sdkconfig.h"
 #include "ul_task.h"
 
-uint8_t ul_core_count = portNUM_PROCESSORS;
+uint8_t ul_core_count = CONFIG_UL_CORE_COUNT;
 
 void ul_set_core_count(uint8_t count) {
     ul_core_count = count;

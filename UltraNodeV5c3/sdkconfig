@@ -500,6 +500,12 @@ CONFIG_PARTITION_TABLE_MD5=y
 #
 
 #
+# System
+#
+CONFIG_UL_CORE_COUNT=1
+# end of System
+
+#
 # Node / Network
 #
 CONFIG_UL_NODE_ID="node"

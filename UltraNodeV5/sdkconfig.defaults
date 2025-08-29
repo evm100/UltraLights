@@ -1,3 +1,6 @@
+# ---- System ----
+CONFIG_UL_CORE_COUNT=2
+
 # ---- Node / Network ----
 CONFIG_UL_NODE_ID="node01"
 CONFIG_UL_WIFI_SSID="YourSSID"
