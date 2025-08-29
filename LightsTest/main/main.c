@@ -7,8 +7,9 @@
 #include "esp_log.h"
 #include "mqtt_client.h"
 #include "cJSON.h"
-#include "driver/rmt.h"
 #include "led_strip.h"
+#include <string.h>
+#include <stdbool.h>
 
 #define WIFI_SSID "yourssid"
 #define WIFI_PASS "yourpass"
@@ -20,7 +21,7 @@
 static const char *TAG = "lights";
 static EventGroupHandle_t s_wifi_event_group;
 static const int WIFI_CONNECTED_BIT = BIT0;
-static led_strip_t *strip;
+static led_strip_handle_t strip;
 static uint8_t last_r = 0, last_g = 0, last_b = 0;
 static bool power_on = false;
 
@@ -29,7 +30,7 @@ static void ws_set_color(uint8_t r, uint8_t g, uint8_t b)
     for (int i = 0; i < LED_STRIP_LENGTH; i++) {
         led_strip_set_pixel(strip, i, r, g, b);
     }
-    led_strip_refresh(strip, 100);
+    led_strip_refresh(strip);
 }
 
 static void handle_ws_set(cJSON *root)
@@ -136,22 +137,22 @@ void app_main(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
     wifi_init();
-
-    rmt_config_t rmt_cfg = RMT_DEFAULT_CONFIG_TX(LED_STRIP_GPIO, RMT_CHANNEL_0);
-    rmt_cfg.clk_div = 2;
-    ESP_ERROR_CHECK(rmt_config(&rmt_cfg));
-    ESP_ERROR_CHECK(rmt_driver_install(rmt_cfg.channel, 0, 0));
-
-    led_strip_config_t strip_config = LED_STRIP_DEFAULT_CONFIG(LED_STRIP_LENGTH, (led_strip_dev_t)rmt_cfg.channel);
-    strip = led_strip_new_rmt_ws2812(&strip_config);
-    if (!strip) {
-        ESP_LOGE(TAG, "Failed to initialize LED strip");
-        return;
-    }
-    led_strip_clear(strip, 100);
+    led_strip_config_t strip_config = {
+        .strip_gpio_num = LED_STRIP_GPIO,
+        .max_leds = LED_STRIP_LENGTH,
+        .led_model = LED_MODEL_WS2812,
+        .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,
+    };
+    led_strip_rmt_config_t rmt_config = {
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .resolution_hz = 10 * 1000 * 1000,
+        .mem_block_symbols = 64,
+    };
+    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &strip));
+    led_strip_clear(strip);
 
     esp_mqtt_client_config_t mqtt_cfg = {
-        .uri = MQTT_URI,
+        .broker.address.uri = MQTT_URI,
     };
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
