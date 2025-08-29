@@ -11,6 +11,7 @@
 #include "led_strip_types.h"
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include "effects_ws/effect.h"
 #include "ul_common_effects.h"
 
@@ -154,6 +155,21 @@ void ul_ws_engine_start(void)
     xTaskCreatePinnedToCore(ws_task, "ws60fps", 6144, NULL, 8, NULL, 1);
 }
 
+
+bool ul_ws_hex_to_rgb(const char* hex, uint8_t* r, uint8_t* g, uint8_t* b) {
+    if (!hex || !r || !g || !b) return false;
+    if (hex[0] == '#') hex++;
+    if (strlen(hex) != 6) return false;
+    for (int i = 0; i < 6; ++i) {
+        if (!isxdigit((unsigned char)hex[i])) return false;
+    }
+    char buf[3] = {0};
+    buf[2] = 0;
+    buf[0] = hex[0]; buf[1] = hex[1]; *r = (uint8_t)strtol(buf, NULL, 16);
+    buf[0] = hex[2]; buf[1] = hex[3]; *g = (uint8_t)strtol(buf, NULL, 16);
+    buf[0] = hex[4]; buf[1] = hex[5]; *b = (uint8_t)strtol(buf, NULL, 16);
+    return true;
+}
 
 // ---- Control & Status API ----
 

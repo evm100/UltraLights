@@ -34,7 +34,7 @@ Effect‑specific fields:
 
 | Effect | Extra fields |
 |--------|-------------|
-| `solid` | `color` – RGB array `[r,g,b]` with 0‑255 ints |
+| `solid` | `color` – RGB array `[r,g,b]` with 0‑255 ints, or `hex` – string `"#RRGGBB"` |
 | others (`breathe`, `rainbow`, `twinkle`, `theater_chase`, `wipe`, `gradient_scroll`) | *(none)* |
 
 Example – set strip 1 to a green solid color:
@@ -45,6 +45,17 @@ Example – set strip 1 to a green solid color:
   "effect": "solid",
   "brightness": 255,
   "color": [0, 255, 0]
+}
+```
+
+Example – same color specified with a hex string:
+
+```json
+{
+  "strip": 1,
+  "effect": "solid",
+  "brightness": 255,
+  "hex": "#00FF00"
 }
 ```
 

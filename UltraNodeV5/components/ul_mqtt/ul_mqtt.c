@@ -18,6 +18,11 @@ static const char* TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
 
+// JSON helpers (defined later)
+static bool j_is_int_in(cJSON* obj, const char* key, int minv, int maxv, int* out);
+static bool j_is_bool(cJSON* obj, const char* key, bool* out);
+static bool j_is_string(cJSON* obj, const char* key, const char** out);
+
 static int starts_with(const char* s, const char* pfx) {
     return strncmp(s, pfx, strlen(pfx)) == 0;
 }
@@ -146,6 +151,16 @@ static void handle_cmd_ws_set(cJSON* root) {
             int g = cJSON_GetArrayItem(jcolor, 1)->valueint;
             int b = cJSON_GetArrayItem(jcolor, 2)->valueint;
             ul_ws_set_solid_rgb(strip, r, g, b);
+        } else {
+            const char* hex = NULL;
+            if (j_is_string(root, "hex", &hex)) {
+                uint8_t r, g, b;
+                if (ul_ws_hex_to_rgb(hex, &r, &g, &b)) {
+                    ul_ws_set_solid_rgb(strip, r, g, b);
+                } else {
+                    ESP_LOGW(TAG, "invalid hex color: %s", hex);
+                }
+            }
         }
     }
 }
