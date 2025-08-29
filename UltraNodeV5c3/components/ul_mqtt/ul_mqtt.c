@@ -249,9 +249,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 void ul_mqtt_start(void)
 {
-    // MQTT runs at modest priority. The esp-mqtt library does not expose
-    // an explicit core assignment, but its task defaults to core 0 keeping
-    // core 1 free for time-critical LED driving.
+    // MQTT runs at modest priority. On the ESP32-C3 all tasks share the
+    // single core, so no explicit core assignment is needed.
     esp_mqtt_client_config_t cfg = {
         .broker.address.uri = CONFIG_UL_MQTT_URI,
         .credentials.username = CONFIG_UL_MQTT_USER,
