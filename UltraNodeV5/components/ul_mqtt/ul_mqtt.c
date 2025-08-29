@@ -118,28 +118,35 @@ void ul_mqtt_publish_motion(const char* sid, const char* state)
 }
 
 static void handle_cmd_ws_set(cJSON* root) {
+    int strip = 0;
     cJSON* jstrip = cJSON_GetObjectItem(root, "strip");
+    if (jstrip) strip = jstrip->valueint;
+
+    const char* effect = NULL;
     cJSON* jeffect = cJSON_GetObjectItem(root, "effect");
-    cJSON* jcolor = cJSON_GetObjectItem(root, "color");
-    cJSON* jbri = cJSON_GetObjectItem(root, "brightness");
-    int strip = jstrip ? jstrip->valueint : 0;
     if (jeffect && cJSON_IsString(jeffect)) {
-        if (!ul_ws_set_effect(strip, jeffect->valuestring)) {
-            ESP_LOGW(TAG, "Unknown effect: %s", jeffect->valuestring);
-    ul_mqtt_publish_status_now();
-}
+        effect = jeffect->valuestring;
+        if (!ul_ws_set_effect(strip, effect)) {
+            ESP_LOGW(TAG, "Unknown effect: %s", effect);
+        }
     }
-    if (jcolor && cJSON_IsArray(jcolor) && cJSON_GetArraySize(jcolor) >= 3) {
-        int r = cJSON_GetArrayItem(jcolor, 0)->valueint;
-        int g = cJSON_GetArrayItem(jcolor, 1)->valueint;
-        int b = cJSON_GetArrayItem(jcolor, 2)->valueint;
-        ul_ws_set_solid_rgb(strip, r, g, b);
-    }
+
+    cJSON* jbri = cJSON_GetObjectItem(root, "brightness");
     if (jbri) {
         int bri = jbri->valueint;
-        if (bri < 0) bri=0;
-	if (bri>255) bri=255;
+        if (bri < 0) bri = 0;
+        if (bri > 255) bri = 255;
         ul_ws_set_brightness(strip, bri);
+    }
+
+    if (effect && strcmp(effect, "solid") == 0) {
+        cJSON* jcolor = cJSON_GetObjectItem(root, "color");
+        if (jcolor && cJSON_IsArray(jcolor) && cJSON_GetArraySize(jcolor) >= 3) {
+            int r = cJSON_GetArrayItem(jcolor, 0)->valueint;
+            int g = cJSON_GetArrayItem(jcolor, 1)->valueint;
+            int b = cJSON_GetArrayItem(jcolor, 2)->valueint;
+            ul_ws_set_solid_rgb(strip, r, g, b);
+        }
     }
 }
 
