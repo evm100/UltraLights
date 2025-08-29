@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from .config import settings
 from . import registry
-from .effects import WS_EFFECTS, WHITE_EFFECTS
+from .effects import WS_EFFECTS, WHITE_EFFECTS, WS_PARAM_DEFS, WHITE_PARAM_DEFS
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -80,5 +80,7 @@ def node_page(request: Request, node_id: str):
             "subtitle": subtitle,
             "ws_effects": WS_EFFECTS,
             "white_effects": WHITE_EFFECTS,
+            "ws_param_defs": WS_PARAM_DEFS,
+            "white_param_defs": WHITE_PARAM_DEFS,
         },
     )
