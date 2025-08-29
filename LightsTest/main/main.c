@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+
 #define WIFI_SSID "yourssid"
 #define WIFI_PASS "yourpass"
 #define MQTT_URI  "mqtt://localhost"
