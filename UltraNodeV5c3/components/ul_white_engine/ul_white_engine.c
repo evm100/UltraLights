@@ -3,6 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/ledc.h"
+#include "ul_task.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "string.h"
@@ -116,9 +117,10 @@ void ul_white_engine_start(void)
 #else
     ch_init(3, false, 0, 0, 0);
 #endif
-    // Run at slightly lower priority than the pixel refresh task so frame
-    // updates remain smooth on the single core.
-    xTaskCreate(white_task, "white200hz", 4096, NULL, 23, NULL);
+    // Run at slightly lower priority than the pixel refresh task; on
+    // multi-core targets this pins to core 1 so core 0 can handle network
+    // traffic.
+    ul_task_create(white_task, "white200hz", 4096, NULL, 23, NULL, 1);
 }
 
 static white_ch_t* get_ch(int ch) {

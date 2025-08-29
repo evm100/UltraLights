@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "ul_task.h"
 #include <string.h>
 #include "esp_crt_bundle.h"
 
@@ -20,8 +21,8 @@ static void ota_task(void*)
 
 void ul_ota_start(void)
 {
-    // Periodic OTA checks running on the single core
-    xTaskCreate(ota_task, "ota_task", 6144, NULL, 4, NULL);
+    // Periodic OTA checks pinned to core 0 when multiple cores are available
+    ul_task_create(ota_task, "ota_task", 6144, NULL, 4, NULL, 0);
 }
 
 static esp_err_t _http_client_init_cb(esp_http_client_handle_t http_client)
