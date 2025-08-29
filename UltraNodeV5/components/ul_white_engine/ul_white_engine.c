@@ -69,11 +69,15 @@ static void ch_init(int idx, bool enabled, int gpio, int ledc_ch, int pwm_hz) {
 
 static void white_task(void*)
 {
-    // Use the dedicated smoothing rate for periodic updates
-    const TickType_t period_ticks = pdMS_TO_TICKS(1000 / CONFIG_UL_WHITE_SMOOTH_HZ);
+    // Use the dedicated smoothing rate for periodic updates. If the
+    // configured rate is faster than the system tick, fall back to 1 tick
+    // so the task still yields and avoids assertion failures.
+    TickType_t period_ticks = pdMS_TO_TICKS(1000) / CONFIG_UL_WHITE_SMOOTH_HZ;
+    if (period_ticks == 0) {
+        period_ticks = 1;
+    }
     TickType_t last_wake = xTaskGetTickCount();
-    const int frame_us = 1000000 / CONFIG_UL_WHITE_SMOOTH_HZ;
-    int n=0; ul_white_get_effects(&n); // ensure linked
+    int n = 0; ul_white_get_effects(&n); // ensure linked
     while (1) {
         for (int i=0;i<4;i++) {
             if (!s_ch[i].enabled) continue;
