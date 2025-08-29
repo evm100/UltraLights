@@ -23,6 +23,7 @@
  * required "mqtt://" scheme, preventing runtime parsing errors such as
  * "mqtt:192.168.1.64" missing the double slash.
  */
+
 #define MQTT_HOST "192.168.1.64"
 #define MQTT_PORT 1883
 

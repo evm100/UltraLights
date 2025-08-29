@@ -2,13 +2,12 @@
 #include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_timer.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "led_strip.h"
-#include "led_strip_rmt.h"
-#include "led_strip_rmt.h"
 #include "led_strip_spi.h"
 #include "led_strip_types.h"
+#include "driver/spi_master.h"
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -31,6 +30,7 @@ typedef struct {
 
 static ws_strip_t s_strips[4];
 static int s_current_strip_idx = 0;
+static SemaphoreHandle_t s_refresh_sem;
 
 int ul_ws_effect_current_strip(void) { return s_current_strip_idx; }
 
@@ -140,12 +140,15 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
         .led_model = LED_MODEL_WS2812,
         .flags.invert_out = false
     };
-    led_strip_rmt_config_t rmt_config = {
-        .clk_src = RMT_CLK_SRC_DEFAULT,
-        .resolution_hz = 10 * 1000 * 1000, // 10MHz
-        .mem_block_symbols = 0,
+    led_strip_spi_config_t spi_config = {
+        .clk_src = SPI_CLK_SRC_DEFAULT,
+        .spi_bus = SPI2_HOST,
+        .flags = {
+            .with_dma = true,
+        },
     };
-    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strips[idx].handle));
+    ESP_ERROR_CHECK(led_strip_new_spi_device(&strip_config, &spi_config, &s_strips[idx].handle));
+    led_strip_clear(s_strips[idx].handle);
     s_strips[idx].pixels = pixels;
     s_strips[idx].frame = (uint8_t*)heap_caps_malloc(pixels*3, MALLOC_CAP_8BIT);
     memset(s_strips[idx].frame, 0, pixels*3);
@@ -198,7 +201,6 @@ static void render_one(ws_strip_t* s, int idx) {
     for (int i=0;i<s->pixels;i++) {
         led_strip_set_pixel(s->handle, i, s->frame[3*i+0], s->frame[3*i+1], s->frame[3*i+2]);
     }
-    led_strip_refresh(s->handle);
 }
 
 static void ws_task(void*)
@@ -206,7 +208,6 @@ static void ws_task(void*)
     const TickType_t period_ticks = pdMS_TO_TICKS(1000 / CONFIG_UL_WS2812_FPS);
     TickType_t last_wake = xTaskGetTickCount();
 
-    const int frame_us = 1000000 / CONFIG_UL_WS2812_FPS;
     while (1) {
 #if CONFIG_UL_WS0_ENABLED
         render_one(&s_strips[0], 0);
@@ -220,7 +221,26 @@ static void ws_task(void*)
 #if CONFIG_UL_WS3_ENABLED
         render_one(&s_strips[3], 3);
 #endif
+        if (s_refresh_sem) xSemaphoreGive(s_refresh_sem);
         vTaskDelayUntil(&last_wake, period_ticks);
+    }
+}
+
+static void led_refresh_task(void *arg) {
+    while (1) {
+        xSemaphoreTake(s_refresh_sem, portMAX_DELAY);
+#if CONFIG_UL_WS0_ENABLED
+        if (s_strips[0].handle) led_strip_refresh(s_strips[0].handle);
+#endif
+#if CONFIG_UL_WS1_ENABLED
+        if (s_strips[1].handle) led_strip_refresh(s_strips[1].handle);
+#endif
+#if CONFIG_UL_WS2_ENABLED
+        if (s_strips[2].handle) led_strip_refresh(s_strips[2].handle);
+#endif
+#if CONFIG_UL_WS3_ENABLED
+        if (s_strips[3].handle) led_strip_refresh(s_strips[3].handle);
+#endif
     }
 }
 
@@ -246,10 +266,10 @@ void ul_ws_engine_start(void)
 #else
     init_strip(3, 0, 0, false);
 #endif
-    // Run LED refresh on core 1 at very high priority so nothing else
-    // preempts precise WS2812 timings. Core 0 handles networking and other
-    // background work.
-    xTaskCreatePinnedToCore(ws_task, "ws60fps", 6144, NULL, 24, NULL, 1);
+    s_refresh_sem = xSemaphoreCreateBinary();
+    xTaskCreatePinnedToCore(led_refresh_task, "ws_refresh", 2048, NULL, 24, NULL, 1);
+    xTaskCreatePinnedToCore(ws_task, "ws60fps", 6144, NULL, 23, NULL, 1);
+    if (s_refresh_sem) xSemaphoreGive(s_refresh_sem);
 }
 
 
