@@ -12,6 +12,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include "cJSON.h"
 #include "effects_ws/effect.h"
 #include "ul_common_effects.h"
 
@@ -43,6 +44,79 @@ void ul_ws_triple_wave_set(int strip, const ul_ws_wave_cfg_t waves[3]) {
 const ul_ws_wave_cfg_t* ul_ws_triple_wave_get(int strip) {
     if (strip < 0 || strip > 3) return NULL;
     return s_triple_wave_cfg[strip];
+}
+
+void ul_ws_apply_json(cJSON* root) {
+    if (!root) return;
+    int strip = 0;
+    cJSON* jstrip = cJSON_GetObjectItem(root, "strip");
+    if (jstrip && cJSON_IsNumber(jstrip)) strip = jstrip->valueint;
+
+    const char* effect = NULL;
+    cJSON* jeffect = cJSON_GetObjectItem(root, "effect");
+    if (jeffect && cJSON_IsString(jeffect)) {
+        effect = jeffect->valuestring;
+        if (!ul_ws_set_effect(strip, effect)) {
+            ESP_LOGW(TAG, "Unknown effect: %s", effect);
+        }
+    }
+
+    cJSON* jbri = cJSON_GetObjectItem(root, "brightness");
+    if (jbri && cJSON_IsNumber(jbri)) {
+        int bri = jbri->valueint;
+        if (bri < 0) bri = 0;
+        if (bri > 255) bri = 255;
+        ul_ws_set_brightness(strip, (uint8_t)bri);
+    }
+
+    if (!effect) return;
+
+    if (strcmp(effect, "solid") == 0) {
+        cJSON* jcolor = cJSON_GetObjectItem(root, "color");
+        if (jcolor && cJSON_IsArray(jcolor) && cJSON_GetArraySize(jcolor) >= 3) {
+            int r = cJSON_GetArrayItem(jcolor, 0)->valueint;
+            int g = cJSON_GetArrayItem(jcolor, 1)->valueint;
+            int b = cJSON_GetArrayItem(jcolor, 2)->valueint;
+            ul_ws_set_solid_rgb(strip, (uint8_t)r, (uint8_t)g, (uint8_t)b);
+        } else {
+            cJSON* jhex = cJSON_GetObjectItem(root, "hex");
+            if (jhex && cJSON_IsString(jhex)) {
+                uint8_t r, g, b;
+                if (ul_ws_hex_to_rgb(jhex->valuestring, &r, &g, &b)) {
+                    ul_ws_set_solid_rgb(strip, r, g, b);
+                } else {
+                    ESP_LOGW(TAG, "invalid hex color: %s", jhex->valuestring);
+                }
+            }
+        }
+    } else if (strcmp(effect, "triple_wave") == 0) {
+        cJSON* jwaves = cJSON_GetObjectItem(root, "waves");
+        if (jwaves && cJSON_IsArray(jwaves) && cJSON_GetArraySize(jwaves) == 3) {
+            ul_ws_wave_cfg_t waves[3];
+            bool ok = true;
+            for (int i = 0; i < 3; ++i) {
+                cJSON* jw = cJSON_GetArrayItem(jwaves, i);
+                cJSON* jhex = cJSON_GetObjectItem(jw, "hex");
+                cJSON* jfreq = cJSON_GetObjectItem(jw, "freq");
+                cJSON* jvel = cJSON_GetObjectItem(jw, "velocity");
+                if (!jhex || !cJSON_IsString(jhex) || !jfreq || !cJSON_IsNumber(jfreq) || !jvel || !cJSON_IsNumber(jvel)) {
+                    ok = false; break;
+                }
+                uint8_t r, g, b;
+                if (!ul_ws_hex_to_rgb(jhex->valuestring, &r, &g, &b)) { ok = false; break; }
+                waves[i].r = r; waves[i].g = g; waves[i].b = b;
+                waves[i].freq = (float)jfreq->valuedouble;
+                waves[i].velocity = (float)jvel->valuedouble;
+            }
+            if (ok) {
+                ul_ws_triple_wave_set(strip, waves);
+            } else {
+                ESP_LOGW(TAG, "invalid triple_wave params");
+            }
+        } else {
+            ESP_LOGW(TAG, "triple_wave requires 3 waves");
+        }
+    }
 }
 
 static const ws_effect_t* find_effect_by_name(const char* name) {

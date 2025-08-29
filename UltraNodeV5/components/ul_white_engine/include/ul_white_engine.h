@@ -4,6 +4,11 @@
 
 void ul_white_engine_start(void);
 
+typedef struct cJSON cJSON;
+
+// Parse and apply a JSON payload for white/set
+void ul_white_apply_json(cJSON* root);
+
 // Channels 0..3 (enabled by Kconfig flags). Returns false if channel not enabled.
 bool ul_white_set_effect(int ch, const char* name);
 bool ul_white_set_brightness(int ch, uint8_t bri);

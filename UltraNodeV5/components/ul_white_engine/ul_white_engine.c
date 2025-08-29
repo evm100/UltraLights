@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "string.h"
 #include "effects_white/effect.h"
+#include "cJSON.h"
 
 static const char* TAG = "ul_white";
 
@@ -141,6 +142,28 @@ bool ul_white_power(int ch, bool on) {
     if (!c) return false;
     c->power = on;
     return true;
+}
+
+void ul_white_apply_json(cJSON* root) {
+    if (!root) return;
+    int ch = 0;
+    cJSON* jch = cJSON_GetObjectItem(root, "channel");
+    if (jch && cJSON_IsNumber(jch)) ch = jch->valueint;
+
+    cJSON* jeff = cJSON_GetObjectItem(root, "effect");
+    if (jeff && cJSON_IsString(jeff)) {
+        if (!ul_white_set_effect(ch, jeff->valuestring)) {
+            ESP_LOGW(TAG, "unknown white effect: %s", jeff->valuestring);
+        }
+    }
+
+    cJSON* jbri = cJSON_GetObjectItem(root, "brightness");
+    if (jbri && cJSON_IsNumber(jbri)) {
+        int bri = jbri->valueint;
+        if (bri < 0) bri = 0;
+        if (bri > 255) bri = 255;
+        ul_white_set_brightness(ch, (uint8_t)bri);
+    }
 }
 
 int ul_white_get_channel_count(void) { return s_count; }

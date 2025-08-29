@@ -4,6 +4,11 @@
 
 void ul_ws_engine_start(void);
 
+typedef struct cJSON cJSON;
+
+// Parse and apply a JSON payload for ws/set
+void ul_ws_apply_json(cJSON* root);
+
 // Control API
 bool ul_ws_set_effect(int strip, const char* name);     // returns true if found
 void ul_ws_set_solid_rgb(int strip, uint8_t r, uint8_t g, uint8_t b);

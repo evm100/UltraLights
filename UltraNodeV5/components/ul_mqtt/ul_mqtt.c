@@ -20,7 +20,6 @@ static bool s_ready = false;
 // JSON helpers (defined later)
 static bool j_is_int_in(cJSON* obj, const char* key, int minv, int maxv, int* out);
 static bool j_is_bool(cJSON* obj, const char* key, bool* out);
-static bool j_is_string(cJSON* obj, const char* key, const char** out);
 
 static int starts_with(const char* s, const char* pfx) {
     return strncmp(s, pfx, strlen(pfx)) == 0;
@@ -122,72 +121,7 @@ void ul_mqtt_publish_motion(const char* sid, const char* state)
 }
 
 static void handle_cmd_ws_set(cJSON* root) {
-    int strip = 0;
-    cJSON* jstrip = cJSON_GetObjectItem(root, "strip");
-    if (jstrip) strip = jstrip->valueint;
-
-    const char* effect = NULL;
-    cJSON* jeffect = cJSON_GetObjectItem(root, "effect");
-    if (jeffect && cJSON_IsString(jeffect)) {
-        effect = jeffect->valuestring;
-        if (!ul_ws_set_effect(strip, effect)) {
-            ESP_LOGW(TAG, "Unknown effect: %s", effect);
-        }
-    }
-
-    cJSON* jbri = cJSON_GetObjectItem(root, "brightness");
-    if (jbri) {
-        int bri = jbri->valueint;
-        if (bri < 0) bri = 0;
-        if (bri > 255) bri = 255;
-        ul_ws_set_brightness(strip, bri);
-    }
-
-    if (effect && strcmp(effect, "solid") == 0) {
-        cJSON* jcolor = cJSON_GetObjectItem(root, "color");
-        if (jcolor && cJSON_IsArray(jcolor) && cJSON_GetArraySize(jcolor) >= 3) {
-            int r = cJSON_GetArrayItem(jcolor, 0)->valueint;
-            int g = cJSON_GetArrayItem(jcolor, 1)->valueint;
-            int b = cJSON_GetArrayItem(jcolor, 2)->valueint;
-            ul_ws_set_solid_rgb(strip, r, g, b);
-        } else {
-            const char* hex = NULL;
-            if (j_is_string(root, "hex", &hex)) {
-                uint8_t r, g, b;
-                if (ul_ws_hex_to_rgb(hex, &r, &g, &b)) {
-                    ul_ws_set_solid_rgb(strip, r, g, b);
-                } else {
-                    ESP_LOGW(TAG, "invalid hex color: %s", hex);
-                }
-            }
-        }
-    } else if (effect && strcmp(effect, "triple_wave") == 0) {
-        cJSON* jwaves = cJSON_GetObjectItem(root, "waves");
-        if (jwaves && cJSON_IsArray(jwaves) && cJSON_GetArraySize(jwaves) == 3) {
-            ul_ws_wave_cfg_t waves[3];
-            bool ok = true;
-            for (int i = 0; i < 3; ++i) {
-                cJSON* jw = cJSON_GetArrayItem(jwaves, i);
-                const char* hex = NULL;
-                if (!j_is_string(jw, "hex", &hex)) { ok = false; break; }
-                cJSON* jfreq = cJSON_GetObjectItem(jw, "freq");
-                cJSON* jvel = cJSON_GetObjectItem(jw, "velocity");
-                if (!jfreq || !cJSON_IsNumber(jfreq) || !jvel || !cJSON_IsNumber(jvel)) { ok = false; break; }
-                uint8_t r, g, b;
-                if (!ul_ws_hex_to_rgb(hex, &r, &g, &b)) { ok = false; break; }
-                waves[i].r = r; waves[i].g = g; waves[i].b = b;
-                waves[i].freq = (float)jfreq->valuedouble;
-                waves[i].velocity = (float)jvel->valuedouble;
-            }
-            if (ok) {
-                ul_ws_triple_wave_set(strip, waves);
-            } else {
-                ESP_LOGW(TAG, "invalid triple_wave params");
-            }
-        } else {
-            ESP_LOGW(TAG, "triple_wave requires 3 waves");
-        }
-    }
+    ul_ws_apply_json(root);
 }
 
 static void handle_cmd_ws_power(cJSON* root) {
@@ -215,12 +149,6 @@ static bool j_is_bool(cJSON* obj, const char* key, bool* out) {
     if (out) *out = cJSON_IsTrue(j);
     return true;
 }
-static bool j_is_string(cJSON* obj, const char* key, const char** out) {
-    cJSON* j = cJSON_GetObjectItem(obj, key);
-    if (!j || !cJSON_IsString(j)) return false;
-    if (out) *out = j->valuestring;
-    return true;
-}
 
 static void handle_cmd_sensor_cooldown(cJSON* root) {
 
@@ -232,16 +160,7 @@ static void handle_cmd_sensor_cooldown(cJSON* root) {
 
 
 static void handle_cmd_white_set(cJSON* root) {
-    int ch = 0; j_is_int_in(root, "channel", 0, 3, &ch);
-    const char* eff = NULL;
-    if (j_is_string(root, "effect", &eff)) {
-        if (!ul_white_set_effect(ch, eff)) ESP_LOGW(TAG,"unknown white effect: %s", eff);
-    
-    ul_mqtt_publish_status_now();
-}
-    int bri; if (j_is_int_in(root, "brightness", 0, 255, &bri)) {
-        ul_white_set_brightness(ch, (uint8_t)bri);
-    }
+    ul_white_apply_json(root);
 }
 static void handle_cmd_white_power(cJSON* root) {
     int ch=0; j_is_int_in(root, "channel", 0, 3, &ch);
