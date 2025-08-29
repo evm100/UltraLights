@@ -20,7 +20,8 @@ static void ota_task(void*)
 
 void ul_ota_start(void)
 {
-    xTaskCreatePinnedToCore(ota_task, "ota_task", 6144, NULL, 4, NULL, tskNO_AFFINITY);
+    // OTA runs on core 0 to keep core 1 free for LED timing
+    xTaskCreatePinnedToCore(ota_task, "ota_task", 6144, NULL, 4, NULL, 0);
 }
 
 static esp_err_t _http_client_init_cb(esp_http_client_handle_t http_client)
