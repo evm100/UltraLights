@@ -5,7 +5,7 @@ from flask import Flask, render_template, request, jsonify
 import paho.mqtt.client as mqtt
 
 MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
-NODE_ID = os.getenv("ULTRALIGHT_NODE", "node123")
+NODE_ID = os.getenv("ULTRALIGHT_NODE", "node")
 
 client = mqtt.Client()
 client.connect(MQTT_BROKER)
