@@ -108,28 +108,6 @@ menu "WS2812 Strips"
             int "Pixel count"
             default 60
     endmenu
-    menu "Strip 2"
-        config UL_WS2_ENABLED
-            bool "Enabled"
-            default n
-        config UL_WS2_GPIO
-            int "GPIO"
-            default 21
-        config UL_WS2_PIXELS
-            int "Pixel count"
-            default 60
-    endmenu
-    menu "Strip 3"
-        config UL_WS3_ENABLED
-            bool "Enabled"
-            default n
-        config UL_WS3_GPIO
-            int "GPIO"
-            default 22
-        config UL_WS3_PIXELS
-            int "Pixel count"
-            default 60
-    endmenu
 endmenu
 
 menu "White Strips (LEDC)"

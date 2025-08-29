@@ -502,21 +502,6 @@ CONFIG_UL_WS1_GPIO=19
 CONFIG_UL_WS1_PIXELS=60
 # end of Strip 1
 
-#
-# Strip 2
-#
-# CONFIG_UL_WS2_ENABLED is not set
-CONFIG_UL_WS2_GPIO=21
-CONFIG_UL_WS2_PIXELS=60
-# end of Strip 2
-
-#
-# Strip 3
-#
-# CONFIG_UL_WS3_ENABLED is not set
-CONFIG_UL_WS3_GPIO=22
-CONFIG_UL_WS3_PIXELS=60
-# end of Strip 3
 # end of WS2812 Strips
 
 #
