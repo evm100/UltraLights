@@ -8,21 +8,17 @@
       {% endfor %}
     </select>
   </div>
-  <div class="flex items-start gap-4 mb-3">
-    <input id="wsColor" type="color" value="#ffffff" class="w-16 h-16 border-0 rounded-full">
-    <div class="flex-1">
-      <label class="text-xs opacity-70">Effect</label>
-      <select id="wsEffect" class="w-full p-1 bg-slate-900 rounded border border-slate-700">
-        <option value="" selected disabled>Select effect</option>
-        {% for eff in ws_effects %}
-        <option value="{{ eff }}">{{ eff }}</option>
-        {% endfor %}
-      </select>
-      <div id="wsParams" class="mt-2 space-y-1"></div>
-      <button id="wsAddParam" class="mt-1 text-xs px-2 py-1 bg-slate-800 rounded">+ Param</button>
-      <label class="text-xs opacity-70 block mt-2">Brightness</label>
-      <input id="wsBri" type="range" min="0" max="255" value="255" class="w-full">
-    </div>
+  <div class="mb-3">
+    <label class="text-xs opacity-70">Effect</label>
+    <select id="wsEffect" class="w-full p-1 bg-slate-900 rounded border border-slate-700">
+      <option value="" selected disabled>Select effect</option>
+      {% for eff in ws_effects %}
+      <option value="{{ eff }}">{{ eff }}</option>
+      {% endfor %}
+    </select>
+    <div id="wsParams" class="mt-2 space-y-2"></div>
+    <label class="text-xs opacity-70 block mt-2">Brightness</label>
+    <input id="wsBri" type="range" min="0" max="255" value="255" class="w-full">
   </div>
   <div class="flex gap-2">
     <button id="wsSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
@@ -31,34 +27,20 @@
   </div>
 </section>
 <script>
+const WS_PARAM_DEFS={{ ws_param_defs|tojson }};
 function hexToRgb(hex){hex=hex.replace('#','');if(hex.length===3)hex=hex.split('').map(x=>x+x).join('');const num=parseInt(hex,16);return[(num>>16)&255,(num>>8)&255,num&255];}
 async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
 const wsStrip=document.getElementById('wsStrip');
 const wsEffect=document.getElementById('wsEffect');
-const wsColor=document.getElementById('wsColor');
 const wsBri=document.getElementById('wsBri');
 const wsParams=document.getElementById('wsParams');
-const wsAddParam=document.getElementById('wsAddParam');
 
-function addParamRow(container){const row=document.createElement('div');row.className='flex gap-2';row.innerHTML=`<input type="text" placeholder="key" pattern="[a-zA-Z0-9_]+" class="flex-1 p-1 bg-slate-900 rounded border border-slate-700"><input type="number" placeholder="value" step="1" class="flex-1 p-1 bg-slate-900 rounded border border-slate-700">`;container.appendChild(row);}
-function collectParams(container){const obj={};let ok=true;container.querySelectorAll('div').forEach(r=>{const k=r.children[0].value.trim();const v=Number(r.children[1].value);if(!k&&r.children[1].value==='')return;if(!k||Number.isNaN(v)){ok=false;return;}obj[k]=v;});return ok?obj:null;}
-wsAddParam.onclick=()=>addParamRow(wsParams);
-wsEffect.onchange=()=>{wsParams.innerHTML='';};
+function renderParams(){wsParams.innerHTML='';const defs=WS_PARAM_DEFS[wsEffect.value]||[];defs.forEach(d=>{let wrapper=document.createElement('div');wrapper.dataset.id=d.id;if(d.type==='color'){const input=document.createElement('input');input.type='color';input.id='wsParam_'+d.id;input.value='#ffffff';wrapper.appendChild(input);}else if(d.type==='slider'){const label=document.createElement('label');label.className='text-xs opacity-70';label.textContent=d.id;const input=document.createElement('input');input.type='range';input.min=d.min;input.max=d.max;input.value=d.value;input.id='wsParam_'+d.id;wrapper.appendChild(label);wrapper.appendChild(input);}else if(d.type==='toggle'){const label=document.createElement('label');label.className='flex items-center gap-2';const input=document.createElement('input');input.type='checkbox';input.id='wsParam_'+d.id;label.appendChild(input);label.appendChild(document.createTextNode(d.id));wrapper.appendChild(label);}wsParams.appendChild(wrapper);});}
+wsEffect.onchange=renderParams;
 
-document.getElementById('wsSet').onclick=async()=>{
-  const strip=parseInt(wsStrip.value,10);
-  if(Number.isNaN(strip)){alert('Invalid strip');return;}
-  const eff=wsEffect.value.trim();
-  if(!eff){alert('Select an effect');return;}
-  const color=hexToRgb(wsColor.value);
-  const bri=parseInt(wsBri.value,10);
-  if(Number.isNaN(bri)){alert('Invalid brightness');return;}
-  const params=collectParams(wsParams);
-  if(params===null){alert('Invalid parameters');return;}
-  const msg={strip, effect:eff, color, brightness:bri};
-  if(Object.keys(params).length)msg.params=params;
-  await post(`/api/node/{{ node.id }}/ws/set`,msg);
-};
+function collectParams(){const defs=WS_PARAM_DEFS[wsEffect.value]||[];const params={};let color=null;defs.forEach(d=>{const el=document.getElementById('wsParam_'+d.id);if(d.type==='color'){color=hexToRgb(el.value);}else if(d.type==='slider'){params[d.id]=Number(el.value);}else if(d.type==='toggle'){params[d.id]=el.checked;}});return{params,color};}
+
+document.getElementById('wsSet').onclick=async()=>{const strip=parseInt(wsStrip.value,10);if(Number.isNaN(strip)){alert('Invalid strip');return;}const eff=wsEffect.value.trim();if(!eff){alert('Select an effect');return;}const bri=parseInt(wsBri.value,10);if(Number.isNaN(bri)){alert('Invalid brightness');return;}const {params,color}=collectParams();const msg={strip,effect:eff,brightness:bri};if(color)msg.color=color;if(Object.keys(params).length)msg.params=params;await post(`/api/node/{{ node.id }}/ws/set`,msg);};
 document.getElementById('wsOn').onclick=async()=>{
   const s=parseInt(wsStrip.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:true});
 };
