@@ -9,6 +9,7 @@
 #include "mqtt_client.h"
 #include "cJSON.h"
 #include "led_strip.h"
+#include "driver/spi_master.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -259,16 +260,12 @@ void app_main(void)
         .led_model = LED_MODEL_WS2812,
         .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,
     };
-    led_strip_rmt_config_t rmt_config = {
-        .clk_src = RMT_CLK_SRC_DEFAULT,
-        .resolution_hz = 10 * 1000 * 1000,
+    led_strip_spi_config_t spi_config = {
+        .clk_src = SPI_CLK_SRC_DEFAULT,
+        .spi_bus = SPI2_HOST,
+        .clock_speed_hz = 10 * 1000 * 1000,
     };
-    size_t mem_needed = LED_STRIP_LENGTH * 24;
-    if (mem_needed > 64 * 8) {
-        mem_needed = 64 * 8;
-    }
-    rmt_config.mem_block_symbols = mem_needed;
-    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &strip));
+    ESP_ERROR_CHECK(led_strip_new_spi_device(&strip_config, &spi_config, &strip));
     led_strip_clear(strip);
     refresh_sem = xSemaphoreCreateBinary();
     xTaskCreatePinnedToCore(led_refresh_task, "led_refresh", 2048, NULL, 10, NULL, 1);
