@@ -245,8 +245,8 @@ void ul_ws_engine_start(void)
     init_strip(1, 0, 0, false);
 #endif
     s_refresh_sem = xSemaphoreCreateBinary();
-    xTaskCreatePinnedToCore(led_refresh_task, "ws_refresh", 2048, NULL, 24, NULL, 1);
-    xTaskCreatePinnedToCore(ws_task, "ws60fps", 6144, NULL, 23, NULL, 1);
+    xTaskCreate(led_refresh_task, "ws_refresh", 2048, NULL, 24, NULL);
+    xTaskCreate(ws_task, "ws60fps", 6144, NULL, 23, NULL);
     if (s_refresh_sem) xSemaphoreGive(s_refresh_sem);
 }
 

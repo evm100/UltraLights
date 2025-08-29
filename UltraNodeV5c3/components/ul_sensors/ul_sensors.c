@@ -93,8 +93,8 @@ static void sensors_task(void*)
 
 void ul_sensors_start(void)
 {
-    // Pin sensor processing to core 0 so core 1 can be dedicated to LED work
-    xTaskCreatePinnedToCore(sensors_task, "sensors", 4096, NULL, 5, NULL, 0);
+    // Sensor processing runs at a modest priority on the single core
+    xTaskCreate(sensors_task, "sensors", 4096, NULL, 5, NULL);
 }
 
 void ul_sensors_set_cooldown(int seconds)

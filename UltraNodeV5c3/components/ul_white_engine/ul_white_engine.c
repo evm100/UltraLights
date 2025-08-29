@@ -116,10 +116,9 @@ void ul_white_engine_start(void)
 #else
     ch_init(3, false, 0, 0, 0);
 #endif
-    // Execute on the same core as the WS2812 engine but slightly lower
-    // priority so the pixel refresh always wins. Core 0 remains free for
-    // networking and other tasks.
-    xTaskCreatePinnedToCore(white_task, "white200hz", 4096, NULL, 23, NULL, 1);
+    // Run at slightly lower priority than the pixel refresh task so frame
+    // updates remain smooth on the single core.
+    xTaskCreate(white_task, "white200hz", 4096, NULL, 23, NULL);
 }
 
 static white_ch_t* get_ch(int ch) {
