@@ -4,11 +4,9 @@
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include "esp_log.h"
-#include "led_strip.h"
-#include "led_strip_rmt.h"
-#include "led_strip_rmt.h"
-#include "led_strip_spi.h"
-#include "led_strip_types.h"
+#include "driver/rmt_tx.h"
+#include "led_strip_rmt_encoder.h"
+#include "esp_heap_caps.h"
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -25,7 +23,8 @@ typedef struct {
     bool power;
     int frame_idx;
     int pixels;
-    led_strip_handle_t handle;
+    rmt_channel_handle_t channel;
+    rmt_encoder_handle_t encoder;
     uint8_t* frame; // rgb * pixels
 } ws_strip_t;
 
@@ -130,20 +129,21 @@ static const ws_effect_t* find_effect_by_name(const char* name) {
 
 static void init_strip(int idx, int gpio, int pixels, bool enabled) {
     if (!enabled) { s_strips[idx].pixels = 0; return; }
-    led_strip_config_t strip_config = {
-        .strip_gpio_num = gpio,
-        .max_leds = pixels,
-        .led_model = LED_MODEL_WS2812,
-        .flags.invert_out = false
-    };
-    led_strip_rmt_config_t rmt_config = {
+    rmt_tx_channel_config_t tx_conf = {
         .clk_src = RMT_CLK_SRC_DEFAULT,
-        .resolution_hz = 10 * 1000 * 1000, // 10MHz
-        .mem_block_symbols = 0,
+        .gpio_num = gpio,
+        .mem_block_symbols = 0, // auto size
+        .resolution_hz = 10 * 1000 * 1000,
     };
-    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strips[idx].handle));
+    ESP_ERROR_CHECK(rmt_new_tx_channel(&tx_conf, &s_strips[idx].channel));
+    led_strip_encoder_config_t enc_conf = {
+        .resolution = 10 * 1000 * 1000,
+        .led_model = LED_MODEL_WS2812,
+    };
+    ESP_ERROR_CHECK(rmt_new_led_strip_encoder(&enc_conf, &s_strips[idx].encoder));
     s_strips[idx].pixels = pixels;
-    s_strips[idx].frame = (uint8_t*)heap_caps_malloc(pixels*3, MALLOC_CAP_8BIT);
+    // Allocate DMA-capable memory so RMT can access the frame buffer directly
+    s_strips[idx].frame = (uint8_t*)heap_caps_malloc(pixels * 3, MALLOC_CAP_8BIT | MALLOC_CAP_DMA);
     memset(s_strips[idx].frame, 0, pixels*3);
     // defaults
     int n=0; const ws_effect_t* tbl = ul_ws_get_effects(&n);
@@ -163,7 +163,7 @@ static void apply_brightness(uint8_t* f, int count, uint8_t bri) {
 }
 
 static void render_one(ws_strip_t* s, int idx) {
-    if (!s->pixels || !s->handle) return;
+    if (!s->pixels) return;
     s_current_strip_idx = idx;
     // Produce frame
     memset(s->frame, 0, s->pixels*3);
@@ -190,11 +190,15 @@ static void render_one(ws_strip_t* s, int idx) {
     if (!s->power) {
         memset(s->frame, 0, s->pixels*3);
     }
-    // Push to device
-    for (int i=0;i<s->pixels;i++) {
-        led_strip_set_pixel(s->handle, i, s->frame[3*i+0], s->frame[3*i+1], s->frame[3*i+2]);
-    }
-    led_strip_refresh(s->handle);
+    // Transmit buffer via RMT
+    rmt_transmit_config_t tx_conf = {
+        .loop_count = 0,
+    };
+    ESP_ERROR_CHECK(rmt_enable(s->channel));
+    ESP_ERROR_CHECK(rmt_transmit(s->channel, s->encoder, s->frame,
+                                 s->pixels * 3, &tx_conf));
+    ESP_ERROR_CHECK(rmt_tx_wait_all_done(s->channel, -1));
+    ESP_ERROR_CHECK(rmt_disable(s->channel));
 }
 
 static void ws_task(void*)
