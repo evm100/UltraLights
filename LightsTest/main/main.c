@@ -1,6 +1,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
+#include "freertos/semphr.h"
 #include "nvs_flash.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -12,10 +13,22 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-
 #define WIFI_SSID "yourssid"
 #define WIFI_PASS "yourpass"
-#define MQTT_URI  "mqtt://localhost"
+
+/*
+ * Specify the MQTT host and port separately to avoid mistakes when
+ * constructing the broker URI.  The final URI is assembled with the
+ * required "mqtt://" scheme, preventing runtime parsing errors such as
+ * "mqtt:192.168.1.64" missing the double slash.
+ */
+#define MQTT_HOST "localhost"
+#define MQTT_PORT 1883
+
+#define STRINGIFY2(x) #x
+#define STRINGIFY(x) STRINGIFY2(x)
+#define MQTT_URI "mqtt://" MQTT_HOST ":" STRINGIFY(MQTT_PORT)
+
 #define NODE_ID   "node"
 #define LED_STRIP_GPIO 18
 #define LED_STRIP_LENGTH 30
@@ -35,12 +48,28 @@ typedef enum {
 
 static effect_t current_effect = EFFECT_SOLID;
 static TaskHandle_t effect_task = NULL;
+static SemaphoreHandle_t refresh_sem;
 
 static void stop_effect_task(void)
 {
     if (effect_task) {
         vTaskDelete(effect_task);
         effect_task = NULL;
+    }
+}
+
+static void trigger_refresh(void)
+{
+    if (refresh_sem) {
+        xSemaphoreGive(refresh_sem);
+    }
+}
+
+static void led_refresh_task(void *arg)
+{
+    while (1) {
+        xSemaphoreTake(refresh_sem, portMAX_DELAY);
+        led_strip_refresh(strip);
     }
 }
 
@@ -71,7 +100,7 @@ static void rainbow_task(void *arg)
             b = b * brightness / 255;
             led_strip_set_pixel(strip, i, r, g, b);
         }
-        led_strip_refresh(strip);
+        trigger_refresh();
         pos++;
         vTaskDelay(pdMS_TO_TICKS(50));
     }
@@ -90,7 +119,7 @@ static void ws_set_color(uint8_t r, uint8_t g, uint8_t b)
     for (int i = 0; i < LED_STRIP_LENGTH; i++) {
         led_strip_set_pixel(strip, i, r, g, b);
     }
-    led_strip_refresh(strip);
+    trigger_refresh();
 }
 
 static void handle_ws_set(cJSON *root)
@@ -233,10 +262,17 @@ void app_main(void)
     led_strip_rmt_config_t rmt_config = {
         .clk_src = RMT_CLK_SRC_DEFAULT,
         .resolution_hz = 10 * 1000 * 1000,
-        .mem_block_symbols = 64,
     };
+    size_t mem_needed = LED_STRIP_LENGTH * 24;
+    if (mem_needed > 64 * 8) {
+        mem_needed = 64 * 8;
+    }
+    rmt_config.mem_block_symbols = mem_needed;
     ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &strip));
     led_strip_clear(strip);
+    refresh_sem = xSemaphoreCreateBinary();
+    xTaskCreatePinnedToCore(led_refresh_task, "led_refresh", 2048, NULL, 10, NULL, 1);
+    trigger_refresh();
 
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = MQTT_URI,
