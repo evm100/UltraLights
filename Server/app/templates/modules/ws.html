@@ -8,11 +8,18 @@
       {% endfor %}
     </select>
   </div>
-  <div class="flex items-center gap-4 mb-3">
+  <div class="flex items-start gap-4 mb-3">
     <input id="wsColor" type="color" value="#ffffff" class="w-16 h-16 border-0 rounded-full">
     <div class="flex-1">
       <label class="text-xs opacity-70">Effect</label>
-      <input id="wsEffect" type="text" value="solid" class="w-full p-1 bg-slate-900 rounded border border-slate-700">
+      <select id="wsEffect" class="w-full p-1 bg-slate-900 rounded border border-slate-700">
+        <option value="" selected disabled>Select effect</option>
+        {% for eff in ws_effects %}
+        <option value="{{ eff }}">{{ eff }}</option>
+        {% endfor %}
+      </select>
+      <div id="wsParams" class="mt-2 space-y-1"></div>
+      <button id="wsAddParam" class="mt-1 text-xs px-2 py-1 bg-slate-800 rounded">+ Param</button>
       <label class="text-xs opacity-70 block mt-2">Brightness</label>
       <input id="wsBri" type="range" min="0" max="255" value="255" class="w-full">
     </div>
@@ -30,18 +37,32 @@ const wsStrip=document.getElementById('wsStrip');
 const wsEffect=document.getElementById('wsEffect');
 const wsColor=document.getElementById('wsColor');
 const wsBri=document.getElementById('wsBri');
+const wsParams=document.getElementById('wsParams');
+const wsAddParam=document.getElementById('wsAddParam');
+
+function addParamRow(container){const row=document.createElement('div');row.className='flex gap-2';row.innerHTML=`<input type="text" placeholder="key" pattern="[a-zA-Z0-9_]+" class="flex-1 p-1 bg-slate-900 rounded border border-slate-700"><input type="number" placeholder="value" step="1" class="flex-1 p-1 bg-slate-900 rounded border border-slate-700">`;container.appendChild(row);}
+function collectParams(container){const obj={};let ok=true;container.querySelectorAll('div').forEach(r=>{const k=r.children[0].value.trim();const v=Number(r.children[1].value);if(!k&&r.children[1].value==='')return;if(!k||Number.isNaN(v)){ok=false;return;}obj[k]=v;});return ok?obj:null;}
+wsAddParam.onclick=()=>addParamRow(wsParams);
+wsEffect.onchange=()=>{wsParams.innerHTML='';};
 
 document.getElementById('wsSet').onclick=async()=>{
-  const strip=parseInt(wsStrip.value);
+  const strip=parseInt(wsStrip.value,10);
+  if(Number.isNaN(strip)){alert('Invalid strip');return;}
   const eff=wsEffect.value.trim();
+  if(!eff){alert('Select an effect');return;}
   const color=hexToRgb(wsColor.value);
-  const bri=parseInt(wsBri.value);
-  await post(`/api/node/{{ node.id }}/ws/set`,{strip, effect:eff, color, brightness:bri});
+  const bri=parseInt(wsBri.value,10);
+  if(Number.isNaN(bri)){alert('Invalid brightness');return;}
+  const params=collectParams(wsParams);
+  if(params===null){alert('Invalid parameters');return;}
+  const msg={strip, effect:eff, color, brightness:bri};
+  if(Object.keys(params).length)msg.params=params;
+  await post(`/api/node/{{ node.id }}/ws/set`,msg);
 };
 document.getElementById('wsOn').onclick=async()=>{
-  await post(`/api/node/{{ node.id }}/ws/power`,{strip:parseInt(wsStrip.value), on:true});
+  const s=parseInt(wsStrip.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:true});
 };
 document.getElementById('wsOff').onclick=async()=>{
-  await post(`/api/node/{{ node.id }}/ws/power`,{strip:parseInt(wsStrip.value), on:false});
+  const s=parseInt(wsStrip.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:false});
 };
 </script>

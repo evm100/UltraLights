@@ -19,8 +19,15 @@ class MqttBus:
         self.client.publish(topic, payload=json.dumps(payload), qos=1, retain=False)
 
     # ---- WS strip commands ----
-    def ws_set(self, node_id: str, strip: int, effect: Optional[str] = None,
-               color: Optional[List[int]] = None, brightness: Optional[int] = None):
+    def ws_set(
+        self,
+        node_id: str,
+        strip: int,
+        effect: Optional[str] = None,
+        color: Optional[List[int]] = None,
+        brightness: Optional[int] = None,
+        params: Optional[Dict[str, object]] = None,
+    ):
         msg: Dict[str, object] = {"strip": int(strip)}
         if effect:
             msg["effect"] = effect
@@ -28,6 +35,8 @@ class MqttBus:
             msg["color"] = [int(x) for x in color]
         if brightness is not None:
             msg["brightness"] = int(brightness)
+        if params:
+            msg["params"] = params
         self.pub(topic_cmd(node_id, "ws/set"), msg)
 
     def ws_power(self, node_id: str, strip: int, on: bool):
@@ -35,13 +44,21 @@ class MqttBus:
         self.pub(topic_cmd(node_id, "ws/power"), msg)
 
     # ---- White channel commands ----
-    def white_set(self, node_id: str, channel: int, effect: Optional[str] = None,
-                  brightness: Optional[int] = None):
+    def white_set(
+        self,
+        node_id: str,
+        channel: int,
+        effect: Optional[str] = None,
+        brightness: Optional[int] = None,
+        params: Optional[Dict[str, object]] = None,
+    ):
         msg: Dict[str, object] = {"channel": int(channel)}
         if effect:
             msg["effect"] = effect
         if brightness is not None:
             msg["brightness"] = int(brightness)
+        if params:
+            msg["params"] = params
         self.pub(topic_cmd(node_id, "white/set"), msg)
 
     def white_power(self, node_id: str, channel: int, on: bool):
