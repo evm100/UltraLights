@@ -11,6 +11,8 @@
 #include "led_strip_types.h"
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
+#include "cJSON.h"
 #include "effects_ws/effect.h"
 #include "ul_common_effects.h"
 
@@ -28,6 +30,94 @@ typedef struct {
 } ws_strip_t;
 
 static ws_strip_t s_strips[4];
+static int s_current_strip_idx = 0;
+
+int ul_ws_effect_current_strip(void) { return s_current_strip_idx; }
+
+static ul_ws_wave_cfg_t s_triple_wave_cfg[4][3];
+
+void ul_ws_triple_wave_set(int strip, const ul_ws_wave_cfg_t waves[3]) {
+    if (strip < 0 || strip > 3) return;
+    for (int i = 0; i < 3; ++i) s_triple_wave_cfg[strip][i] = waves[i];
+}
+
+const ul_ws_wave_cfg_t* ul_ws_triple_wave_get(int strip) {
+    if (strip < 0 || strip > 3) return NULL;
+    return s_triple_wave_cfg[strip];
+}
+
+void ul_ws_apply_json(cJSON* root) {
+    if (!root) return;
+    int strip = 0;
+    cJSON* jstrip = cJSON_GetObjectItem(root, "strip");
+    if (jstrip && cJSON_IsNumber(jstrip)) strip = jstrip->valueint;
+
+    const char* effect = NULL;
+    cJSON* jeffect = cJSON_GetObjectItem(root, "effect");
+    if (jeffect && cJSON_IsString(jeffect)) {
+        effect = jeffect->valuestring;
+        if (!ul_ws_set_effect(strip, effect)) {
+            ESP_LOGW(TAG, "Unknown effect: %s", effect);
+        }
+    }
+
+    cJSON* jbri = cJSON_GetObjectItem(root, "brightness");
+    if (jbri && cJSON_IsNumber(jbri)) {
+        int bri = jbri->valueint;
+        if (bri < 0) bri = 0;
+        if (bri > 255) bri = 255;
+        ul_ws_set_brightness(strip, (uint8_t)bri);
+    }
+
+    if (!effect) return;
+
+    if (strcmp(effect, "solid") == 0) {
+        cJSON* jcolor = cJSON_GetObjectItem(root, "color");
+        if (jcolor && cJSON_IsArray(jcolor) && cJSON_GetArraySize(jcolor) >= 3) {
+            int r = cJSON_GetArrayItem(jcolor, 0)->valueint;
+            int g = cJSON_GetArrayItem(jcolor, 1)->valueint;
+            int b = cJSON_GetArrayItem(jcolor, 2)->valueint;
+            ul_ws_set_solid_rgb(strip, (uint8_t)r, (uint8_t)g, (uint8_t)b);
+        } else {
+            cJSON* jhex = cJSON_GetObjectItem(root, "hex");
+            if (jhex && cJSON_IsString(jhex)) {
+                uint8_t r, g, b;
+                if (ul_ws_hex_to_rgb(jhex->valuestring, &r, &g, &b)) {
+                    ul_ws_set_solid_rgb(strip, r, g, b);
+                } else {
+                    ESP_LOGW(TAG, "invalid hex color: %s", jhex->valuestring);
+                }
+            }
+        }
+    } else if (strcmp(effect, "triple_wave") == 0) {
+        cJSON* jwaves = cJSON_GetObjectItem(root, "waves");
+        if (jwaves && cJSON_IsArray(jwaves) && cJSON_GetArraySize(jwaves) == 3) {
+            ul_ws_wave_cfg_t waves[3];
+            bool ok = true;
+            for (int i = 0; i < 3; ++i) {
+                cJSON* jw = cJSON_GetArrayItem(jwaves, i);
+                cJSON* jhex = cJSON_GetObjectItem(jw, "hex");
+                cJSON* jfreq = cJSON_GetObjectItem(jw, "freq");
+                cJSON* jvel = cJSON_GetObjectItem(jw, "velocity");
+                if (!jhex || !cJSON_IsString(jhex) || !jfreq || !cJSON_IsNumber(jfreq) || !jvel || !cJSON_IsNumber(jvel)) {
+                    ok = false; break;
+                }
+                uint8_t r, g, b;
+                if (!ul_ws_hex_to_rgb(jhex->valuestring, &r, &g, &b)) { ok = false; break; }
+                waves[i].r = r; waves[i].g = g; waves[i].b = b;
+                waves[i].freq = (float)jfreq->valuedouble;
+                waves[i].velocity = (float)jvel->valuedouble;
+            }
+            if (ok) {
+                ul_ws_triple_wave_set(strip, waves);
+            } else {
+                ESP_LOGW(TAG, "invalid triple_wave params");
+            }
+        } else {
+            ESP_LOGW(TAG, "triple_wave requires 3 waves");
+        }
+    }
+}
 
 static const ws_effect_t* find_effect_by_name(const char* name) {
     int n=0;
@@ -72,8 +162,9 @@ static void apply_brightness(uint8_t* f, int count, uint8_t bri) {
     }
 }
 
-static void render_one(ws_strip_t* s) {
+static void render_one(ws_strip_t* s, int idx) {
     if (!s->pixels || !s->handle) return;
+    s_current_strip_idx = idx;
     // Produce frame
     memset(s->frame, 0, s->pixels*3);
     if (s->eff && s->eff->render) {
@@ -114,16 +205,16 @@ static void ws_task(void*)
     const int frame_us = 1000000 / CONFIG_UL_WS2812_FPS;
     while (1) {
 #if CONFIG_UL_WS0_ENABLED
-        render_one(&s_strips[0]);
+        render_one(&s_strips[0], 0);
 #endif
 #if CONFIG_UL_WS1_ENABLED
-        render_one(&s_strips[1]);
+        render_one(&s_strips[1], 1);
 #endif
 #if CONFIG_UL_WS2_ENABLED
-        render_one(&s_strips[2]);
+        render_one(&s_strips[2], 2);
 #endif
 #if CONFIG_UL_WS3_ENABLED
-        render_one(&s_strips[3]);
+        render_one(&s_strips[3], 3);
 #endif
         vTaskDelayUntil(&last_wake, period_ticks);
     }
@@ -154,6 +245,21 @@ void ul_ws_engine_start(void)
     xTaskCreatePinnedToCore(ws_task, "ws60fps", 6144, NULL, 8, NULL, 1);
 }
 
+
+bool ul_ws_hex_to_rgb(const char* hex, uint8_t* r, uint8_t* g, uint8_t* b) {
+    if (!hex || !r || !g || !b) return false;
+    if (hex[0] == '#') hex++;
+    if (strlen(hex) != 6) return false;
+    for (int i = 0; i < 6; ++i) {
+        if (!isxdigit((unsigned char)hex[i])) return false;
+    }
+    char buf[3] = {0};
+    buf[2] = 0;
+    buf[0] = hex[0]; buf[1] = hex[1]; *r = (uint8_t)strtol(buf, NULL, 16);
+    buf[0] = hex[2]; buf[1] = hex[3]; *g = (uint8_t)strtol(buf, NULL, 16);
+    buf[0] = hex[4]; buf[1] = hex[5]; *b = (uint8_t)strtol(buf, NULL, 16);
+    return true;
+}
 
 // ---- Control & Status API ----
 

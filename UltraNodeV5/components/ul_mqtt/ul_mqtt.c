@@ -5,7 +5,6 @@
 #include "ul_core.h"
 #include "ul_ws_engine.h"
 #include "ul_white_engine.h"
-#include "ul_ws_engine.h"
 #include "ul_sensors.h"
 #include "ul_ota.h"
 #include <stdio.h>
@@ -17,6 +16,10 @@
 static const char* TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
+
+// JSON helpers (defined later)
+static bool j_is_int_in(cJSON* obj, const char* key, int minv, int maxv, int* out);
+static bool j_is_bool(cJSON* obj, const char* key, bool* out);
 
 static int starts_with(const char* s, const char* pfx) {
     return strncmp(s, pfx, strlen(pfx)) == 0;
@@ -118,29 +121,7 @@ void ul_mqtt_publish_motion(const char* sid, const char* state)
 }
 
 static void handle_cmd_ws_set(cJSON* root) {
-    cJSON* jstrip = cJSON_GetObjectItem(root, "strip");
-    cJSON* jeffect = cJSON_GetObjectItem(root, "effect");
-    cJSON* jcolor = cJSON_GetObjectItem(root, "color");
-    cJSON* jbri = cJSON_GetObjectItem(root, "brightness");
-    int strip = jstrip ? jstrip->valueint : 0;
-    if (jeffect && cJSON_IsString(jeffect)) {
-        if (!ul_ws_set_effect(strip, jeffect->valuestring)) {
-            ESP_LOGW(TAG, "Unknown effect: %s", jeffect->valuestring);
-    ul_mqtt_publish_status_now();
-}
-    }
-    if (jcolor && cJSON_IsArray(jcolor) && cJSON_GetArraySize(jcolor) >= 3) {
-        int r = cJSON_GetArrayItem(jcolor, 0)->valueint;
-        int g = cJSON_GetArrayItem(jcolor, 1)->valueint;
-        int b = cJSON_GetArrayItem(jcolor, 2)->valueint;
-        ul_ws_set_solid_rgb(strip, r, g, b);
-    }
-    if (jbri) {
-        int bri = jbri->valueint;
-        if (bri < 0) bri=0;
-	if (bri>255) bri=255;
-        ul_ws_set_brightness(strip, bri);
-    }
+    ul_ws_apply_json(root);
 }
 
 static void handle_cmd_ws_power(cJSON* root) {
@@ -168,12 +149,6 @@ static bool j_is_bool(cJSON* obj, const char* key, bool* out) {
     if (out) *out = cJSON_IsTrue(j);
     return true;
 }
-static bool j_is_string(cJSON* obj, const char* key, const char** out) {
-    cJSON* j = cJSON_GetObjectItem(obj, key);
-    if (!j || !cJSON_IsString(j)) return false;
-    if (out) *out = j->valuestring;
-    return true;
-}
 
 static void handle_cmd_sensor_cooldown(cJSON* root) {
 
@@ -185,16 +160,7 @@ static void handle_cmd_sensor_cooldown(cJSON* root) {
 
 
 static void handle_cmd_white_set(cJSON* root) {
-    int ch = 0; j_is_int_in(root, "channel", 0, 3, &ch);
-    const char* eff = NULL;
-    if (j_is_string(root, "effect", &eff)) {
-        if (!ul_white_set_effect(ch, eff)) ESP_LOGW(TAG,"unknown white effect: %s", eff);
-    
-    ul_mqtt_publish_status_now();
-}
-    int bri; if (j_is_int_in(root, "brightness", 0, 255, &bri)) {
-        ul_white_set_brightness(ch, (uint8_t)bri);
-    }
+    ul_white_apply_json(root);
 }
 static void handle_cmd_white_power(cJSON* root) {
     int ch=0; j_is_int_in(root, "channel", 0, 3, &ch);
