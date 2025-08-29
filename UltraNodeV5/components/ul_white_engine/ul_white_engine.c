@@ -69,7 +69,8 @@ static void ch_init(int idx, bool enabled, int gpio, int ledc_ch, int pwm_hz) {
 
 static void white_task(void*)
 {
-    const TickType_t period_ticks = pdMS_TO_TICKS(1000 / CONFIG_UL_WS2812_FPS);
+    // Use the dedicated smoothing rate for periodic updates
+    const TickType_t period_ticks = pdMS_TO_TICKS(1000 / CONFIG_UL_WHITE_SMOOTH_HZ);
     TickType_t last_wake = xTaskGetTickCount();
     const int frame_us = 1000000 / CONFIG_UL_WHITE_SMOOTH_HZ;
     int n=0; ul_white_get_effects(&n); // ensure linked
@@ -111,7 +112,10 @@ void ul_white_engine_start(void)
 #else
     ch_init(3, false, 0, 0, 0);
 #endif
-    xTaskCreatePinnedToCore(white_task, "white200hz", 4096, NULL, 6, NULL, 0);
+    // Execute on the same core as the WS2812 engine but slightly lower
+    // priority so the pixel refresh always wins. Core 0 remains free for
+    // networking and other tasks.
+    xTaskCreatePinnedToCore(white_task, "white200hz", 4096, NULL, 23, NULL, 1);
 }
 
 static white_ch_t* get_ch(int ch) {
