@@ -4,20 +4,28 @@
   <meta charset="UTF-8">
   <title>UltraNode Controller</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
 </head>
 <body class="bg-light">
 <div class="container py-4">
   <h1 class="mb-4">UltraNode Controller</h1>
+
+  {% if wifi_strength is not none %}
+  <div class="d-flex align-items-center mb-4">
+    <img src="{{ url_for('static', path='wifi.svg') }}" alt="WiFi" width="24" height="24" class="me-2">
+    <span>Signal: {{ wifi_strength }}% ({{ wifi_rssi }} dBm)</span>
+  </div>
+  {% endif %}
 
   <div class="mb-4">
     <label for="master-brightness" class="form-label">Master Brightness</label>
     <input type="range" class="form-range" min="0" max="255" value="128" id="master-brightness">
   </div>
 
+  {% if ws_count %}
   <h2>WS Strips</h2>
   <div id="ws-strips" class="row">
-    {% for strip in range(4) %}
+    {% for strip in range(ws_count) %}
     <div class="col-md-6">
       <div class="card mb-3">
         <div class="card-header">Strip {{strip}}</div>
@@ -45,10 +53,12 @@
     </div>
     {% endfor %}
   </div>
+  {% endif %}
 
+  {% if white_count %}
   <h2>White Channels</h2>
   <div id="white-channels" class="row">
-    {% for chan in range(4) %}
+    {% for chan in range(white_count) %}
     <div class="col-md-6">
       <div class="card mb-3">
         <div class="card-header">Channel {{chan}}</div>
@@ -75,12 +85,21 @@
     </div>
     {% endfor %}
   </div>
+  {% endif %}
+
+  {% if sensors %}
+  <h2>Motion Sensors</h2>
+  <div>
+    <p>PIR sensor: {{ 'enabled' if sensors.pir_enabled else 'disabled' }}</p>
+    <p>Ultrasonic sensor: {{ 'enabled' if sensors.ultra_enabled else 'disabled' }}</p>
+  </div>
+  {% endif %}
 
   <div class="mt-4">
     <button id="ota-check" class="btn btn-warning">Check OTA</button>
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='main.js') }}"></script>
+<script src="{{ url_for('static', path='main.js') }}"></script>
 </body>
 </html>

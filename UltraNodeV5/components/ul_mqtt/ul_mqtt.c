@@ -12,6 +12,7 @@
 #include <ctype.h>
 #include "cJSON.h"
 #include "esp_timer.h"
+#include "esp_wifi.h"
 
 static const char* TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
@@ -42,6 +43,12 @@ static void publish_status_snapshot(void) {
 
     // uptime
     cJSON_AddNumberToObject(root, "uptime_s", esp_timer_get_time()/1000000);
+
+    // WiFi signal strength
+    wifi_ap_record_t ap;
+    if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+        cJSON_AddNumberToObject(root, "wifi_rssi", ap.rssi);
+    }
 
     // WS strips
     cJSON* jws = cJSON_CreateArray();
@@ -207,14 +214,27 @@ static void on_message(esp_mqtt_event_handle_t event)
     if (cmdlen >= 3 && strncmp(cmdroot, "cmd", 3)==0) {
         const char* sub = cmdroot + 4; // skip "cmd/"
         if (starts_with(sub, "ws/set")) {
-            handle_cmd_ws_set(root); publish_status_snapshot();
+            handle_cmd_ws_set(root);
+            publish_status_snapshot();
         } else if (starts_with(sub, "ws/power")) {
-            handle_cmd_ws_power(root); publish_status_snapshot();
+            handle_cmd_ws_power(root);
+            publish_status_snapshot();
         } else if (starts_with(sub, "sensor/cooldown")) {
-            handle_cmd_sensor_cooldown(root); publish_status_snapshot();
-        } else if (starts_with(sub, "ota/check")) { ul_mqtt_publish_status_now(); 
-            ul_ota_check_now(true); publish_status_snapshot();
-        } else if (starts_with(sub, "white/set")) { handle_cmd_white_set(root); publish_status_snapshot(); } else if (starts_with(sub, "white/power")) { handle_cmd_white_power(root); publish_status_snapshot(); } else {
+            handle_cmd_sensor_cooldown(root);
+            publish_status_snapshot();
+        } else if (starts_with(sub, "ota/check")) {
+            ul_mqtt_publish_status_now();
+            ul_ota_check_now(true);
+            publish_status_snapshot();
+        } else if (starts_with(sub, "white/set")) {
+            handle_cmd_white_set(root);
+            publish_status_snapshot();
+        } else if (starts_with(sub, "white/power")) {
+            handle_cmd_white_power(root);
+            publish_status_snapshot();
+        } else if (starts_with(sub, "status")) {
+            publish_status_snapshot();
+        } else {
             ESP_LOGW(TAG, "Unknown cmd path: %.*s", cmdlen, cmdroot);
         }
     }

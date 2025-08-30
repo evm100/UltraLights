@@ -28,4 +28,4 @@ fi
 
 gnome-terminal -- bash -c "mosquitto_sub -t \"#\" -v; exec bash" &
 
-exec uvicorn app.main:app "${OPTS[@]}"
+exec uvicorn app:app "${OPTS[@]}"
