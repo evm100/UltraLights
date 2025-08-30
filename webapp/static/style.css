@@ -1,0 +1,3 @@
+.status { font-weight: bold; }
+.status.connected { color: green; }
+.status.disconnected { color: red; }
