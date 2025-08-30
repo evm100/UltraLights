@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+paho-mqtt
+jinja2
