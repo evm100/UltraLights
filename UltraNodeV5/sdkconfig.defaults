@@ -1,5 +1,5 @@
 # ---- System ----
-CONFIG_UL_CORE_COUNT=2
+CONFIG_UL_CORE_COUNT=1
 
 # ---- Node / Network ----
 CONFIG_UL_NODE_ID="node01"

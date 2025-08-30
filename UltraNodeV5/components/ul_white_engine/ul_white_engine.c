@@ -3,6 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/ledc.h"
+#include "ul_task.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "string.h"
@@ -34,7 +35,7 @@ static const white_effect_t* find_eff(const char* name) {
 static void setup_ledc_channel(int ch, int gpio, int freq_hz)
 {
     ledc_timer_config_t tcfg = {
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
         .timer_num = LEDC_TIMER_0,
         .duty_resolution = LEDC_TIMER_12_BIT,
         .freq_hz = freq_hz,
@@ -43,7 +44,7 @@ static void setup_ledc_channel(int ch, int gpio, int freq_hz)
     ledc_timer_config(&tcfg);
     ledc_channel_config_t ccfg = {
         .gpio_num = gpio,
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
+        .speed_mode = LEDC_LOW_SPEED_MODE,
         .channel = ch,
         .intr_type = LEDC_INTR_DISABLE,
         .timer_sel = LEDC_TIMER_0,
@@ -86,8 +87,8 @@ static void white_task(void*)
             v = s_ch[i].brightness;
             if (!s_ch[i].power) v = 0;
             int duty = (v * ((1<<12)-1)) / 255;
-            ledc_set_duty(LEDC_HIGH_SPEED_MODE, s_ch[i].ledc_ch, duty);
-            ledc_update_duty(LEDC_HIGH_SPEED_MODE, s_ch[i].ledc_ch);
+            ledc_set_duty(LEDC_LOW_SPEED_MODE, s_ch[i].ledc_ch, duty);
+            ledc_update_duty(LEDC_LOW_SPEED_MODE, s_ch[i].ledc_ch);
         }
         vTaskDelayUntil(&last_wake, period_ticks);
     }
@@ -116,10 +117,10 @@ void ul_white_engine_start(void)
 #else
     ch_init(3, false, 0, 0, 0);
 #endif
-    // Execute on the same core as the WS2812 engine but slightly lower
-    // priority so the pixel refresh always wins. Core 0 remains free for
-    // networking and other tasks.
-    xTaskCreatePinnedToCore(white_task, "white200hz", 4096, NULL, 23, NULL, 1);
+    // Run at slightly lower priority than the pixel refresh task; on
+    // multi-core targets this pins to core 1 so core 0 can handle network
+    // traffic.
+    ul_task_create(white_task, "white200hz", 4096, NULL, 23, NULL, 1);
 }
 
 static white_ch_t* get_ch(int ch) {

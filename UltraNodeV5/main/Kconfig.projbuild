@@ -4,7 +4,7 @@ menu "System"
     config UL_CORE_COUNT
         int "CPU core count"
         range 1 2
-        default 2
+        default 1
 endmenu
 
 menu "Node / Network"

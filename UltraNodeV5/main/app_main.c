@@ -28,7 +28,7 @@ void app_main(void)
 
     ul_mqtt_start();
 
-    ul_ws_engine_start();    // 60 FPS core-pinned
+    ul_ws_engine_start();    // 60 FPS LED engine
     ul_white_engine_start(); // 200 Hz smoothing
 
     ul_sensors_start();

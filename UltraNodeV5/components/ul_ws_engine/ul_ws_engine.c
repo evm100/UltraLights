@@ -3,6 +3,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "ul_task.h"
 #include "esp_log.h"
 #include "led_strip.h"
 #include "led_strip_spi.h"
@@ -245,8 +246,10 @@ void ul_ws_engine_start(void)
     init_strip(1, 0, 0, false);
 #endif
     s_refresh_sem = xSemaphoreCreateBinary();
-    xTaskCreatePinnedToCore(led_refresh_task, "ws_refresh", 2048, NULL, 24, NULL, 1);
-    xTaskCreatePinnedToCore(ws_task, "ws60fps", 6144, NULL, 23, NULL, 1);
+    // Pixel refresh tasks pin to core 1 on multi-core targets to free core 0
+    // for networking and other work.
+    ul_task_create(led_refresh_task, "ws_refresh", 2048, NULL, 24, NULL, 1);
+    ul_task_create(ws_task, "ws60fps", 6144, NULL, 23, NULL, 1);
     if (s_refresh_sem) xSemaphoreGive(s_refresh_sem);
 }
 
