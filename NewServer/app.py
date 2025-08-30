@@ -1,25 +1,32 @@
-import json
-import os
+"""FastAPI server exposing lighting control endpoints."""
 
-from flask import Flask, render_template, request, jsonify
-import paho.mqtt.client as mqtt
+import asyncio
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
-MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
-NODE_ID = os.getenv("ULTRALIGHT_NODE", "node")
+from mqtt import publish, request_status
 
-client = mqtt.Client()
-client.connect(MQTT_BROKER)
-client.loop_start()
+app = FastAPI()
 
-app = Flask(__name__)
-
-
-def publish(topic, payload):
-    client.publish(f"ul/{NODE_ID}/{topic}", json.dumps(payload), qos=1)
+templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-@app.route("/")
-def index():
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request) -> HTMLResponse:
+    status = await asyncio.to_thread(request_status)
+    ws = [s for s in status.get("ws", []) if s.get("enabled")]
+    white = [w for w in status.get("white", []) if w.get("enabled")]
+    sensors = status.get("sensors", {})
+    has_motion = sensors.get("pir_enabled") or sensors.get("ultra_enabled")
+
+    rssi = status.get("wifi_rssi")
+    strength = None
+    if isinstance(rssi, (int, float)):
+        strength = max(0, min(100, 2 * (rssi + 100)))
+
     ws_effects = [
         "solid",
         "triple_wave",
@@ -37,40 +44,52 @@ def index():
         "day_night_curve",
         "blink",
     ]
-    return render_template(
-        "index.html", effects_ws=ws_effects, effects_white=white_effects
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "effects_ws": ws_effects,
+            "effects_white": white_effects,
+            "ws_count": len(ws),
+            "white_count": len(white),
+            "sensors": sensors if has_motion else None,
+            "wifi_rssi": rssi,
+            "wifi_strength": strength,
+        },
     )
 
 
-@app.route("/api/ws/set", methods=["POST"])
-def api_ws_set():
-    publish("cmd/ws/set", request.json)
-    return jsonify(status="ok")
+@app.post("/api/ws/set")
+async def api_ws_set(payload: dict) -> dict:
+    publish("cmd/ws/set", payload)
+    return {"status": "ok"}
 
 
-@app.route("/api/ws/power", methods=["POST"])
-def api_ws_power():
-    publish("cmd/ws/power", request.json)
-    return jsonify(status="ok")
+@app.post("/api/ws/power")
+async def api_ws_power(payload: dict) -> dict:
+    publish("cmd/ws/power", payload)
+    return {"status": "ok"}
 
 
-@app.route("/api/white/set", methods=["POST"])
-def api_white_set():
-    publish("cmd/white/set", request.json)
-    return jsonify(status="ok")
+@app.post("/api/white/set")
+async def api_white_set(payload: dict) -> dict:
+    publish("cmd/white/set", payload)
+    return {"status": "ok"}
 
 
-@app.route("/api/white/power", methods=["POST"])
-def api_white_power():
-    publish("cmd/white/power", request.json)
-    return jsonify(status="ok")
+@app.post("/api/white/power")
+async def api_white_power(payload: dict) -> dict:
+    publish("cmd/white/power", payload)
+    return {"status": "ok"}
 
 
-@app.route("/api/ota/check", methods=["POST"])
-def api_ota_check():
+@app.post("/api/ota/check")
+async def api_ota_check() -> dict:
     publish("cmd/ota/check", {})
-    return jsonify(status="ok")
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    import uvicorn
+
+    uvicorn.run("app:app", host="0.0.0.0", port=5000, reload=True)

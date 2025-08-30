@@ -1,9 +1,4 @@
-const stripConfigs = {
-  0: {strip: 0, effect: 'solid', hex: '#ffffff'},
-  1: {strip: 1, effect: 'solid', hex: '#ffffff'},
-  2: {strip: 2, effect: 'solid', hex: '#ffffff'},
-  3: {strip: 3, effect: 'solid', hex: '#ffffff'},
-};
+const stripConfigs = {};
 
 function sendJSON(url, data) {
   fetch(url, {
@@ -38,6 +33,7 @@ function renderParams(card) {
 
 function initWSCard(card) {
   const strip = Number(card.dataset.strip);
+  stripConfigs[strip] = { strip, effect: 'solid', hex: '#ffffff' };
   card.querySelector('.ws-effect').addEventListener('change', () => renderParams(card));
   renderParams(card);
 
@@ -98,11 +94,8 @@ otaBtn.addEventListener('click', () => {
 const master = document.getElementById('master-brightness');
 master.addEventListener('input', () => {
   const b = Number(master.value);
-  for (let i = 0; i < 4; i++) {
-    const cfg = stripConfigs[i];
-    if (cfg) {
-      const payload = { ...cfg, brightness: b };
-      sendJSON('/api/ws/set', payload);
-    }
-  }
+  Object.values(stripConfigs).forEach(cfg => {
+    const payload = { ...cfg, brightness: b };
+    sendJSON('/api/ws/set', payload);
+  });
 });

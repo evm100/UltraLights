@@ -113,6 +113,12 @@ Registered effects: `graceful_on`, `graceful_off`, `motion_swell`, `day_night_cu
 
 The node publishes its current state to `ul/<node-id>/evt/status` after every accepted command. The JSON payload contains details about each strip and channel. The `color` field is meaningful only when the corresponding strip effect is `solid`.
 
+Top level fields:
+
+- `node` – node identifier
+- `uptime_s` – uptime in seconds
+- `wifi_rssi` – current WiFi signal strength in dBm
+
 ## Publishing from Python
 
 Example using `paho-mqtt`:
