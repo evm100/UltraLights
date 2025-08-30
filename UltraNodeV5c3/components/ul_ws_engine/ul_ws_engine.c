@@ -143,7 +143,7 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
     };
     led_strip_spi_config_t spi_config = {
         .clk_src = SPI_CLK_SRC_DEFAULT,
-        .spi_bus = SPI2_HOST,
+        .spi_bus = idx == 0 ? SPI2_HOST : SPI3_HOST,
         .flags = {
             .with_dma = true,
         },
