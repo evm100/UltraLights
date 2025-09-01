@@ -10,6 +10,12 @@
 #include "effects_white/effect.h"
 #include "cJSON.h"
 
+#if CONFIG_UL_IS_ESP32C3
+#define UL_LEDC_SPEED_MODE LEDC_LOW_SPEED_MODE
+#else
+#define UL_LEDC_SPEED_MODE LEDC_HIGH_SPEED_MODE
+#endif
+
 static const char* TAG = "ul_white";
 
 typedef struct {
@@ -35,7 +41,7 @@ static const white_effect_t* find_eff(const char* name) {
 static void setup_ledc_channel(int ch, int gpio, int freq_hz)
 {
     ledc_timer_config_t tcfg = {
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
+        .speed_mode = UL_LEDC_SPEED_MODE,
         .timer_num = LEDC_TIMER_0,
         .duty_resolution = LEDC_TIMER_12_BIT,
         .freq_hz = freq_hz,
@@ -44,7 +50,7 @@ static void setup_ledc_channel(int ch, int gpio, int freq_hz)
     ledc_timer_config(&tcfg);
     ledc_channel_config_t ccfg = {
         .gpio_num = gpio,
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
+        .speed_mode = UL_LEDC_SPEED_MODE,
         .channel = ch,
         .intr_type = LEDC_INTR_DISABLE,
         .timer_sel = LEDC_TIMER_0,
@@ -87,8 +93,8 @@ static void white_task(void*)
             v = s_ch[i].brightness;
             if (!s_ch[i].power) v = 0;
             int duty = (v * ((1<<12)-1)) / 255;
-            ledc_set_duty(LEDC_HIGH_SPEED_MODE, s_ch[i].ledc_ch, duty);
-            ledc_update_duty(LEDC_HIGH_SPEED_MODE, s_ch[i].ledc_ch);
+            ledc_set_duty(UL_LEDC_SPEED_MODE, s_ch[i].ledc_ch, duty);
+            ledc_update_duty(UL_LEDC_SPEED_MODE, s_ch[i].ledc_ch);
         }
         vTaskDelayUntil(&last_wake, period_ticks);
     }
