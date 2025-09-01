@@ -40,7 +40,9 @@ void ul_ota_check_now(bool force)
 
     esp_http_client_config_t http_cfg = {
         .url = CONFIG_UL_OTA_MANIFEST_URL,
-        .timeout_ms = 10000,
+        .host = "lights.evm100.org",
+	.common_name = "lights.evm100.org",
+	.timeout_ms = 10000,
         .crt_bundle_attach = esp_crt_bundle_attach,
         .event_handler = NULL,
     };
