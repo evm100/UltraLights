@@ -36,7 +36,7 @@ The contents of `params` depend on the chosen effect:
 
 * `rainbow` – one integer `[wavelength]` controlling the color cycle in pixels
 * `solid` – RGB `[r,g,b]` values
-* `triple_wave` – three objects `{ "hex":"#RRGGBB", "freq":<number>, "velocity":<number> }`
+* `triple_wave` – up to three waves; each wave uses five values in the order `[r,g,b,freq,velocity]`
 * `flash` – six integers `[r1,g1,b1,r2,g2,b2]`
 
 Example – set strip 1 to a green solid color:
@@ -60,10 +60,22 @@ Example – triple wave with three colored sine waves:
   "brightness": 200,
   "speed": 0.5,
   "params": [
-    {"hex": "#FF0000", "freq": 1.0, "velocity": 0.1},
-    {"hex": "#00FF00", "freq": 2.0, "velocity": 0.15},
-    {"hex": "#0000FF", "freq": 0.5, "velocity": 0.2}
+    255, 0, 0, 1.0, 0.1,
+    0, 255, 0, 2.0, 0.15,
+    0, 0, 255, 0.5, 0.2
   ]
+}
+```
+
+Example – flash between red and blue:
+
+```json
+{
+  "strip": 0,
+  "effect": "flash",
+  "brightness": 255,
+  "speed": 1.0,
+  "params": [255, 0, 0, 0, 0, 255]
 }
 ```
 
