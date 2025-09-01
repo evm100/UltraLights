@@ -60,7 +60,6 @@ void triple_wave_render(uint8_t* frame_rgb, int pixels, int frame_idx) {
     int strip = ul_ws_effect_current_strip();
     int count = s_wave_count[strip];
     const wave_cfg_t* waves = s_waves[strip];
-
     for (int i = 0; i < pixels; ++i) {
         float pos = (float)i / (float)pixels;
         float r = 0.0f, g = 0.0f, b = 0.0f;
@@ -79,4 +78,3 @@ void triple_wave_render(uint8_t* frame_rgb, int pixels, int frame_idx) {
         frame_rgb[3*i+2] = (uint8_t)b;
     }
 }
-
