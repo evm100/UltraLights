@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException
 from .mqtt_bus import MqttBus
 from . import registry
@@ -62,24 +62,25 @@ def api_ws_set(node_id: str, payload: Dict[str, Any]):
     effect = str(payload.get("effect", "")).strip()
     if effect not in WS_EFFECTS:
         raise HTTPException(400, "invalid effect")
-    color = payload.get("color")
-    if color is not None:
-        if not (
-            isinstance(color, list)
-            and len(color) == 3
-            and all(isinstance(c, int) and 0 <= c <= 255 for c in color)
-        ):
-            raise HTTPException(400, "invalid color")
     try:
         brightness = int(payload.get("brightness"))
     except Exception:
         raise HTTPException(400, "invalid brightness")
     if not 0 <= brightness <= 255:
         raise HTTPException(400, "invalid brightness")
+    try:
+        speed = float(payload.get("speed", 1.0))
+    except Exception:
+        raise HTTPException(400, "invalid speed")
     params = payload.get("params")
-    if params is not None and not isinstance(params, dict):
-        raise HTTPException(400, "invalid params")
-    get_bus().ws_set(node_id, strip, effect, color, brightness, params)
+    if params is not None:
+        if not (
+            isinstance(params, list)
+            and all(isinstance(p, (int, float)) for p in params)
+        ):
+            raise HTTPException(400, "invalid params")
+        params = [float(p) for p in params]
+    get_bus().ws_set(node_id, strip, effect, brightness, speed, params)
     return {"ok": True}
 
 @router.post("/api/node/{node_id}/ws/power")

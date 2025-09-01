@@ -23,18 +23,17 @@ class MqttBus:
         self,
         node_id: str,
         strip: int,
-        effect: Optional[str] = None,
-        color: Optional[List[int]] = None,
-        brightness: Optional[int] = None,
-        params: Optional[Dict[str, object]] = None,
+        effect: str,
+        brightness: int,
+        speed: float,
+        params: Optional[List[float]] = None,
     ):
-        msg: Dict[str, object] = {"strip": int(strip)}
-        if effect:
-            msg["effect"] = effect
-        if color:
-            msg["color"] = [int(x) for x in color]
-        if brightness is not None:
-            msg["brightness"] = int(brightness)
+        msg: Dict[str, object] = {
+            "strip": int(strip),
+            "effect": effect,
+            "brightness": int(brightness),
+            "speed": float(speed),
+        }
         if params:
             msg["params"] = params
         self.pub(topic_cmd(node_id, "ws/set"), msg)

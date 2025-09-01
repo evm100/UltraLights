@@ -1,5 +1,5 @@
 <section class="glass rounded-2xl p-6">
-  <h3 class="text-lg font-semibold mb-3">WS Strip Control</h3>
+  <h3 class="text-lg font-semibold mb-3">Addressable Strip</h3>
   <div class="mb-2">
     <label class="text-xs opacity-70">Strip</label>
     <select id="wsStrip" class="p-1 rounded bg-slate-900 border border-slate-700">
@@ -19,6 +19,8 @@
     <div id="wsParams" class="mt-2 space-y-2"></div>
     <label class="text-xs opacity-70 block mt-2">Brightness</label>
     <input id="wsBri" type="range" min="0" max="255" value="255" class="w-full">
+    <label class="text-xs opacity-70 block mt-2">Speed</label>
+    <input id="wsSpeed" type="range" min="10" max="400" value="100" class="w-full">
   </div>
   <div class="flex gap-2">
     <button id="wsSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
@@ -30,21 +32,81 @@
 const WS_PARAM_DEFS={{ ws_param_defs|tojson }};
 function hexToRgb(hex){hex=hex.replace('#','');if(hex.length===3)hex=hex.split('').map(x=>x+x).join('');const num=parseInt(hex,16);return[(num>>16)&255,(num>>8)&255,num&255];}
 async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
-const wsStrip=document.getElementById('wsStrip');
-const wsEffect=document.getElementById('wsEffect');
-const wsBri=document.getElementById('wsBri');
-const wsParams=document.getElementById('wsParams');
+const stripEl=document.getElementById('wsStrip');
+const effectEl=document.getElementById('wsEffect');
+const briEl=document.getElementById('wsBri');
+const speedEl=document.getElementById('wsSpeed');
+const paramsEl=document.getElementById('wsParams');
 
-function renderParams(){wsParams.innerHTML='';const defs=WS_PARAM_DEFS[wsEffect.value]||[];defs.forEach(d=>{let wrapper=document.createElement('div');wrapper.dataset.id=d.id;if(d.type==='color'){const input=document.createElement('input');input.type='color';input.id='wsParam_'+d.id;input.value='#ffffff';wrapper.appendChild(input);}else if(d.type==='slider'){const label=document.createElement('label');label.className='text-xs opacity-70';label.textContent=d.id;const input=document.createElement('input');input.type='range';input.min=d.min;input.max=d.max;input.value=d.value;input.id='wsParam_'+d.id;wrapper.appendChild(label);wrapper.appendChild(input);}else if(d.type==='toggle'){const label=document.createElement('label');label.className='flex items-center gap-2';const input=document.createElement('input');input.type='checkbox';input.id='wsParam_'+d.id;label.appendChild(input);label.appendChild(document.createTextNode(d.id));wrapper.appendChild(label);}wsParams.appendChild(wrapper);});}
-wsEffect.onchange=renderParams;
+function renderParams(){
+  paramsEl.innerHTML='';
+  const defs=WS_PARAM_DEFS[effectEl.value]||[];
+  defs.forEach((d,idx)=>{
+    const wrap=document.createElement('div');
+    if(d.label){
+      const lab=document.createElement('label');
+      lab.className='text-xs opacity-70';
+      lab.textContent=d.label;
+      wrap.appendChild(lab);
+    }
+    let input=document.createElement('input');
+    if(d.type==='color'){
+      input.type='color';
+      input.value=d.value||'#ffffff';
+    }else if(d.type==='slider'){
+      input.type='range';
+      input.min=d.min;input.max=d.max;input.value=d.value;
+    }else{
+      input.type='number';
+      if(d.min!==undefined)input.min=d.min;
+      if(d.max!==undefined)input.max=d.max;
+      if(d.step!==undefined)input.step=d.step;
+      input.value=d.value!==undefined?d.value:'';
+    }
+    input.dataset.index=idx;
+    wrap.appendChild(input);
+    paramsEl.appendChild(wrap);
+  });
+}
+effectEl.onchange=renderParams;
 
-function collectParams(){const defs=WS_PARAM_DEFS[wsEffect.value]||[];const params={};let color=null;defs.forEach(d=>{const el=document.getElementById('wsParam_'+d.id);if(d.type==='color'){color=hexToRgb(el.value);}else if(d.type==='slider'){params[d.id]=Number(el.value);}else if(d.type==='toggle'){params[d.id]=el.checked;}});return{params,color};}
+function collectParams(){
+  const defs=WS_PARAM_DEFS[effectEl.value]||[];
+  const out=[];
+  defs.forEach((d,idx)=>{
+    const input=paramsEl.querySelector(`[data-index="${idx}"]`);
+    if(!input)return;
+    if(d.type==='color'){
+      const rgb=hexToRgb(input.value);
+      out.push(...rgb);
+    }else if(d.type==='slider'){
+      out.push(parseInt(input.value,10));
+    }else{
+      out.push(parseFloat(input.value));
+    }
+  });
+  return out;
+}
 
-document.getElementById('wsSet').onclick=async()=>{const strip=parseInt(wsStrip.value,10);if(Number.isNaN(strip)){alert('Invalid strip');return;}const eff=wsEffect.value.trim();if(!eff){alert('Select an effect');return;}const bri=parseInt(wsBri.value,10);if(Number.isNaN(bri)){alert('Invalid brightness');return;}const {params,color}=collectParams();const msg={strip,effect:eff,brightness:bri};if(color)msg.color=color;if(Object.keys(params).length)msg.params=params;await post(`/api/node/{{ node.id }}/ws/set`,msg);};
+document.getElementById('wsSet').onclick=async()=>{
+  const strip=parseInt(stripEl.value,10);
+  if(Number.isNaN(strip)){alert('Invalid strip');return;}
+  const eff=effectEl.value.trim();
+  if(!eff){alert('Select an effect');return;}
+  const bri=parseInt(briEl.value,10);
+  if(Number.isNaN(bri)){alert('Invalid brightness');return;}
+  const speed=parseInt(speedEl.value,10)/100;
+  const params=collectParams();
+  const msg={strip,effect:eff,brightness:bri,speed};
+  if(params.length)msg.params=params;
+  await post(`/api/node/{{ node.id }}/ws/set`,msg);
+};
+
 document.getElementById('wsOn').onclick=async()=>{
-  const s=parseInt(wsStrip.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:true});
+  const s=parseInt(stripEl.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:true});
 };
 document.getElementById('wsOff').onclick=async()=>{
-  const s=parseInt(wsStrip.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:false});
+  const s=parseInt(stripEl.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:false});
 };
 </script>
+
