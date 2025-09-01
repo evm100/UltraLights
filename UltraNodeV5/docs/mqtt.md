@@ -100,18 +100,15 @@ Example – flash between red and blue:
 ```json
 {
   "channel": <int>,
+  "brightness": <int 0-255>,
   "effect": "<name>",
-  "brightness": <int 0-255>
+  "params": [<int>, ...]
 }
 ```
 
-Registered effects: `breathe`. Optional params: `[period_ms]` to control the breath cycle length.
-
-`ul/<node-id>/cmd/white/power`
-
-```json
-{ "channel": <int>, "on": <bool> }
-```
+Registered effects: `solid` and `breathe`.
+* `solid` – static output with no parameters.
+* `breathe` – optional params: `[period_ms]` to control the breath cycle length.
 
 ### Sensor and OTA commands
 

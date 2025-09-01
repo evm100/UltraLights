@@ -69,12 +69,6 @@ async def cmd_white_set(node_id: str, payload: dict):
     return {"ok": True}
 
 
-@app.post("/api/nodes/{node_id}/white/power")
-async def cmd_white_power(node_id: str, payload: dict):
-    mqtt.publish(node_id, "white/power", payload)
-    return {"ok": True}
-
-
 @app.post("/api/nodes/{node_id}/sensor/cooldown")
 async def cmd_sensor_cooldown(node_id: str, payload: dict):
     mqtt.publish(node_id, "sensor/cooldown", payload)
