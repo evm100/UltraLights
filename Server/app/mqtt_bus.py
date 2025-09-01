@@ -60,10 +60,6 @@ class MqttBus:
             msg["params"] = params
         self.pub(topic_cmd(node_id, "white/set"), msg)
 
-    def white_power(self, node_id: str, channel: int, on: bool):
-        msg = {"channel": int(channel), "on": bool(on)}
-        self.pub(topic_cmd(node_id, "white/power"), msg)
-
     # ---- Sensor commands ----
     def sensor_cooldown(self, node_id: str, seconds: int):
         msg = {"seconds": int(seconds)}
@@ -79,4 +75,4 @@ class MqttBus:
             nid = n["id"]
             for i in range(4):
                 self.ws_power(nid, i, False)
-                self.white_power(nid, i, False)
+                self.white_set(nid, i, brightness=0)
