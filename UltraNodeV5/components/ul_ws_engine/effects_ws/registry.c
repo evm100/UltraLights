@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include "effect.h"
 
 void solid_init(void);        void solid_render(uint8_t*,int,int);        void solid_apply_params(int,const cJSON*);
