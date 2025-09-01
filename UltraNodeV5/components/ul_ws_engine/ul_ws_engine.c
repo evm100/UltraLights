@@ -99,7 +99,12 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
     };
     led_strip_spi_config_t spi_config = {
         .clk_src = SPI_CLK_SRC_DEFAULT,
-        .spi_bus = idx == 0 ? SPI2_HOST : SPI3_HOST,
+        .spi_bus = 
+#if CONFIG_UL_IS_ESP32C3
+            SPI2_HOST,
+#else
+            (idx == 0 ? SPI2_HOST : SPI3_HOST),
+#endif
         .flags = {
             .with_dma = true,
         },
@@ -191,8 +196,12 @@ void ul_ws_engine_start(void)
 #else
     init_strip(0, 0, 0, false);
 #endif
+#if !CONFIG_UL_IS_ESP32C3
 #if CONFIG_UL_WS1_ENABLED
     init_strip(1, CONFIG_UL_WS1_GPIO, CONFIG_UL_WS1_PIXELS, true);
+#else
+    init_strip(1, 0, 0, false);
+#endif
 #else
     init_strip(1, 0, 0, false);
 #endif

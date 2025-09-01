@@ -5,6 +5,10 @@ menu "System"
         int "CPU core count"
         range 1 2
         default 1
+
+    config UL_IS_ESP32C3
+        bool "Target is ESP32-C3"
+        default n
 endmenu
 
 menu "Node / Network"
