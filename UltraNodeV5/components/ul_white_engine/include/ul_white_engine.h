@@ -12,12 +12,10 @@ void ul_white_apply_json(cJSON* root);
 // Channels 0..3 (enabled by Kconfig flags). Returns false if channel not enabled.
 bool ul_white_set_effect(int ch, const char* name);
 bool ul_white_set_brightness(int ch, uint8_t bri);
-bool ul_white_power(int ch, bool on);
 
 // Status API
 typedef struct {
     bool enabled;
-    bool power;
     char effect[24];
     uint8_t brightness;   // 0..255
     int pwm_hz;

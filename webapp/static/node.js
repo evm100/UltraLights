@@ -45,16 +45,6 @@ function initNodePage() {
         });
     });
 
-    document.querySelectorAll('.white .power').forEach(btn => {
-        btn.addEventListener('click', e => {
-            const container = e.target.closest('.white');
-            const channel = parseInt(container.dataset.channel);
-            const on = btn.dataset.on === 'true';
-            send('white/power', { channel: channel, on: on });
-            btn.dataset.on = (!on).toString();
-        });
-    });
-
     document.querySelectorAll('.sensor .set-cooldown').forEach(btn => {
         btn.addEventListener('click', e => {
             const container = e.target.closest('.sensor');

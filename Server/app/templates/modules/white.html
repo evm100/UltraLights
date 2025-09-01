@@ -22,8 +22,6 @@
   </div>
   <div class="flex gap-2">
     <button id="wSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
-    <button id="wOn" class="px-4 py-2 pill bg-green-600 hover:bg-green-500 text-white">On</button>
-    <button id="wOff" class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white">Off</button>
   </div>
 </section>
 <script>
@@ -50,11 +48,5 @@ document.getElementById('wSet').onclick=async()=>{
   const msg={channel, effect, brightness};
   if(Object.keys(params).length)msg.params=params;
   await post(`/api/node/{{ node.id }}/white/set`,msg);
-};
-document.getElementById('wOn').onclick=async()=>{
-  const channel=parseInt(ch.value,10);if(Number.isNaN(channel)){alert('Invalid channel');return;}await post(`/api/node/{{ node.id }}/white/power`,{channel,on:true});
-};
-document.getElementById('wOff').onclick=async()=>{
-  const channel=parseInt(ch.value,10);if(Number.isNaN(channel)){alert('Invalid channel');return;}await post(`/api/node/{{ node.id }}/white/power`,{channel,on:false});
 };
 </script>
