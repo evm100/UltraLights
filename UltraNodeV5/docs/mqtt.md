@@ -34,6 +34,7 @@ Fields:
 
 The contents of `params` depend on the chosen effect:
 
+* `rainbow` – one integer `[wavelength]` controlling the color cycle in pixels
 * `solid` – RGB `[r,g,b]` values
 * `triple_wave` – three objects `{ "hex":"#RRGGBB", "freq":<number>, "velocity":<number> }`
 * `flash` – six integers `[r1,g1,b1,r2,g2,b2]`
@@ -130,7 +131,7 @@ payload = {
     "effect": "rainbow",
     "brightness": 180,
     "speed": 1.0,
-    "params": []
+    "params": [32]
 }
 client.publish(f"ul/{NODE}/cmd/ws/set", json.dumps(payload), qos=1)
 

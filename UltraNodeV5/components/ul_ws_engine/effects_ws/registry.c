@@ -2,7 +2,7 @@
 
 void solid_init(void);        void solid_render(uint8_t*,int,int);        void solid_apply_params(int,const cJSON*);
 void breathe_init(void);      void breathe_render(uint8_t*,int,int);
-void rainbow_init(void);      void rainbow_render(uint8_t*,int,int);
+void rainbow_init(void);      void rainbow_render(uint8_t*,int,int);      void rainbow_apply_params(int,const cJSON*);
 void twinkle_init(void);      void twinkle_render(uint8_t*,int,int);
 void theater_chase_init(void);void theater_chase_render(uint8_t*,int,int);
 void wipe_init(void);         void wipe_render(uint8_t*,int,int);
@@ -14,7 +14,7 @@ void flash_init(void);        void flash_render(uint8_t*,int,int);        void f
 static const ws_effect_t effects[] = {
     {"solid", solid_init, solid_render, solid_apply_params},
     {"breathe", breathe_init, breathe_render, NULL},
-    {"rainbow", rainbow_init, rainbow_render, NULL},
+    {"rainbow", rainbow_init, rainbow_render, rainbow_apply_params},
     {"twinkle", twinkle_init, twinkle_render, NULL},
     {"theater_chase", theater_chase_init, theater_chase_render, NULL},
     {"wipe", wipe_init, wipe_render, NULL},
