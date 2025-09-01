@@ -105,7 +105,7 @@ Example – flash between red and blue:
 }
 ```
 
-Registered effects: `graceful_on`, `graceful_off`, `motion_swell`, `day_night_curve`, `blink`. None of them require extra parameters.
+Registered effects: `breathe`. Optional params: `[period_ms]` to control the breath cycle length.
 
 `ul/<node-id>/cmd/white/power`
 
