@@ -16,29 +16,27 @@ All topics are rooted at `ul/<node-id>/`. The node subscribes to commands addres
 
 ## Command payloads
 
-Every command is a JSON object. Only fields relevant to the selected effect are included.
+Every command is a JSON object. For addressable strips the payload always includes the same top‑level keys and an effect‑specific parameter array.
 
 ### Addressable RGB strips (`ws`)
 
 `ul/<node-id>/cmd/ws/set`
 
-Common fields:
+Fields:
 
 | Field | Type | Notes |
 |-------|------|-------|
 | `strip` | int | Strip index (0‑3) |
 | `effect` | string | One of the registered effect names |
 | `brightness` | int 0‑255 | Overall brightness |
+| `speed` | number | Multiplier for frame advance (1.0 = normal) |
+| `params` | array | Effect‑specific parameters |
 
-Effect‑specific fields:
+The contents of `params` depend on the chosen effect:
 
-| Effect | Extra fields |
-|--------|-------------|
-| `solid` | `color` – RGB array `[r,g,b]` with 0‑255 ints, or `hex` – string `"#RRGGBB"` |
-| `triple_wave` | `waves` – array of three objects `{ "hex":"#RRGGBB", "freq":<number>, "velocity":<number> }` |
-| others (`breathe`, `rainbow`, `twinkle`, `theater_chase`, `wipe`, `gradient_scroll`) | *(none)* |
-
-`triple_wave` mixes three colored sine waves; each object's `freq` sets spatial frequency and `velocity` controls movement speed.
+* `solid` – RGB `[r,g,b]` values
+* `triple_wave` – three objects `{ "hex":"#RRGGBB", "freq":<number>, "velocity":<number> }`
+* `flash` – six integers `[r1,g1,b1,r2,g2,b2]`
 
 Example – set strip 1 to a green solid color:
 
@@ -47,18 +45,8 @@ Example – set strip 1 to a green solid color:
   "strip": 1,
   "effect": "solid",
   "brightness": 255,
-  "color": [0, 255, 0]
-}
-```
-
-Example – same color specified with a hex string:
-
-```json
-{
-  "strip": 1,
-  "effect": "solid",
-  "brightness": 255,
-  "hex": "#00FF00"
+  "speed": 1.0,
+  "params": [0, 255, 0]
 }
 ```
 
@@ -69,11 +57,24 @@ Example – triple wave with three colored sine waves:
   "strip": 0,
   "effect": "triple_wave",
   "brightness": 200,
-  "waves": [
+  "speed": 0.5,
+  "params": [
     {"hex": "#FF0000", "freq": 1.0, "velocity": 0.1},
     {"hex": "#00FF00", "freq": 2.0, "velocity": 0.15},
     {"hex": "#0000FF", "freq": 0.5, "velocity": 0.2}
   ]
+}
+```
+
+Example – flash between red and blue:
+
+```json
+{
+  "strip": 0,
+  "effect": "flash",
+  "brightness": 255,
+  "speed": 1.0,
+  "params": [255, 0, 0, 0, 0, 255]
 }
 ```
 
@@ -127,7 +128,9 @@ client.connect("broker.local")
 payload = {
     "strip": 0,
     "effect": "rainbow",
-    "brightness": 180
+    "brightness": 180,
+    "speed": 1.0,
+    "params": []
 }
 client.publish(f"ul/{NODE}/cmd/ws/set", json.dumps(payload), qos=1)
 
@@ -135,10 +138,11 @@ solid = {
     "strip": 1,
     "effect": "solid",
     "brightness": 255,
-    "color": [255, 0, 0]
+    "speed": 1.0,
+    "params": [255, 0, 0]
 }
 client.publish(f"ul/{NODE}/cmd/ws/set", json.dumps(solid), qos=1)
 ```
 
-Only include parameters required by the chosen effect to keep messages minimal.
+Always include the global fields; tailor the `params` array to the selected effect.
 
