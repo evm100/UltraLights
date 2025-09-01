@@ -31,11 +31,7 @@ def index():
         "gradient_scroll",
     ]
     white_effects = [
-        "graceful_on",
-        "graceful_off",
-        "motion_swell",
-        "day_night_curve",
-        "blink",
+        "breathe",
     ]
     return render_template(
         "index.html", effects_ws=ws_effects, effects_white=white_effects

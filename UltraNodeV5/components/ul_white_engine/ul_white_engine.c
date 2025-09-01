@@ -66,10 +66,11 @@ static void ch_init(int idx, bool enabled, int gpio, int ledc_ch, int pwm_hz) {
     s_ch[idx].ledc_ch = ledc_ch;
     s_ch[idx].pwm_hz = pwm_hz;
     s_ch[idx].power = true;
-    s_ch[idx].brightness = 0;
+    s_ch[idx].brightness = 255;
     int n=0; const white_effect_t* t = ul_white_get_effects(&n);
     s_ch[idx].eff = &t[0];
     s_ch[idx].frame_idx = 0;
+    if (s_ch[idx].eff && s_ch[idx].eff->init) s_ch[idx].eff->init();
     if (enabled) setup_ledc_channel(ledc_ch, gpio, pwm_hz);
     if (enabled) s_count++;
 }
@@ -88,9 +89,11 @@ static void white_task(void*)
     while (1) {
         for (int i=0;i<4;i++) {
             if (!s_ch[i].enabled) continue;
-            uint8_t v = s_ch[i].eff->render_brightness(s_ch[i].frame_idx++);
-            // brightness setpoint overrides effect amplitude
-            v = s_ch[i].brightness;
+            uint8_t v = 0;
+            if (s_ch[i].eff && s_ch[i].eff->render) {
+                v = s_ch[i].eff->render(s_ch[i].frame_idx++);
+            }
+            v = (v * s_ch[i].brightness) / 255;
             if (!s_ch[i].power) v = 0;
             int duty = (v * ((1<<12)-1)) / 255;
             ledc_set_duty(UL_LEDC_SPEED_MODE, s_ch[i].ledc_ch, duty);
@@ -141,6 +144,7 @@ bool ul_white_set_effect(int ch, const char* name) {
     const white_effect_t* e = find_eff(name);
     if (!e) return false;
     c->eff = e;
+    c->frame_idx = 0;
     if (c->eff->init) c->eff->init();
     return true;
 }
@@ -165,19 +169,30 @@ void ul_white_apply_json(cJSON* root) {
     cJSON* jch = cJSON_GetObjectItem(root, "channel");
     if (jch && cJSON_IsNumber(jch)) ch = jch->valueint;
 
-    cJSON* jeff = cJSON_GetObjectItem(root, "effect");
-    if (jeff && cJSON_IsString(jeff)) {
-        if (!ul_white_set_effect(ch, jeff->valuestring)) {
-            ESP_LOGW(TAG, "unknown white effect: %s", jeff->valuestring);
-        }
-    }
-
     cJSON* jbri = cJSON_GetObjectItem(root, "brightness");
     if (jbri && cJSON_IsNumber(jbri)) {
         int bri = jbri->valueint;
         if (bri < 0) bri = 0;
         if (bri > 255) bri = 255;
         ul_white_set_brightness(ch, (uint8_t)bri);
+    }
+
+    const char* effect = NULL;
+    cJSON* jeff = cJSON_GetObjectItem(root, "effect");
+    if (jeff && cJSON_IsString(jeff)) {
+        effect = jeff->valuestring;
+        if (!ul_white_set_effect(ch, effect)) {
+            ESP_LOGW(TAG, "unknown white effect: %s", effect);
+            effect = NULL;
+        }
+    }
+
+    cJSON* jparams = cJSON_GetObjectItem(root, "params");
+    if (effect && jparams && cJSON_IsArray(jparams)) {
+        white_ch_t* c = get_ch(ch);
+        if (c && c->eff && c->eff->apply_params) {
+            c->eff->apply_params(ch, jparams);
+        }
     }
 }
 

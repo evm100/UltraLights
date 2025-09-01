@@ -60,10 +60,6 @@ WS_PARAM_DEFS = {
 }
 
 WHITE_PARAM_DEFS = {
-    "graceful_on": [{"id": "period", "type": "slider", "min": 10, "max": 500, "value": 200}],
-    "graceful_off": [{"id": "period", "type": "slider", "min": 10, "max": 500, "value": 200}],
-    "motion_swell": [{"id": "period", "type": "slider", "min": 10, "max": 500, "value": 200}],
-    "day_night_curve": [{"id": "period", "type": "slider", "min": 10, "max": 500, "value": 200}],
-    "blink": [{"id": "period", "type": "slider", "min": 10, "max": 500, "value": 200}],
+    "breathe": [{"id": "period_ms", "type": "slider", "min": 100, "max": 5000, "value": 1000}],
 }
 

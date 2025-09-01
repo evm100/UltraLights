@@ -1,22 +1,15 @@
 #include "effect.h"
 
-uint8_t graceful_on_render(int frame_idx);
-uint8_t graceful_off_render(int frame_idx);
-uint8_t motion_swell_render(int frame_idx);
-uint8_t day_night_curve_render(int frame_idx);
-uint8_t blink_render(int frame_idx);
-
-static void noop(void){}
+void white_breathe_init(void);
+uint8_t white_breathe_render(int frame_idx);
+void white_breathe_apply_params(int ch, const cJSON* params);
 
 static const white_effect_t effects[] = {
-    {"graceful_on", noop, graceful_on_render},
-    {"graceful_off", noop, graceful_off_render},
-    {"motion_swell", noop, motion_swell_render},
-    {"day_night_curve", noop, day_night_curve_render},
-    {"blink", noop, blink_render},
+    {"breathe", white_breathe_init, white_breathe_render, white_breathe_apply_params},
 };
 
 const white_effect_t* ul_white_get_effects(int* count) {
     if (count) *count = sizeof(effects)/sizeof(effects[0]);
     return effects;
 }
+
