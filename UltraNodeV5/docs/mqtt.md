@@ -38,7 +38,7 @@ The contents of `params` depend on the chosen effect:
 
 * `rainbow` – one integer `[wavelength]` controlling the color cycle in pixels
 * `solid` – RGB `[r,g,b]` values
-* `triple_wave` – fixed blend of three colored sine waves with different wavelengths and velocities; `params` should be an empty array
+* `triple_wave` – fifteen numbers defining three sine waves `[r1,g1,b1,w1,f1,r2,g2,b2,w2,f2,r3,g3,b3,w3,f3]`
 * `flash` – six integers `[r1,g1,b1,r2,g2,b2]`
 
 Example – set strip 1 to a green solid color:
@@ -61,8 +61,18 @@ Example – triple wave combining red, green, and blue waves:
   "effect": "triple_wave",
   "brightness": 200,
   "speed": 0.5,
-  "params": []
+  "params": [
+    255, 0, 0, 30, 0.20,
+    0, 255, 0, 45, 0.15,
+    0, 0, 255, 60, 0.10
+  ]
 }
+```
+
+Shell command using `mosquitto_pub`:
+
+```sh
+mosquitto_pub -t "ul/<node-id>/cmd/ws/set" -m '{"strip":0,"effect":"triple_wave","brightness":200,"speed":0.5,"params":[255,0,0,30,0.20,0,255,0,45,0.15,0,0,255,60,0.10]}'
 ```
 
 Example – flash between red and blue:

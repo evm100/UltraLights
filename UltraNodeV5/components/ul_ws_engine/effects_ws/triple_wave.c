@@ -6,40 +6,49 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#define NUM_STRIPS 2
+
 #define NUM_WAVES 3
 
 typedef struct {
     uint8_t r, g, b;
     float wavelength;
-    float velocity;
+    float freq;
 } wave_cfg_t;
 
-/* Fixed configuration for the three color waves */
-static const wave_cfg_t s_waves[NUM_WAVES] = {
-    {255, 0,   0, 30.0f, 0.20f}, // red wave
-    {0,   255, 0, 45.0f, 0.15f}, // green wave
-    {0,   0, 255, 60.0f, 0.10f}  // blue wave
-};
+static wave_cfg_t s_waves[NUM_STRIPS][NUM_WAVES];
+
 
 void triple_wave_init(void) {
     // no initialization required
 }
 
 void triple_wave_apply_params(int strip, const cJSON* params) {
-    (void)strip;
-    (void)params; // effect has fixed parameters
+    if (strip < 0 || strip >= NUM_STRIPS) return;
+    if (!params || !cJSON_IsArray(params) || cJSON_GetArraySize(params) < NUM_WAVES * 5) return;
+    for (int w = 0; w < NUM_WAVES; ++w) {
+        s_waves[strip][w].r = (uint8_t)cJSON_GetArrayItem(params, w*5 + 0)->valueint;
+        s_waves[strip][w].g = (uint8_t)cJSON_GetArrayItem(params, w*5 + 1)->valueint;
+        s_waves[strip][w].b = (uint8_t)cJSON_GetArrayItem(params, w*5 + 2)->valueint;
+        s_waves[strip][w].wavelength = (float)cJSON_GetArrayItem(params, w*5 + 3)->valuedouble;
+        s_waves[strip][w].freq = (float)cJSON_GetArrayItem(params, w*5 + 4)->valuedouble;
+    }
 }
 
 void triple_wave_render(uint8_t* frame_rgb, int pixels, int frame_idx) {
+    int strip = ul_ws_effect_current_strip();
+    if (strip < 0 || strip >= NUM_STRIPS) return;
     for (int i = 0; i < pixels; ++i) {
         float r = 0.0f, g = 0.0f, b = 0.0f;
         for (int w = 0; w < NUM_WAVES; ++w) {
-            float pos = (float)i / s_waves[w].wavelength;
-            float phase = 2.0f * (float)M_PI * (pos - frame_idx * s_waves[w].velocity);
+            wave_cfg_t* cfg = &s_waves[strip][w];
+            if (cfg->wavelength <= 0.0f) continue;
+            float pos = (float)i / cfg->wavelength;
+            float phase = 2.0f * (float)M_PI * (pos + frame_idx * cfg->freq);
             float intensity = (sinf(phase) + 1.0f) * 0.5f; // 0..1
-            r += intensity * s_waves[w].r;
-            g += intensity * s_waves[w].g;
-            b += intensity * s_waves[w].b;
+            r += intensity * cfg->r;
+            g += intensity * cfg->g;
+            b += intensity * cfg->b;
         }
         if (r > 255.0f) r = 255.0f;
         if (g > 255.0f) g = 255.0f;
