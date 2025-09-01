@@ -7,6 +7,7 @@
 #endif
 
 #define NUM_STRIPS 2
+
 #define NUM_WAVES 3
 
 typedef struct {
@@ -16,6 +17,7 @@ typedef struct {
 } wave_cfg_t;
 
 static wave_cfg_t s_waves[NUM_STRIPS][NUM_WAVES];
+
 
 void triple_wave_init(void) {
     // no initialization required
