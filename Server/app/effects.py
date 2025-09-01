@@ -14,31 +14,48 @@ WS_EFFECTS = set(_load_effects("UltraNodeV5/components/ul_ws_engine/effects_ws/r
 WHITE_EFFECTS = set(_load_effects("UltraNodeV5/components/ul_white_engine/effects_white/registry.c"))
 
 # Effect parameter metadata used by the web UI to render effect-specific
-# controls.  Each entry maps an effect name to a list of parameter
-# descriptors.  Supported descriptor ``type`` values are ``color`` (render a
-# color picker), ``slider`` (render an ``input[type=range]``) and ``toggle``
-# (render a checkbox).  Sliders accept ``min``, ``max`` and ``value`` keys for
-# range configuration.
+# controls.  Each entry maps an effect name to a list describing the
+# parameters that should be collected for that effect.  The descriptors are
+# interpreted in order and the resulting values are sent as a positional
+# ``params`` array as described in ``docs/mqtt.md``.
+#
+# Supported descriptor ``type`` values:
+#
+# ``color``  – render an ``<input type="color">`` and append the selected
+#              RGB triplet to the ``params`` array.
+# ``slider`` – render an ``<input type="range">`` and append the selected
+#              integer value.
+# ``number`` – render an ``<input type="number">`` for floating‑point or
+#              free‑form numeric input.
 
 WS_PARAM_DEFS = {
-    "solid": [{"id": "color", "type": "color"}],
-    "breathe": [{"id": "period", "type": "slider", "min": 10, "max": 500, "value": 120}],
+    # Solid color – single RGB value
+    "solid": [
+        {"type": "color", "label": "Color"},
+    ],
+
+    # Rainbow effect – wavelength slider (number of pixels per cycle)
     "rainbow": [
-        {"id": "period", "type": "slider", "min": 10, "max": 500, "value": 50},
-        {"id": "reverse", "type": "toggle"},
+        {"type": "slider", "label": "Wavelength", "min": 1, "max": 255, "value": 32},
     ],
-    "twinkle": [{"id": "period", "type": "slider", "min": 10, "max": 500, "value": 50}],
-    "theater_chase": [
-        {"id": "period", "type": "slider", "min": 10, "max": 500, "value": 50},
-        {"id": "reverse", "type": "toggle"},
+
+    # Triple wave – three sets of color, wavelength and frequency
+    "triple_wave": [
+        {"type": "color", "label": "Wave 1 Color"},
+        {"type": "number", "label": "Wave 1 Wavelength", "value": 30},
+        {"type": "number", "label": "Wave 1 Frequency", "value": 0.20, "step": 0.01},
+        {"type": "color", "label": "Wave 2 Color"},
+        {"type": "number", "label": "Wave 2 Wavelength", "value": 45},
+        {"type": "number", "label": "Wave 2 Frequency", "value": 0.15, "step": 0.01},
+        {"type": "color", "label": "Wave 3 Color"},
+        {"type": "number", "label": "Wave 3 Wavelength", "value": 60},
+        {"type": "number", "label": "Wave 3 Frequency", "value": 0.10, "step": 0.01},
     ],
-    "wipe": [
-        {"id": "period", "type": "slider", "min": 10, "max": 500, "value": 50},
-        {"id": "reverse", "type": "toggle"},
-    ],
-    "gradient_scroll": [
-        {"id": "period", "type": "slider", "min": 10, "max": 500, "value": 50},
-        {"id": "reverse", "type": "toggle"},
+
+    # Flash – alternate between two RGB colors
+    "flash": [
+        {"type": "color", "label": "Color 1"},
+        {"type": "color", "label": "Color 2"},
     ],
 }
 
