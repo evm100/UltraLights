@@ -111,6 +111,30 @@ void ul_mqtt_publish_status(void)
     publish_json(topic, "{\"status\":\"ok\"}");
 }
 
+// Publish confirmation for ws/set including echo of effect parameters
+static void publish_ws_ack(int strip, const char* effect, cJSON* params, bool ok) {
+    char topic[128];
+    snprintf(topic, sizeof(topic), "ul/%s/evt/status", ul_core_get_node_id());
+    cJSON* root = cJSON_CreateObject();
+    if (ok) {
+        cJSON_AddStringToObject(root, "status", "ok");
+        cJSON_AddNumberToObject(root, "strip", strip);
+        if (effect) cJSON_AddStringToObject(root, "effect", effect);
+        if (params && cJSON_IsArray(params)) {
+            cJSON_AddItemToObject(root, "params", cJSON_Duplicate(params, true));
+        } else {
+            cJSON_AddItemToObject(root, "params", cJSON_CreateArray());
+        }
+    } else {
+        cJSON_AddStringToObject(root, "status", "error");
+        cJSON_AddStringToObject(root, "error", "invalid effect");
+    }
+    char* json = cJSON_PrintUnformatted(root);
+    publish_json(topic, json);
+    cJSON_free(json);
+    cJSON_Delete(root);
+}
+
 void ul_mqtt_publish_motion(const char* sid, const char* state)
 {
     char topic[128];
@@ -121,7 +145,27 @@ void ul_mqtt_publish_motion(const char* sid, const char* state)
 }
 
 static void handle_cmd_ws_set(cJSON* root) {
+    int strip = 0;
+    cJSON* jstrip = cJSON_GetObjectItem(root, "strip");
+    if (jstrip && cJSON_IsNumber(jstrip)) strip = jstrip->valueint;
+
+    const char* effect = NULL;
+    cJSON* jeffect = cJSON_GetObjectItem(root, "effect");
+    if (jeffect && cJSON_IsString(jeffect)) effect = jeffect->valuestring;
+
+    cJSON* params = cJSON_GetObjectItem(root, "params");
+
     ul_ws_apply_json(root);
+
+    bool ok = false;
+    if (effect) {
+        ul_ws_strip_status_t st;
+        if (ul_ws_get_status(strip, &st)) {
+            ok = strcmp(st.effect, effect) == 0;
+        }
+    }
+
+    publish_ws_ack(strip, effect, params, ok);
 }
 
 static void handle_cmd_ws_power(cJSON* root) {
@@ -129,8 +173,7 @@ static void handle_cmd_ws_power(cJSON* root) {
     cJSON* jon = cJSON_GetObjectItem(root, "on");
     bool on = (jon && cJSON_IsBool(jon)) ? cJSON_IsTrue(jon) : true;
     ul_ws_power(strip, on);
-
-    ul_mqtt_publish_status_now();
+    ul_mqtt_publish_status();
 }
 
 
@@ -154,8 +197,8 @@ static void handle_cmd_sensor_cooldown(cJSON* root) {
 
     cJSON* js = cJSON_GetObjectItem(root, "seconds");
     int s; if (j_is_int_in(root, "seconds", 10, 3600, &s)) { ul_sensors_set_cooldown(s);
-    ul_mqtt_publish_status_now();
-} else { ESP_LOGW(TAG,"invalid seconds"); }
+        ul_mqtt_publish_status();
+    } else { ESP_LOGW(TAG,"invalid seconds"); }
 }
 
 
@@ -165,8 +208,7 @@ static void handle_cmd_white_set(cJSON* root) {
 static void handle_cmd_white_power(cJSON* root) {
     int ch=0; j_is_int_in(root, "channel", 0, 3, &ch);
     bool on=false; if (j_is_bool(root, "on", &on)) ul_white_power(ch, on);
-
-    ul_mqtt_publish_status_now();
+    ul_mqtt_publish_status();
 }
 
 static void on_message(esp_mqtt_event_handle_t event)
@@ -207,14 +249,14 @@ static void on_message(esp_mqtt_event_handle_t event)
     if (cmdlen >= 3 && strncmp(cmdroot, "cmd", 3)==0) {
         const char* sub = cmdroot + 4; // skip "cmd/"
         if (starts_with(sub, "ws/set")) {
-            handle_cmd_ws_set(root); publish_status_snapshot();
+            handle_cmd_ws_set(root);
         } else if (starts_with(sub, "ws/power")) {
-            handle_cmd_ws_power(root); publish_status_snapshot();
+            handle_cmd_ws_power(root);
         } else if (starts_with(sub, "sensor/cooldown")) {
-            handle_cmd_sensor_cooldown(root); publish_status_snapshot();
-        } else if (starts_with(sub, "ota/check")) { ul_mqtt_publish_status_now(); 
+            handle_cmd_sensor_cooldown(root);
+        } else if (starts_with(sub, "ota/check")) { ul_mqtt_publish_status();
             ul_ota_check_now(true); publish_status_snapshot();
-        } else if (starts_with(sub, "white/set")) { handle_cmd_white_set(root); publish_status_snapshot(); } else if (starts_with(sub, "white/power")) { handle_cmd_white_power(root); publish_status_snapshot(); } else {
+        } else if (starts_with(sub, "white/set")) { handle_cmd_white_set(root); ul_mqtt_publish_status(); } else if (starts_with(sub, "white/power")) { handle_cmd_white_power(root); } else if (starts_with(sub, "status")) { ul_mqtt_publish_status_now(); } else {
             ESP_LOGW(TAG, "Unknown cmd path: %.*s", cmdlen, cmdroot);
         }
     }

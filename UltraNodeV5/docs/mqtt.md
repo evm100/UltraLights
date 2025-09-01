@@ -9,7 +9,7 @@ All topics are rooted at `ul/<node-id>/`. The node subscribes to commands addres
 | Direction | Topic pattern | Purpose |
 |-----------|---------------|---------|
 | → node | `ul/<node-id>/cmd/...` | Control commands |
-| ← node | `ul/<node-id>/evt/status` | Full status snapshot |
+| ← node | `ul/<node-id>/evt/status` | Status updates and snapshots |
 | ← node | `ul/<node-id>/evt/sensor/motion` | Motion events |
 
 `<node-id>` is set at build time by `ul_core_get_node_id()`.
@@ -32,11 +32,13 @@ Fields:
 | `speed` | number | Multiplier for frame advance (1.0 = normal) |
 | `params` | array | Effect‑specific parameters |
 
+On success, the node replies on `ul/<node-id>/evt/status` with the chosen effect and echoed parameters.
+
 The contents of `params` depend on the chosen effect:
 
 * `rainbow` – one integer `[wavelength]` controlling the color cycle in pixels
 * `solid` – RGB `[r,g,b]` values
-* `triple_wave` – up to three waves; each wave uses five values in the order `[r,g,b,freq,velocity]`
+* `triple_wave` – fifteen numbers defining three sine waves `[r1,g1,b1,w1,f1,r2,g2,b2,w2,f2,r3,g3,b3,w3,f3]`
 * `flash` – six integers `[r1,g1,b1,r2,g2,b2]`
 
 Example – set strip 1 to a green solid color:
@@ -51,7 +53,7 @@ Example – set strip 1 to a green solid color:
 }
 ```
 
-Example – triple wave with three colored sine waves:
+Example – triple wave combining red, green, and blue waves:
 
 ```json
 {
@@ -60,23 +62,17 @@ Example – triple wave with three colored sine waves:
   "brightness": 200,
   "speed": 0.5,
   "params": [
-    255, 0, 0, 1.0, 0.1,
-    0, 255, 0, 2.0, 0.15,
-    0, 0, 255, 0.5, 0.2
+    255, 0, 0, 30, 0.20,
+    0, 255, 0, 45, 0.15,
+    0, 0, 255, 60, 0.10
   ]
 }
 ```
 
-Example – flash between red and blue:
+Shell command using `mosquitto_pub`:
 
-```json
-{
-  "strip": 0,
-  "effect": "flash",
-  "brightness": 255,
-  "speed": 1.0,
-  "params": [255, 0, 0, 0, 0, 255]
-}
+```sh
+mosquitto_pub -t "ul/<node-id>/cmd/ws/set" -m '{"strip":0,"effect":"triple_wave","brightness":200,"speed":0.5,"params":[255,0,0,30,0.20,0,255,0,45,0.15,0,0,255,60,0.10]}'
 ```
 
 Example – flash between red and blue:
@@ -123,9 +119,16 @@ Registered effects: `graceful_on`, `graceful_off`, `motion_swell`, `day_night_cu
 
 `ul/<node-id>/cmd/ota/check` – empty JSON `{}` triggers an OTA manifest check.
 
-## Status snapshot
+`ul/<node-id>/cmd/status` – request a full status snapshot.
 
-The node publishes its current state to `ul/<node-id>/evt/status` after every accepted command. The JSON payload contains details about each strip and channel. The `color` field is meaningful only when the corresponding strip effect is `solid`.
+## Status and snapshots
+
+Most commands produce a short acknowledgement on `ul/<node-id>/evt/status`:
+
+* General commands reply with `{ "status": "ok" }`.
+* `ws/set` echoes the chosen effect and its parameters.
+
+To retrieve the full device state, publish an empty JSON object to `ul/<node-id>/cmd/status`. The node then responds on `ul/<node-id>/evt/status` with a detailed snapshot describing each strip and channel. The `color` field is meaningful only when the corresponding strip effect is `solid`.
 
 ## Publishing from Python
 
