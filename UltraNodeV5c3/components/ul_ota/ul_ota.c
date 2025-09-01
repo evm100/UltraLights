@@ -52,8 +52,11 @@ void ul_ota_check_now(bool force)
         .http_client_init_cb = _http_client_init_cb,
     };
     esp_https_ota_handle_t handle = NULL;
-    if (esp_https_ota_begin(&ota_cfg, &handle) == ESP_OK) {
-        esp_err_t err = esp_https_ota_perform(handle);
+    esp_err_t err = esp_https_ota_begin(&ota_cfg, &handle);
+    if (err == ESP_OK) {
+        while ((err = esp_https_ota_perform(handle)) == ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
+            ;
+        }
         if (err == ESP_OK && esp_https_ota_is_complete_data_received(handle)) {
             if (esp_https_ota_finish(handle) == ESP_OK) {
                 ESP_LOGI(TAG, "OTA successful, rebooting...");
@@ -66,6 +69,6 @@ void ul_ota_check_now(bool force)
             esp_https_ota_abort(handle);
         }
     } else {
-        ESP_LOGE(TAG, "OTA begin failed");
+        ESP_LOGE(TAG, "OTA begin failed: %s", esp_err_to_name(err));
     }
 }
