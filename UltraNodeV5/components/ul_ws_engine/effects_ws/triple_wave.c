@@ -1,5 +1,4 @@
 #include "effect.h"
-#include "ul_ws_engine.h"
 #include "cJSON.h"
 #include <math.h>
 
@@ -31,24 +30,27 @@ void triple_wave_apply_params(int strip, const cJSON* params) {
     if (strip < 0 || strip > 1) return;
     if (!params || !cJSON_IsArray(params)) return;
 
-    int count = cJSON_GetArraySize(params);
+    int elems = cJSON_GetArraySize(params);
+    int count = elems / 5;
     if (count > MAX_WAVES) count = MAX_WAVES;
     s_wave_count[strip] = count;
 
     for (int i = 0; i < count; ++i) {
-        cJSON* jw = cJSON_GetArrayItem(params, i);
-        cJSON* jhex = cJSON_GetObjectItem(jw, "hex");
-        cJSON* jfreq = cJSON_GetObjectItem(jw, "freq");
-        cJSON* jvel = cJSON_GetObjectItem(jw, "velocity");
-        if (!jhex || !cJSON_IsString(jhex) ||
-            !jfreq || !cJSON_IsNumber(jfreq) ||
-            !jvel || !cJSON_IsNumber(jvel)) {
+        int idx = i * 5;
+        cJSON* jr = cJSON_GetArrayItem(params, idx);
+        cJSON* jg = cJSON_GetArrayItem(params, idx + 1);
+        cJSON* jb = cJSON_GetArrayItem(params, idx + 2);
+        cJSON* jfreq = cJSON_GetArrayItem(params, idx + 3);
+        cJSON* jvel = cJSON_GetArrayItem(params, idx + 4);
+        if (!jr || !jg || !jb || !jfreq || !jvel ||
+            !cJSON_IsNumber(jr) || !cJSON_IsNumber(jg) ||
+            !cJSON_IsNumber(jb) || !cJSON_IsNumber(jfreq) ||
+            !cJSON_IsNumber(jvel)) {
             continue;
         }
-        ul_ws_hex_to_rgb(jhex->valuestring,
-                         &s_waves[strip][i].r,
-                         &s_waves[strip][i].g,
-                         &s_waves[strip][i].b);
+        s_waves[strip][i].r = (uint8_t)jr->valuedouble;
+        s_waves[strip][i].g = (uint8_t)jg->valuedouble;
+        s_waves[strip][i].b = (uint8_t)jb->valuedouble;
         s_waves[strip][i].freq = (float)jfreq->valuedouble;
         s_waves[strip][i].velocity = (float)jvel->valuedouble;
     }
