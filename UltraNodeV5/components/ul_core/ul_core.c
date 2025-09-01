@@ -29,15 +29,26 @@ void ul_core_wifi_start_blocking(void)
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_ERROR_CHECK(esp_wifi_connect());
 
-    // Wait for IP
+    // Keep attempting to connect until we have an IP address
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     while (true) {
-        if (netif && esp_netif_is_netif_up(netif)) break;
-        vTaskDelay(pdMS_TO_TICKS(250));
+        ESP_LOGI(TAG, "Connecting to WiFi...");
+        esp_wifi_connect();
+
+        // Wait up to ~10 seconds for the interface to come up
+        for (int i = 0; i < 40; ++i) {
+            if (netif && esp_netif_is_netif_up(netif)) {
+                ESP_LOGI(TAG, "WiFi up");
+                return;
+            }
+            vTaskDelay(pdMS_TO_TICKS(250));
+        }
+
+        ESP_LOGW(TAG, "WiFi connect timeout, retrying");
+        esp_wifi_disconnect();
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    ESP_LOGI(TAG, "WiFi up");
 }
 
 void ul_core_sntp_start(void)
