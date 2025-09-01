@@ -1,4 +1,5 @@
 #include "effect.h"
+#include <stddef.h>
 
 void white_breathe_init(void);
 uint8_t white_breathe_render(int frame_idx);
