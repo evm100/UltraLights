@@ -5,7 +5,7 @@
 
 static int s_period_ms = 1000;
 
-void breathe_init(void) {
+void white_breathe_init(void) {
     s_period_ms = 1000;
 }
 
@@ -15,7 +15,7 @@ static int period_frames(void) {
     return frames;
 }
 
-uint8_t breathe_render(int frame_idx) {
+uint8_t white_breathe_render(int frame_idx) {
     int frames = period_frames();
     float t = (frame_idx % frames) / (float)frames;
     float v = 0.5f * (1.0f - cosf(2.0f * 3.1415926f * t));
@@ -24,7 +24,7 @@ uint8_t breathe_render(int frame_idx) {
     return (uint8_t)(v * 255.0f + 0.5f);
 }
 
-void breathe_apply_params(int ch, const cJSON* params) {
+void white_breathe_apply_params(int ch, const cJSON* params) {
     (void)ch;
     if (!params || !cJSON_IsArray(params)) return;
     const cJSON* p = cJSON_GetArrayItem(params, 0);
