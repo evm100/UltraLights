@@ -11,14 +11,15 @@
 typedef struct {
     uint8_t r, g, b;
     float wavelength;
-    float frequency;
+    float velocity;
 } wave_cfg_t;
 
 /* Fixed configuration for the three color waves */
 static const wave_cfg_t s_waves[NUM_WAVES] = {
-    {255, 0,   0, 30.0f, 0.10f}, // red wave
-    {0,   255, 0, 45.0f, 0.07f}, // green wave
-    {0,   0, 255, 60.0f, 0.05f}  // blue wave
+    {255, 0,   0, 30.0f, 0.20f}, // red wave
+    {0,   255, 0, 45.0f, 0.15f}, // green wave
+    {0,   0, 255, 60.0f, 0.10f}  // blue wave
+
 };
 
 void triple_wave_init(void) {
@@ -35,7 +36,7 @@ void triple_wave_render(uint8_t* frame_rgb, int pixels, int frame_idx) {
         float r = 0.0f, g = 0.0f, b = 0.0f;
         for (int w = 0; w < NUM_WAVES; ++w) {
             float pos = (float)i / s_waves[w].wavelength;
-            float phase = 2.0f * (float)M_PI * (pos + frame_idx * s_waves[w].frequency);
+            float phase = 2.0f * (float)M_PI * (pos - frame_idx * s_waves[w].velocity);
             float intensity = (sinf(phase) + 1.0f) * 0.5f; // 0..1
             r += intensity * s_waves[w].r;
             g += intensity * s_waves[w].g;
