@@ -23,7 +23,8 @@ typedef struct {
     uint8_t solid_r, solid_g, solid_b;
     uint8_t brightness; // 0..255
     bool power;
-    int frame_idx;
+    float speed;
+    float frame_pos;
     int pixels;
     led_strip_handle_t handle;
     uint8_t* frame; // rgb * pixels
@@ -35,23 +36,27 @@ static SemaphoreHandle_t s_refresh_sem;
 
 int ul_ws_effect_current_strip(void) { return s_current_strip_idx; }
 
-static ul_ws_wave_cfg_t s_triple_wave_cfg[2][3];
-
-void ul_ws_triple_wave_set(int strip, const ul_ws_wave_cfg_t waves[3]) {
-    if (strip < 0 || strip > 1) return;
-    for (int i = 0; i < 3; ++i) s_triple_wave_cfg[strip][i] = waves[i];
-}
-
-const ul_ws_wave_cfg_t* ul_ws_triple_wave_get(int strip) {
-    if (strip < 0 || strip > 1) return NULL;
-    return s_triple_wave_cfg[strip];
-}
+static ws_strip_t* get_strip(int idx);
 
 void ul_ws_apply_json(cJSON* root) {
     if (!root) return;
     int strip = 0;
     cJSON* jstrip = cJSON_GetObjectItem(root, "strip");
     if (jstrip && cJSON_IsNumber(jstrip)) strip = jstrip->valueint;
+
+    cJSON* jbri = cJSON_GetObjectItem(root, "brightness");
+    if (jbri && cJSON_IsNumber(jbri)) {
+        int bri = jbri->valueint;
+        if (bri < 0) bri = 0;
+        if (bri > 255) bri = 255;
+        ul_ws_set_brightness(strip, (uint8_t)bri);
+    }
+
+    cJSON* jspeed = cJSON_GetObjectItem(root, "speed");
+    if (jspeed && cJSON_IsNumber(jspeed)) {
+        ws_strip_t* s = get_strip(strip);
+        if (s) s->speed = (float)jspeed->valuedouble;
+    }
 
     const char* effect = NULL;
     cJSON* jeffect = cJSON_GetObjectItem(root, "effect");
@@ -66,60 +71,11 @@ void ul_ws_apply_json(cJSON* root) {
         }
     }
 
-    cJSON* jbri = cJSON_GetObjectItem(root, "brightness");
-    if (jbri && cJSON_IsNumber(jbri)) {
-        int bri = jbri->valueint;
-        if (bri < 0) bri = 0;
-        if (bri > 255) bri = 255;
-        ul_ws_set_brightness(strip, (uint8_t)bri);
-    }
-
-    if (!effect) return;
-
-    if (strcmp(effect, "solid") == 0) {
-        cJSON* jcolor = cJSON_GetObjectItem(root, "color");
-        if (jcolor && cJSON_IsArray(jcolor) && cJSON_GetArraySize(jcolor) >= 3) {
-            int r = cJSON_GetArrayItem(jcolor, 0)->valueint;
-            int g = cJSON_GetArrayItem(jcolor, 1)->valueint;
-            int b = cJSON_GetArrayItem(jcolor, 2)->valueint;
-            ul_ws_set_solid_rgb(strip, (uint8_t)r, (uint8_t)g, (uint8_t)b);
-        } else {
-            cJSON* jhex = cJSON_GetObjectItem(root, "hex");
-            if (jhex && cJSON_IsString(jhex)) {
-                uint8_t r, g, b;
-                if (ul_ws_hex_to_rgb(jhex->valuestring, &r, &g, &b)) {
-                    ul_ws_set_solid_rgb(strip, r, g, b);
-                } else {
-                    ESP_LOGW(TAG, "invalid hex color: %s", jhex->valuestring);
-                }
-            }
-        }
-    } else if (strcmp(effect, "triple_wave") == 0) {
-        cJSON* jwaves = cJSON_GetObjectItem(root, "waves");
-        if (jwaves && cJSON_IsArray(jwaves) && cJSON_GetArraySize(jwaves) == 3) {
-            ul_ws_wave_cfg_t waves[3];
-            bool ok = true;
-            for (int i = 0; i < 3; ++i) {
-                cJSON* jw = cJSON_GetArrayItem(jwaves, i);
-                cJSON* jhex = cJSON_GetObjectItem(jw, "hex");
-                cJSON* jfreq = cJSON_GetObjectItem(jw, "freq");
-                cJSON* jvel = cJSON_GetObjectItem(jw, "velocity");
-                if (!jhex || !cJSON_IsString(jhex) || !jfreq || !cJSON_IsNumber(jfreq) || !jvel || !cJSON_IsNumber(jvel)) {
-                    ok = false; break;
-                }
-                uint8_t r, g, b;
-                if (!ul_ws_hex_to_rgb(jhex->valuestring, &r, &g, &b)) { ok = false; break; }
-                waves[i].r = r; waves[i].g = g; waves[i].b = b;
-                waves[i].freq = (float)jfreq->valuedouble;
-                waves[i].velocity = (float)jvel->valuedouble;
-            }
-            if (ok) {
-                ul_ws_triple_wave_set(strip, waves);
-            } else {
-                ESP_LOGW(TAG, "invalid triple_wave params");
-            }
-        } else {
-            ESP_LOGW(TAG, "triple_wave requires 3 waves");
+    cJSON* jparams = cJSON_GetObjectItem(root, "params");
+    if (effect && jparams && cJSON_IsArray(jparams)) {
+        const ws_effect_t* eff = s_strips[strip].eff;
+        if (eff && eff->apply_params) {
+            eff->apply_params(strip, jparams);
         }
     }
 }
@@ -159,7 +115,8 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
     s_strips[idx].solid_r = s_strips[idx].solid_g = s_strips[idx].solid_b = 255;
     s_strips[idx].brightness = 255;
     s_strips[idx].power = true;
-    s_strips[idx].frame_idx = 0;
+    s_strips[idx].speed = 1.0f;
+    s_strips[idx].frame_pos = 0.0f;
 }
 
 static void apply_brightness(uint8_t* f, int count, uint8_t bri) {
@@ -176,15 +133,9 @@ static void render_one(ws_strip_t* s, int idx) {
     // Produce frame
     memset(s->frame, 0, s->pixels*3);
     if (s->eff && s->eff->render) {
-        s->eff->render(s->frame, s->pixels, s->frame_idx++);
-    }
-    // If solid: override with solid color
-    if (s->eff && strcmp(s->eff->name, "solid")==0) {
-        for (int i=0;i<s->pixels;i++) {
-            s->frame[3*i+0] = s->solid_r;
-            s->frame[3*i+1] = s->solid_g;
-            s->frame[3*i+2] = s->solid_b;
-        }
+        s->frame_pos += s->speed;
+        int frame_idx = (int)s->frame_pos;
+        s->eff->render(s->frame, s->pixels, frame_idx);
     }
 #if CONFIG_UL_GAMMA_ENABLE
     for (int i=0;i<s->pixels;i++) {
@@ -283,6 +234,7 @@ bool ul_ws_set_effect(int strip, const char* name) {
     const ws_effect_t* e = find_effect_by_name(name);
     if (!e) return false;
     s->eff = e;
+    s->frame_pos = 0.0f;
     if (s->eff->init) s->eff->init();
     return true;
 }
@@ -291,6 +243,12 @@ void ul_ws_set_solid_rgb(int strip, uint8_t r, uint8_t g, uint8_t b) {
     ws_strip_t* s = get_strip(strip);
     if (!s) return;
     s->solid_r = r; s->solid_g = g; s->solid_b = b;
+}
+
+void ul_ws_get_solid_rgb(int strip, uint8_t* r, uint8_t* g, uint8_t* b) {
+    ws_strip_t* s = get_strip(strip);
+    if (!s || !r || !g || !b) return;
+    *r = s->solid_r; *g = s->solid_g; *b = s->solid_b;
 }
 
 void ul_ws_set_brightness(int strip, uint8_t bri) {
