@@ -75,18 +75,6 @@ Example – flash between red and blue:
 }
 ```
 
-Example – flash between red and blue:
-
-```json
-{
-  "strip": 0,
-  "effect": "flash",
-  "brightness": 255,
-  "speed": 1.0,
-  "params": [255, 0, 0, 0, 0, 255]
-}
-```
-
 `ul/<node-id>/cmd/ws/power`
 
 ```json
