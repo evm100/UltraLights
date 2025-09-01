@@ -19,7 +19,6 @@ static const wave_cfg_t s_waves[NUM_WAVES] = {
     {255, 0,   0, 30.0f, 0.20f}, // red wave
     {0,   255, 0, 45.0f, 0.15f}, // green wave
     {0,   0, 255, 60.0f, 0.10f}  // blue wave
-
 };
 
 void triple_wave_init(void) {

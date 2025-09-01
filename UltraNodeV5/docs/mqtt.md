@@ -9,7 +9,7 @@ All topics are rooted at `ul/<node-id>/`. The node subscribes to commands addres
 | Direction | Topic pattern | Purpose |
 |-----------|---------------|---------|
 | → node | `ul/<node-id>/cmd/...` | Control commands |
-| ← node | `ul/<node-id>/evt/status` | Full status snapshot |
+| ← node | `ul/<node-id>/evt/status` | Status updates and snapshots |
 | ← node | `ul/<node-id>/evt/sensor/motion` | Motion events |
 
 `<node-id>` is set at build time by `ul_core_get_node_id()`.
@@ -31,6 +31,8 @@ Fields:
 | `brightness` | int 0‑255 | Overall brightness |
 | `speed` | number | Multiplier for frame advance (1.0 = normal) |
 | `params` | array | Effect‑specific parameters |
+
+On success, the node replies on `ul/<node-id>/evt/status` with the chosen effect and echoed parameters.
 
 The contents of `params` depend on the chosen effect:
 
@@ -107,9 +109,16 @@ Registered effects: `graceful_on`, `graceful_off`, `motion_swell`, `day_night_cu
 
 `ul/<node-id>/cmd/ota/check` – empty JSON `{}` triggers an OTA manifest check.
 
-## Status snapshot
+`ul/<node-id>/cmd/status` – request a full status snapshot.
 
-The node publishes its current state to `ul/<node-id>/evt/status` after every accepted command. The JSON payload contains details about each strip and channel. The `color` field is meaningful only when the corresponding strip effect is `solid`.
+## Status and snapshots
+
+Most commands produce a short acknowledgement on `ul/<node-id>/evt/status`:
+
+* General commands reply with `{ "status": "ok" }`.
+* `ws/set` echoes the chosen effect and its parameters.
+
+To retrieve the full device state, publish an empty JSON object to `ul/<node-id>/cmd/status`. The node then responds on `ul/<node-id>/evt/status` with a detailed snapshot describing each strip and channel. The `color` field is meaningful only when the corresponding strip effect is `solid`.
 
 ## Publishing from Python
 
