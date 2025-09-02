@@ -139,7 +139,6 @@ static void sensors_task(void*)
             ul_mqtt_publish_motion("ultra", "MOTION_FAR");
         }
 #endif
-
         bool pir_active = false;
         bool ultra_active = false;
 #if CONFIG_UL_PIR_ENABLED
