@@ -147,10 +147,16 @@ static void sensors_task(void*)
 #if CONFIG_UL_ULTRA_ENABLED
         ultra_active = is_active((int64_t*)&ultra_until);
 #endif
-
-        ul_motion_state_t new_state = UL_MOTION_NONE;
-        if (pir_active) new_state = UL_MOTION_DETECTED;
-        if (ultra_active) new_state = UL_MOTION_NEAR; // Near overrides PIR motion
+        // Determine overall motion state with ultrasonic "near" taking priority
+        // over the broader PIR detection.
+        ul_motion_state_t new_state;
+        if (ultra_active) {
+            new_state = UL_MOTION_NEAR;      // close-range detection wins
+        } else if (pir_active) {
+            new_state = UL_MOTION_DETECTED; // fallback to generic motion
+        } else {
+            new_state = UL_MOTION_NONE;
+        }
         apply_motion_state(new_state);
 
         bool active = pir_active || ultra_active;

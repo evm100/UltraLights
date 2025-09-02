@@ -112,7 +112,34 @@ Registered effects: `solid` and `breathe`.
 
 ### Sensor and OTA commands
 
-`ul/<node-id>/cmd/sensor/cooldown` – `{ "seconds": <int 10‑3600> }`
+`ul/<node-id>/cmd/sensor/cooldown` – `{ "seconds": <int 1‑3600> }`
+
+`ul/<node-id>/cmd/sensor/motion` – configure motion behaviour. Fields:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `pir_motion_time` | int | Seconds PIR detection persists |
+| `sonic_motion_time` | int | Seconds ultrasonic detection persists |
+| `sonic_threshold_distance` | int | Millimetres for `NEAR` trigger |
+| `motion_on_channel` | int | Legacy brightness override channel |
+| `state0/1/2` | object | Optional command payloads |
+
+Each `stateN` object may contain `ws` and `white` sub‑objects matching the
+payloads for `ws/set` and `white/set`. When the node enters a new motion state,
+these commands execute locally, enabling preset effects.
+
+Motion events are published on `ul/<node-id>/evt/sensor/motion` with payload
+`{"sid":"<pir|ultra>","state":"<MOTION_*>"}`. The PIR sensor emits
+`MOTION_DETECTED` when motion starts and `MOTION_CLEAR` when it ends. The
+ultrasonic sensor emits `MOTION_NEAR` when a distance is below
+`sonic_threshold_distance` and `MOTION_FAR` when that condition clears.
+Distances greater than the threshold are ignored and produce no event.
+
+Motion state meanings:
+
+1. `0` – no motion
+2. `1` – motion detected (PIR only)
+3. `2` – motion near (ultrasonic within threshold)
 
 `ul/<node-id>/cmd/sensor/motion` – configure motion behaviour. Fields:
 
