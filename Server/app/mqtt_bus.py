@@ -76,3 +76,4 @@ class MqttBus:
             for i in range(4):
                 self.ws_power(nid, i, False)
                 self.white_set(nid, i, "solid", 0)
+
