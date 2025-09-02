@@ -115,22 +115,14 @@ def api_white_set(node_id: str, payload: Dict[str, Any]):
     if not 0 <= brightness <= 255:
         raise HTTPException(400, "invalid brightness")
     params = payload.get("params")
-    if params is not None and not isinstance(params, dict):
-        raise HTTPException(400, "invalid params")
+    if params is not None:
+        if not (
+            isinstance(params, list)
+            and all(isinstance(p, (int, float)) for p in params)
+        ):
+            raise HTTPException(400, "invalid params")
+        params = [float(p) for p in params]
     get_bus().white_set(node_id, channel, effect, brightness, params)
-    return {"ok": True}
-
-@router.post("/api/node/{node_id}/white/power")
-def api_white_power(node_id: str, payload: Dict[str, Any]):
-    _valid_node(node_id)
-    try:
-        channel = int(payload.get("channel"))
-    except Exception:
-        raise HTTPException(400, "invalid channel")
-    if not 0 <= channel < 4:
-        raise HTTPException(400, "invalid channel")
-    on = bool(payload.get("on", True))
-    get_bus().white_power(node_id, channel, on)
     return {"ok": True}
 
 @router.post("/api/node/{node_id}/sensor/cooldown")

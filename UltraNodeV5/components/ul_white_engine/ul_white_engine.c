@@ -20,7 +20,6 @@ static const char* TAG = "ul_white";
 
 typedef struct {
     bool enabled;
-    bool power;
     int pwm_hz;
     int gpio;
     int ledc_ch;
@@ -65,7 +64,6 @@ static void ch_init(int idx, bool enabled, int gpio, int ledc_ch, int pwm_hz) {
     s_ch[idx].gpio = gpio;
     s_ch[idx].ledc_ch = ledc_ch;
     s_ch[idx].pwm_hz = pwm_hz;
-    s_ch[idx].power = true;
     s_ch[idx].brightness = 255;
     int n=0; const white_effect_t* t = ul_white_get_effects(&n);
     s_ch[idx].eff = &t[0];
@@ -94,7 +92,6 @@ static void white_task(void*)
                 v = s_ch[i].eff->render(s_ch[i].frame_idx++);
             }
             v = (v * s_ch[i].brightness) / 255;
-            if (!s_ch[i].power) v = 0;
             int duty = (v * ((1<<12)-1)) / 255;
             ledc_set_duty(UL_LEDC_SPEED_MODE, s_ch[i].ledc_ch, duty);
             ledc_update_duty(UL_LEDC_SPEED_MODE, s_ch[i].ledc_ch);
@@ -108,23 +105,15 @@ void ul_white_engine_start(void)
     // Channel 0..3 from Kconfig (only enabling those flagged)
 #if CONFIG_UL_WHT0_ENABLED
     ch_init(0, true, CONFIG_UL_WHT0_GPIO, CONFIG_UL_WHT0_LEDC_CH, CONFIG_UL_WHT0_PWM_HZ);
-#else
-    ch_init(0, false, 0, 0, 0);
 #endif
 #if CONFIG_UL_WHT1_ENABLED
     ch_init(1, true, CONFIG_UL_WHT1_GPIO, CONFIG_UL_WHT1_LEDC_CH, CONFIG_UL_WHT1_PWM_HZ);
-#else
-    ch_init(1, false, 0, 0, 0);
 #endif
 #if CONFIG_UL_WHT2_ENABLED
     ch_init(2, true, CONFIG_UL_WHT2_GPIO, CONFIG_UL_WHT2_LEDC_CH, CONFIG_UL_WHT2_PWM_HZ);
-#else
-    ch_init(2, false, 0, 0, 0);
 #endif
 #if CONFIG_UL_WHT3_ENABLED
     ch_init(3, true, CONFIG_UL_WHT3_GPIO, CONFIG_UL_WHT3_LEDC_CH, CONFIG_UL_WHT3_PWM_HZ);
-#else
-    ch_init(3, false, 0, 0, 0);
 #endif
     // Run at slightly lower priority than the pixel refresh task; on
     // multi-core targets this pins to core 1 so core 0 can handle network
@@ -153,13 +142,6 @@ bool ul_white_set_brightness(int ch, uint8_t bri) {
     white_ch_t* c = get_ch(ch);
     if (!c) return false;
     c->brightness = bri;
-    return true;
-}
-
-bool ul_white_power(int ch, bool on) {
-    white_ch_t* c = get_ch(ch);
-    if (!c) return false;
-    c->power = on;
     return true;
 }
 
@@ -203,7 +185,6 @@ bool ul_white_get_status(int ch, ul_white_ch_status_t* out) {
     if (!out) return false;
     if (!c) { memset(out, 0, sizeof(*out)); return false; }
     out->enabled = c->enabled;
-    out->power = c->power;
     out->brightness = c->brightness;
     out->pwm_hz = c->pwm_hz;
     out->gpio = c->gpio;

@@ -19,7 +19,6 @@ static bool s_ready = false;
 
 // JSON helpers (defined later)
 static bool j_is_int_in(cJSON* obj, const char* key, int minv, int maxv, int* out);
-static bool j_is_bool(cJSON* obj, const char* key, bool* out);
 
 static int starts_with(const char* s, const char* pfx) {
     return strncmp(s, pfx, strlen(pfx)) == 0;
@@ -72,7 +71,6 @@ static void publish_status_snapshot(void) {
             cJSON* o = cJSON_CreateObject();
             cJSON_AddNumberToObject(o, "channel", i);
             cJSON_AddBoolToObject(o, "enabled", st.enabled);
-            cJSON_AddBoolToObject(o, "power", st.power);
             cJSON_AddStringToObject(o, "effect", st.effect);
             cJSON_AddNumberToObject(o, "brightness", st.brightness);
             cJSON_AddNumberToObject(o, "gpio", st.gpio);
@@ -186,13 +184,6 @@ static bool j_is_int_in(cJSON* obj, const char* key, int minv, int maxv, int* ou
     if (out) *out = v;
     return true;
 }
-static bool j_is_bool(cJSON* obj, const char* key, bool* out) {
-    cJSON* j = cJSON_GetObjectItem(obj, key);
-    if (!j || !cJSON_IsBool(j)) return false;
-    if (out) *out = cJSON_IsTrue(j);
-    return true;
-}
-
 static void handle_cmd_sensor_cooldown(cJSON* root) {
 
     cJSON* js = cJSON_GetObjectItem(root, "seconds");
@@ -205,12 +196,6 @@ static void handle_cmd_sensor_cooldown(cJSON* root) {
 static void handle_cmd_white_set(cJSON* root) {
     ul_white_apply_json(root);
 }
-static void handle_cmd_white_power(cJSON* root) {
-    int ch=0; j_is_int_in(root, "channel", 0, 3, &ch);
-    bool on=false; if (j_is_bool(root, "on", &on)) ul_white_power(ch, on);
-    ul_mqtt_publish_status();
-}
-
 static void on_message(esp_mqtt_event_handle_t event)
 {
     // topic expected: ul/<node>/cmd/...
@@ -256,7 +241,7 @@ static void on_message(esp_mqtt_event_handle_t event)
             handle_cmd_sensor_cooldown(root);
         } else if (starts_with(sub, "ota/check")) { ul_mqtt_publish_status();
             ul_ota_check_now(true); publish_status_snapshot();
-        } else if (starts_with(sub, "white/set")) { handle_cmd_white_set(root); ul_mqtt_publish_status(); } else if (starts_with(sub, "white/power")) { handle_cmd_white_power(root); } else if (starts_with(sub, "status")) { ul_mqtt_publish_status_now(); } else {
+        } else if (starts_with(sub, "white/set")) { handle_cmd_white_set(root); ul_mqtt_publish_status(); } else if (starts_with(sub, "status")) { ul_mqtt_publish_status_now(); } else {
             ESP_LOGW(TAG, "Unknown cmd path: %.*s", cmdlen, cmdroot);
         }
     }

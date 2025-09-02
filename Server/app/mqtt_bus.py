@@ -47,22 +47,18 @@ class MqttBus:
         self,
         node_id: str,
         channel: int,
-        effect: Optional[str] = None,
-        brightness: Optional[int] = None,
-        params: Optional[Dict[str, object]] = None,
+        effect: str,
+        brightness: int,
+        params: Optional[List[float]] = None,
     ):
-        msg: Dict[str, object] = {"channel": int(channel)}
-        if effect:
-            msg["effect"] = effect
-        if brightness is not None:
-            msg["brightness"] = int(brightness)
+        msg: Dict[str, object] = {
+            "channel": int(channel),
+            "effect": effect,
+            "brightness": int(brightness),
+        }
         if params:
             msg["params"] = params
         self.pub(topic_cmd(node_id, "white/set"), msg)
-
-    def white_power(self, node_id: str, channel: int, on: bool):
-        msg = {"channel": int(channel), "on": bool(on)}
-        self.pub(topic_cmd(node_id, "white/power"), msg)
 
     # ---- Sensor commands ----
     def sensor_cooldown(self, node_id: str, seconds: int):
@@ -79,4 +75,4 @@ class MqttBus:
             nid = n["id"]
             for i in range(4):
                 self.ws_power(nid, i, False)
-                self.white_power(nid, i, False)
+                self.white_set(nid, i, "solid", 0)
