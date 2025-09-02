@@ -91,6 +91,7 @@ static void publish_status_snapshot(void) {
     cJSON_AddBoolToObject(jsens, "ultra_enabled", ss.ultra_enabled);
     cJSON_AddBoolToObject(jsens, "pir_active", ss.pir_active);
     cJSON_AddBoolToObject(jsens, "ultra_active", ss.ultra_active);
+    cJSON_AddNumberToObject(jsens, "motion_state", ss.motion_state);
     cJSON_AddItemToObject(root, "sensors", jsens);
 
     // OTA (static fields from Kconfig)
@@ -208,6 +209,21 @@ static void handle_cmd_sensor_motion(cJSON* root) {
     if (j_is_int_in(root, "motion_on_channel", -1, 3, &v)) {
         ul_sensors_set_motion_on_channel(v);
     }
+    for (int i = 0; i < 3; ++i) {
+        char key[8];
+        snprintf(key, sizeof(key), "state%d", i);
+        cJSON* st = cJSON_GetObjectItem(root, key);
+        if (st && cJSON_IsObject(st)) {
+            char* ws = NULL; char* white = NULL;
+            cJSON* jws = cJSON_GetObjectItem(st, "ws");
+            if (jws) ws = cJSON_PrintUnformatted(jws);
+            cJSON* jw = cJSON_GetObjectItem(st, "white");
+            if (jw) white = cJSON_PrintUnformatted(jw);
+            ul_sensors_set_motion_command((ul_motion_state_t)i, ws, white);
+            if (ws) cJSON_free(ws);
+            if (white) cJSON_free(white);
+        }
+    }
     ul_mqtt_publish_status();
 }
 
@@ -314,3 +330,21 @@ void ul_mqtt_start(void)
 bool ul_mqtt_is_ready(void) { return s_ready; }
 
 void ul_mqtt_publish_status_now(void){ publish_status_snapshot(); }
+
+void ul_mqtt_run_local(const char* path, const char* json) {
+    if (!path || !json) return;
+    cJSON* root = cJSON_Parse(json);
+    if (!root) return;
+    if (starts_with(path, "ws/set")) {
+        handle_cmd_ws_set(root);
+    } else if (starts_with(path, "ws/power")) {
+        handle_cmd_ws_power(root);
+    } else if (starts_with(path, "white/set")) {
+        handle_cmd_white_set(root);
+    } else if (starts_with(path, "sensor/motion")) {
+        handle_cmd_sensor_motion(root);
+    } else if (starts_with(path, "sensor/cooldown")) {
+        handle_cmd_sensor_cooldown(root);
+    }
+    cJSON_Delete(root);
+}
