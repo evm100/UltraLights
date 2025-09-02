@@ -60,6 +60,8 @@ WS_PARAM_DEFS = {
 }
 
 WHITE_PARAM_DEFS = {
-    "breathe": [{"id": "period_ms", "type": "slider", "min": 100, "max": 5000, "value": 1000}],
+    "breathe": [
+        {"type": "slider", "label": "Period (ms)", "min": 100, "max": 5000, "value": 1000},
+    ],
 }
 

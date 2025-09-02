@@ -25,28 +25,73 @@
   </div>
 </section>
 <script>
-async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
 const WHITE_PARAM_DEFS={{ white_param_defs|tojson }};
-const ch=document.getElementById('wChannel');
-const eff=document.getElementById('wEffect');
-const bri=document.getElementById('wBri');
-const wParams=document.getElementById('wParams');
+async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
+const chEl=document.getElementById('wChannel');
+const effEl=document.getElementById('wEffect');
+const briEl=document.getElementById('wBri');
+const paramsEl=document.getElementById('wParams');
 
-function renderParams(){wParams.innerHTML='';const defs=WHITE_PARAM_DEFS[eff.value]||[];defs.forEach(d=>{let wrapper=document.createElement('div');wrapper.dataset.id=d.id;if(d.type==='slider'){const label=document.createElement('label');label.className='text-xs opacity-70';label.textContent=d.id;const input=document.createElement('input');input.type='range';input.min=d.min;input.max=d.max;input.value=d.value;input.id='wParam_'+d.id;wrapper.appendChild(label);wrapper.appendChild(input);}else if(d.type==='toggle'){const label=document.createElement('label');label.className='flex items-center gap-2';const input=document.createElement('input');input.type='checkbox';input.id='wParam_'+d.id;label.appendChild(input);label.appendChild(document.createTextNode(d.id));wrapper.appendChild(label);}wParams.appendChild(wrapper);});}
-eff.onchange=renderParams;
+function renderParams(){
+  paramsEl.innerHTML='';
+  const defs=WHITE_PARAM_DEFS[effEl.value]||[];
+  defs.forEach((d,idx)=>{
+    const wrap=document.createElement('div');
+    if(d.label){
+      const lab=document.createElement('label');
+      lab.className='text-xs opacity-70';
+      lab.textContent=d.label;
+      wrap.appendChild(lab);
+    }
+    let input=document.createElement('input');
+    if(d.type==='slider'){
+      input.type='range';
+      input.min=d.min;input.max=d.max;input.value=d.value;
+    }else if(d.type==='toggle'){
+      input.type='checkbox';
+      input.checked=!!d.value;
+    }else{
+      input.type='number';
+      if(d.min!==undefined)input.min=d.min;
+      if(d.max!==undefined)input.max=d.max;
+      if(d.step!==undefined)input.step=d.step;
+      input.value=d.value!==undefined?d.value:'';
+    }
+    input.dataset.index=idx;
+    wrap.appendChild(input);
+    paramsEl.appendChild(wrap);
+  });
+}
 
-function collectParams(){const defs=WHITE_PARAM_DEFS[eff.value]||[];const params={};defs.forEach(d=>{const el=document.getElementById('wParam_'+d.id);if(d.type==='slider'){params[d.id]=Number(el.value);}else if(d.type==='toggle'){params[d.id]=el.checked;}});return params;}
+effEl.onchange=renderParams;
+
+function collectParams(){
+  const defs=WHITE_PARAM_DEFS[effEl.value]||[];
+  const out=[];
+  defs.forEach((d,idx)=>{
+    const input=paramsEl.querySelector(`[data-index="${idx}"]`);
+    if(!input)return;
+    if(d.type==='slider'){
+      out.push(parseInt(input.value,10));
+    }else if(d.type==='toggle'){
+      out.push(input.checked?1:0);
+    }else{
+      out.push(parseFloat(input.value));
+    }
+  });
+  return out;
+}
 
 document.getElementById('wSet').onclick=async()=>{
-  const channel=parseInt(ch.value,10);
+  const channel=parseInt(chEl.value,10);
   if(Number.isNaN(channel)){alert('Invalid channel');return;}
-  const effect=eff.value.trim();
+  const effect=effEl.value.trim();
   if(!effect){alert('Select an effect');return;}
-  const brightness=parseInt(bri.value,10);
+  const brightness=parseInt(briEl.value,10);
   if(Number.isNaN(brightness)){alert('Invalid brightness');return;}
   const params=collectParams();
-  const msg={channel, effect, brightness};
-  if(Object.keys(params).length)msg.params=params;
+  const msg={channel,effect,brightness};
+  if(params.length)msg.params=params;
   await post(`/api/node/{{ node.id }}/white/set`,msg);
 };
 </script>

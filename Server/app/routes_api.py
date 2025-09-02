@@ -115,8 +115,13 @@ def api_white_set(node_id: str, payload: Dict[str, Any]):
     if not 0 <= brightness <= 255:
         raise HTTPException(400, "invalid brightness")
     params = payload.get("params")
-    if params is not None and not isinstance(params, dict):
-        raise HTTPException(400, "invalid params")
+    if params is not None:
+        if not (
+            isinstance(params, list)
+            and all(isinstance(p, (int, float)) for p in params)
+        ):
+            raise HTTPException(400, "invalid params")
+        params = [float(p) for p in params]
     get_bus().white_set(node_id, channel, effect, brightness, params)
     return {"ok": True}
 
