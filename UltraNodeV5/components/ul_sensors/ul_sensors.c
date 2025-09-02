@@ -139,7 +139,6 @@ static void sensors_task(void*)
             ul_mqtt_publish_motion("ultra", "MOTION_FAR");
         }
 #endif
-
         bool pir_active = false;
         bool ultra_active = false;
 #if CONFIG_UL_PIR_ENABLED
@@ -148,7 +147,6 @@ static void sensors_task(void*)
 #if CONFIG_UL_ULTRA_ENABLED
         ultra_active = is_active((int64_t*)&ultra_until);
 #endif
-
         // Determine overall motion state with ultrasonic "near" taking priority
         // over the broader PIR detection.
         ul_motion_state_t new_state;

@@ -94,6 +94,7 @@ menu "Sensors"
         int "Sensor cooldown (seconds)"
         range 1 3600
         default 1
+
     config UL_SENSOR_POLL_MS
         int "Sensor poll interval (ms)"
         range 50 1000
