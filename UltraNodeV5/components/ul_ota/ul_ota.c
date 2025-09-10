@@ -15,14 +15,12 @@ static const char* TAG = "ul_ota";
 
 static void log_ota_error_hint(esp_err_t err, esp_https_ota_handle_t handle)
 {
+    (void)handle; // unused on esp-idf versions without error-handle API
+
     int esp_tls_err = 0;
     int cert_verify_flags = 0;
-    if (handle) {
-        esp_tls_error_handle_t tls_handle = esp_https_ota_get_error_handle(handle);
-        if (tls_handle) {
-            esp_tls_get_and_clear_last_error(tls_handle, &esp_tls_err, NULL, &cert_verify_flags);
-        }
-    }
+
+    esp_tls_get_and_clear_last_error(NULL, &esp_tls_err, &cert_verify_flags);
 
     if (esp_tls_err || cert_verify_flags) {
         ESP_LOGW(TAG, "TLS err=%d, flags=0x%x", esp_tls_err, cert_verify_flags);
@@ -44,9 +42,6 @@ static void log_ota_error_hint(esp_err_t err, esp_https_ota_handle_t handle)
         case ESP_ERR_HTTP_CONNECT:
             ESP_LOGW(TAG, "Connection failed. Verify server URL and network reachability");
             ESP_LOGW(TAG, "If using a local OTA server, ensure your router supports NAT hairpinning or set UL_OTA_SERVER_HOST to the LAN IP");
-            break;
-        case ESP_ERR_HTTPS_OTA_FAILED:
-            ESP_LOGW(TAG, "Generic HTTPS OTA failure. Check certificate bundle and URL");
             break;
         case ESP_ERR_NO_MEM:
             ESP_LOGW(TAG, "Not enough memory for OTA operation");
