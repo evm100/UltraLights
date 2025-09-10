@@ -29,11 +29,11 @@ const WHITE_PARAM_DEFS={{ white_param_defs|tojson }};
 async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
 const chEl=document.getElementById('wChannel');
 const effEl=document.getElementById('wEffect');
-const briEl=document.getElementById('wBri');
-const paramsEl=document.getElementById('wParams');
+const wBriEl=document.getElementById('wBri');
+const wParamsEl=document.getElementById('wParams');
 
 function renderParams(){
-  paramsEl.innerHTML='';
+  wParamsEl.innerHTML='';
   const defs=WHITE_PARAM_DEFS[effEl.value]||[];
   defs.forEach((d,idx)=>{
     const wrap=document.createElement('div');
@@ -59,7 +59,7 @@ function renderParams(){
     }
     input.dataset.index=idx;
     wrap.appendChild(input);
-    paramsEl.appendChild(wrap);
+    wParamsEl.appendChild(wrap);
   });
 }
 
@@ -69,7 +69,7 @@ function collectParams(){
   const defs=WHITE_PARAM_DEFS[effEl.value]||[];
   const out=[];
   defs.forEach((d,idx)=>{
-    const input=paramsEl.querySelector(`[data-index="${idx}"]`);
+    const input=wParamsEl.querySelector(`[data-index="${idx}"]`);
     if(!input)return;
     if(d.type==='slider'){
       out.push(parseInt(input.value,10));
@@ -87,7 +87,7 @@ document.getElementById('wSet').onclick=async()=>{
   if(Number.isNaN(channel)){alert('Invalid channel');return;}
   const effect=effEl.value.trim();
   if(!effect){alert('Select an effect');return;}
-  const brightness=parseInt(briEl.value,10);
+  const brightness=parseInt(wBriEl.value,10);
   if(Number.isNaN(brightness)){alert('Invalid brightness');return;}
   const params=collectParams();
   const msg={channel,effect,brightness};
