@@ -45,6 +45,17 @@ menu "OTA"
     config UL_OTA_ROLLBACK_ENABLE
         bool "Enable rollback"
         default y
+    config UL_OTA_SERVER_HOST
+        string "Override OTA server host/IP"
+        default ""
+        help
+            If set, this host or IP is used instead of the one in UL_OTA_MANIFEST_URL.
+            Useful when your router lacks NAT hairpinning and the firmware server is on the LAN.
+    config UL_OTA_COMMON_NAME
+        string "OTA server TLS common name"
+        default "lights.evm100.org"
+        help
+            Expected common name in the TLS certificate of the OTA server.
 endmenu
 
 menu "Engine"
