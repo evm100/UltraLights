@@ -41,6 +41,10 @@ static void service_manager_task(void *ctx) {
       } else {
         if (s_services_running) {
           ul_mqtt_stop();
+          ul_ws_engine_stop();
+          ul_white_engine_stop();
+          ul_sensors_stop();
+          ul_ota_stop();
           s_services_running = false;
         }
         ESP_LOGW(TAG, "Network disconnected");
