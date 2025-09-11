@@ -38,9 +38,24 @@ const briEl=document.getElementById('wsBri');
 const speedEl=document.getElementById('wsSpeed');
 const paramsEl=document.getElementById('wsParams');
 
+// Throttled sender for real-time updates (max ~10 Hz)
+let lastSend=0;
+let pendingSend=null;
+function scheduleSend(){
+  const now=Date.now();
+  const delay=100-(now-lastSend);
+  if(delay<=0){
+    lastSend=now;
+    sendCmd();
+  }else{
+    clearTimeout(pendingSend);
+    pendingSend=setTimeout(()=>{lastSend=Date.now();sendCmd();},delay);
+  }
+}
+
 function renderParams(){
   paramsEl.innerHTML='';
-  const defs=WS_PARAM_DEFS[effectEl.value]||[];
+  const defs=WS_PARAM_DEFS[effectEl.value.trim()]||[];
   defs.forEach((d,idx)=>{
     const wrap=document.createElement('div');
     if(d.label){
@@ -53,6 +68,7 @@ function renderParams(){
     if(d.type==='color'){
       input.type='color';
       input.value=d.value||'#ffffff';
+      input.addEventListener('input',scheduleSend);
     }else if(d.type==='slider'){
       input.type='range';
       input.min=d.min;input.max=d.max;input.value=d.value;
@@ -63,7 +79,6 @@ function renderParams(){
       if(d.step!==undefined)input.step=d.step;
       input.value=d.value!==undefined?d.value:'';
     }
-    input.dataset.index=idx;
     wrap.appendChild(input);
     paramsEl.appendChild(wrap);
   });
@@ -71,10 +86,11 @@ function renderParams(){
 effectEl.onchange=renderParams;
 
 function collectParams(){
-  const defs=WS_PARAM_DEFS[effectEl.value]||[];
+  const defs=WS_PARAM_DEFS[effectEl.value.trim()]||[];
+  const inputs=paramsEl.querySelectorAll('input');
   const out=[];
   defs.forEach((d,idx)=>{
-    const input=paramsEl.querySelector(`[data-index="${idx}"]`);
+    const input=inputs[idx];
     if(!input)return;
     if(d.type==='color'){
       const rgb=hexToRgb(input.value);
@@ -88,19 +104,20 @@ function collectParams(){
   return out;
 }
 
-document.getElementById('wsSet').onclick=async()=>{
+function sendCmd(){
   const strip=parseInt(stripEl.value,10);
-  if(Number.isNaN(strip)){alert('Invalid strip');return;}
+  if(Number.isNaN(strip))return;
   const eff=effectEl.value.trim();
-  if(!eff){alert('Select an effect');return;}
+  if(!eff)return;
   const bri=parseInt(briEl.value,10);
-  if(Number.isNaN(bri)){alert('Invalid brightness');return;}
+  if(Number.isNaN(bri))return;
   const speed=parseInt(speedEl.value,10)/100;
   const params=collectParams();
-  const msg={strip,effect:eff,brightness:bri,speed};
-  if(params.length)msg.params=params;
-  await post(`/api/node/{{ node.id }}/ws/set`,msg);
-};
+  const msg={strip,effect:eff,brightness:bri,speed,params};
+  post(`/api/node/{{ node.id }}/ws/set`,msg);
+}
+
+document.getElementById('wsSet').onclick=sendCmd;
 
 document.getElementById('wsOn').onclick=async()=>{
   const s=parseInt(stripEl.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:true});
