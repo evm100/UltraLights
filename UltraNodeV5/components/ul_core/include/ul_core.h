@@ -1,7 +1,7 @@
 #pragma once
 #include "esp_err.h"
-#include <stdbool.h>
 #include "freertos/FreeRTOS.h"
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -11,7 +11,10 @@ void ul_core_wifi_start(void);
 bool ul_core_wait_for_ip(TickType_t timeout);
 bool ul_core_is_connected(void);
 void ul_core_sntp_start(void);
-const char* ul_core_get_node_id(void);
+const char *ul_core_get_node_id(void);
+
+typedef void (*ul_core_conn_cb_t)(bool connected, void *ctx);
+void ul_core_register_connectivity_cb(ul_core_conn_cb_t cb, void *ctx);
 
 #ifdef __cplusplus
 }
