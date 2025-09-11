@@ -1,6 +1,6 @@
 import threading
 import json
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 import paho.mqtt.client as paho
 from .config import settings
 from . import registry
@@ -26,7 +26,7 @@ class MqttBus:
         effect: str,
         brightness: int,
         speed: float,
-        params: Optional[List[float]] = None,
+        params: Optional[List[Union[float, str]]] = None,
     ):
         msg: Dict[str, object] = {
             "strip": int(strip),

@@ -97,8 +97,12 @@ function collectParams(){
     const input=paramsEl.querySelector(`[data-index="${idx}"]`);
     if(!input)return;
     if(d.type==='color'){
-      const rgb=hexToRgb(input.value);
-      out.push(...rgb);
+      if(effectEl.value==='solid'){
+        out.push(input.value);
+      }else{
+        const rgb=hexToRgb(input.value);
+        out.push(...rgb);
+      }
     }else if(d.type==='slider'){
       out.push(parseInt(input.value,10));
     }else{
