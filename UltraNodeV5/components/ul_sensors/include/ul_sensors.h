@@ -5,6 +5,7 @@ extern "C" {
 #endif
 
 void ul_sensors_start(void);
+void ul_sensors_stop(void);
 void ul_sensors_set_cooldown(int seconds); // legacy: sets both motion times
 void ul_sensors_set_pir_motion_time(int seconds);
 void ul_sensors_set_sonic_motion_time(int seconds);
