@@ -170,7 +170,7 @@ void ul_white_apply_json(cJSON* root) {
     }
 
     cJSON* jparams = cJSON_GetObjectItem(root, "params");
-    if (effect && jparams && cJSON_IsArray(jparams)) {
+    if (jparams && cJSON_IsArray(jparams)) {
         white_ch_t* c = get_ch(ch);
         if (c && c->eff && c->eff->apply_params) {
             c->eff->apply_params(ch, jparams);
