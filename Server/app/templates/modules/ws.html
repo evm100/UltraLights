@@ -82,6 +82,11 @@ function renderParams(){
     wrap.appendChild(input);
     paramsEl.appendChild(wrap);
   });
+  // Attach real-time color updates for solid effect
+  if(effectEl.value==='solid'){
+    const colorInput=paramsEl.querySelector('input[type="color"]');
+    if(colorInput)colorInput.addEventListener('input',scheduleSend);
+  }
 }
 effectEl.onchange=renderParams;
 
@@ -93,8 +98,12 @@ function collectParams(){
     const input=inputs[idx];
     if(!input)return;
     if(d.type==='color'){
-      const rgb=hexToRgb(input.value);
-      out.push(...rgb);
+      if(effectEl.value==='solid'){
+        out.push(input.value);
+      }else{
+        const rgb=hexToRgb(input.value);
+        out.push(...rgb);
+      }
     }else if(d.type==='slider'){
       out.push(parseInt(input.value,10));
     }else{
