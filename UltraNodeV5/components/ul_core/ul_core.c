@@ -8,15 +8,52 @@
 #include <string.h>
 #include <time.h>
 #include "esp_netif_sntp.h"
+#include "freertos/event_groups.h"
 
 static const char *TAG = "ul_core";
 
 static char s_node_id[32] = CONFIG_UL_NODE_ID;
 
+static EventGroupHandle_t s_wifi_event_group;
+#define WIFI_CONNECTED_BIT BIT0
+#define WIFI_FAIL_BIT BIT1
+#define WIFI_MAX_RETRY 5
+#define WIFI_MAX_BACKOFF_MS 30000
+
 const char* ul_core_get_node_id(void) { return s_node_id; }
 
-void ul_core_wifi_start_blocking(void)
+static void wifi_event_handler(void* arg, esp_event_base_t event_base,
+                               int32_t event_id, void* event_data)
 {
+    static int retry_num = 0;
+    static int backoff_ms = 1000;
+
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        retry_num = 0;
+        backoff_ms = 1000;
+        esp_wifi_connect();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        if (retry_num < WIFI_MAX_RETRY) {
+            vTaskDelay(pdMS_TO_TICKS(backoff_ms));
+            esp_wifi_connect();
+            retry_num++;
+            backoff_ms = backoff_ms * 2;
+            if (backoff_ms > WIFI_MAX_BACKOFF_MS) backoff_ms = WIFI_MAX_BACKOFF_MS;
+        } else {
+            xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+        }
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *event = (ip_event_got_ip_t*) event_data;
+        ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+        retry_num = 0;
+        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+    }
+}
+
+void ul_core_wifi_start(void)
+{
+    s_wifi_event_group = xEventGroupCreate();
+
     esp_netif_create_default_wifi_sta();
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -26,29 +63,21 @@ void ul_core_wifi_start_blocking(void)
     strncpy((char*)sta_cfg.sta.password, CONFIG_UL_WIFI_PSK, sizeof(sta_cfg.sta.password)-1);
     sta_cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
 
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_START, &wifi_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &wifi_event_handler, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL));
+
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
+}
 
-    // Keep attempting to connect until we have an IP address
-    esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    while (true) {
-        ESP_LOGI(TAG, "Connecting to WiFi...");
-        esp_wifi_connect();
-
-        // Wait up to ~10 seconds for the interface to come up
-        for (int i = 0; i < 40; ++i) {
-            if (netif && esp_netif_is_netif_up(netif)) {
-                ESP_LOGI(TAG, "WiFi up");
-                return;
-            }
-            vTaskDelay(pdMS_TO_TICKS(250));
-        }
-
-        ESP_LOGW(TAG, "WiFi connect timeout, retrying");
-        esp_wifi_disconnect();
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+bool ul_core_wait_for_ip(TickType_t timeout)
+{
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+                                           WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                           pdFALSE, pdFALSE, timeout);
+    return (bits & WIFI_CONNECTED_BIT) != 0;
 }
 
 void ul_core_sntp_start(void)

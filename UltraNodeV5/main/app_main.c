@@ -23,7 +23,8 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    ul_core_wifi_start_blocking();
+    ul_core_wifi_start();
+    ul_core_wait_for_ip(pdMS_TO_TICKS(10000));
     ul_core_sntp_start();
 
     ul_mqtt_start();
