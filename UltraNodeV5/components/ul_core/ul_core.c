@@ -19,7 +19,6 @@ static char s_node_id[32] = CONFIG_UL_NODE_ID;
 static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
-#define WIFI_MAX_RETRY 5
 #define WIFI_MAX_BACKOFF_MS 30000
 
 static esp_timer_handle_t s_reconnect_timer;
@@ -37,6 +36,7 @@ void ul_core_register_connectivity_cb(ul_core_conn_cb_t cb, void *ctx) {
 }
 
 static void wifi_reconnect_timer_cb(void *arg) {
+  xEventGroupClearBits(s_wifi_event_group, WIFI_FAIL_BIT);
   esp_wifi_connect();
   s_retry_num++;
   s_backoff_ms = s_backoff_ms * 2;
@@ -55,12 +55,9 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
     xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     if (s_conn_cb)
       s_conn_cb(false, s_conn_ctx);
-    if (s_retry_num < WIFI_MAX_RETRY) {
-      esp_timer_stop(s_reconnect_timer);
-      esp_timer_start_once(s_reconnect_timer, s_backoff_ms * 1000);
-    } else {
-      xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
-    }
+    xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+    esp_timer_stop(s_reconnect_timer);
+    esp_timer_start_once(s_reconnect_timer, s_backoff_ms * 1000);
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
     ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
