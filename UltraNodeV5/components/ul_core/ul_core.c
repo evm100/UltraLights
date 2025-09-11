@@ -106,10 +106,24 @@ void ul_core_wifi_start(void) {
 }
 
 bool ul_core_wait_for_ip(TickType_t timeout) {
-  EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
-                                         WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                                         pdFALSE, pdFALSE, timeout);
-  return (bits & WIFI_CONNECTED_BIT) != 0;
+  TickType_t start = xTaskGetTickCount();
+  TickType_t remaining = timeout;
+  while (1) {
+    EventBits_t bits = xEventGroupWaitBits(
+        s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE,
+        pdFALSE, remaining);
+    if (bits & WIFI_CONNECTED_BIT)
+      return true;
+    if (bits & WIFI_FAIL_BIT) {
+      xEventGroupClearBits(s_wifi_event_group, WIFI_FAIL_BIT);
+      TickType_t now = xTaskGetTickCount();
+      if (now - start >= timeout)
+        return false;
+      remaining = timeout - (now - start);
+      continue;
+    }
+    return false;
+  }
 }
 
 bool ul_core_is_connected(void) {
