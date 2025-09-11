@@ -200,8 +200,6 @@ static bool j_is_int_in(cJSON *obj, const char *key, int minv, int maxv,
   return true;
 }
 static void handle_cmd_sensor_cooldown(cJSON *root) {
-
-  cJSON *js = cJSON_GetObjectItem(root, "seconds");
   int s;
   if (j_is_int_in(root, "seconds", 10, 3600, &s)) {
     ul_sensors_set_cooldown(s);

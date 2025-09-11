@@ -11,14 +11,16 @@
 #include "ul_white_engine.h"
 #include <string.h>
 
-static const char* TAG = "ul_sensors";
-
 static volatile int pir_motion_time_s = CONFIG_UL_SENSOR_COOLDOWN_S;
 static volatile int sonic_motion_time_s = CONFIG_UL_SENSOR_COOLDOWN_S;
 static volatile int sonic_threshold_mm = CONFIG_UL_ULTRA_DISTANCE_MM;
 static volatile int motion_on_channel = -1;
+#if CONFIG_UL_PIR_ENABLED
 static int64_t pir_until = 0;
+#endif
+#if CONFIG_UL_ULTRA_ENABLED
 static int64_t ultra_until = 0;
+#endif
 static uint8_t saved_brightness = 0;
 static bool brightness_override = false;
 static ul_motion_state_t current_state = UL_MOTION_NONE;
@@ -57,6 +59,7 @@ static void apply_motion_state(ul_motion_state_t st) {
     }
 }
 
+#if CONFIG_UL_PIR_ENABLED || CONFIG_UL_ULTRA_ENABLED
 static void set_until(volatile int64_t* until_var, int seconds) {
     *until_var = esp_timer_get_time() + (int64_t)seconds * 1000000LL;
 }
@@ -64,6 +67,7 @@ static void set_until(volatile int64_t* until_var, int seconds) {
 static bool is_active(volatile int64_t* until_var) {
     return esp_timer_get_time() < *until_var;
 }
+#endif
 
 static void sensors_task(void*)
 {
