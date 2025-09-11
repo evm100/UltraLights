@@ -37,7 +37,11 @@ void ul_core_register_connectivity_cb(ul_core_conn_cb_t cb, void *ctx) {
 
 static void wifi_reconnect_timer_cb(void *arg) {
   xEventGroupClearBits(s_wifi_event_group, WIFI_FAIL_BIT);
-  esp_wifi_connect();
+  esp_err_t err = esp_wifi_connect();
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "esp_wifi_connect failed: %s", esp_err_to_name(err));
+    esp_timer_start_once(s_reconnect_timer, s_backoff_ms * 1000);
+  }
   s_retry_num++;
   s_backoff_ms = s_backoff_ms * 2;
   if (s_backoff_ms > WIFI_MAX_BACKOFF_MS)
