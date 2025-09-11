@@ -97,18 +97,14 @@ function collectParams(){
   defs.forEach((d,idx)=>{
     const input=inputs[idx];
     if(!input)return;
-    if(d.type==='color'){
-      if(effectEl.value==='solid'){
-        out.push(input.value);
-      }else{
+      if(d.type==='color'){
         const rgb=hexToRgb(input.value);
         out.push(...rgb);
+      }else if(d.type==='slider'){
+        out.push(parseInt(input.value,10));
+      }else{
+        out.push(parseFloat(input.value));
       }
-    }else if(d.type==='slider'){
-      out.push(parseInt(input.value,10));
-    }else{
-      out.push(parseFloat(input.value));
-    }
   });
   return out;
 }
