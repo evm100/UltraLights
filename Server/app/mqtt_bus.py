@@ -33,9 +33,8 @@ class MqttBus:
             "effect": effect,
             "brightness": int(brightness),
             "speed": float(speed),
+            "params": params if params is not None else [],
         }
-        if params:
-            msg["params"] = params
         self.pub(topic_cmd(node_id, "ws/set"), msg)
 
     def ws_power(self, node_id: str, strip: int, on: bool):
@@ -55,9 +54,8 @@ class MqttBus:
             "channel": int(channel),
             "effect": effect,
             "brightness": int(brightness),
+            "params": params or [],
         }
-        if params:
-            msg["params"] = params
         self.pub(topic_cmd(node_id, "white/set"), msg)
 
     # ---- Sensor commands ----
