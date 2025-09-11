@@ -19,6 +19,10 @@ menu "Node / Network"
         string "WiFi SSID"
     config UL_WIFI_PSK
         string "WiFi PSK"
+    config UL_SNTP_SYNC_INTERVAL_S
+        int "SNTP sync interval (seconds)"
+        range 60 86400
+        default 21600
 endmenu
 
 menu "MQTT"
