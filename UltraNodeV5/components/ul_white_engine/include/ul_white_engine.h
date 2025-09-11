@@ -3,6 +3,7 @@
 #include <stdbool.h>
 
 void ul_white_engine_start(void);
+void ul_white_engine_stop(void);
 
 typedef struct cJSON cJSON;
 

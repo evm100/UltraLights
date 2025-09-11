@@ -30,6 +30,7 @@ typedef struct {
 
 static white_ch_t s_ch[4];
 static int s_count = 0;
+static TaskHandle_t s_white_task = NULL;
 
 static const white_effect_t* find_eff(const char* name) {
     int n=0; const white_effect_t* t = ul_white_get_effects(&n);
@@ -118,7 +119,16 @@ void ul_white_engine_start(void)
     // Run at slightly lower priority than the pixel refresh task; on
     // multi-core targets this pins to core 1 so core 0 can handle network
     // traffic.
-    ul_task_create(white_task, "white200hz", 4096, NULL, 23, NULL, 1);
+    ul_task_create(white_task, "white200hz", 4096, NULL, 23, &s_white_task, 1);
+}
+
+void ul_white_engine_stop(void)
+{
+    if (s_white_task) {
+        vTaskDelete(s_white_task);
+        s_white_task = NULL;
+    }
+    s_count = 0;
 }
 
 static white_ch_t* get_ch(int ch) {

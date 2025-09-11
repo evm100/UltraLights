@@ -22,6 +22,7 @@ static int64_t ultra_until = 0;
 static uint8_t saved_brightness = 0;
 static bool brightness_override = false;
 static ul_motion_state_t current_state = UL_MOTION_NONE;
+static TaskHandle_t s_sensor_task = NULL;
 
 typedef struct {
     char ws[160];
@@ -181,7 +182,15 @@ static void sensors_task(void*)
 void ul_sensors_start(void)
 {
     // Sensor processing pinned to core 0 when multiple cores are present
-    ul_task_create(sensors_task, "sensors", 4096, NULL, 5, NULL, 0);
+    ul_task_create(sensors_task, "sensors", 4096, NULL, 5, &s_sensor_task, 0);
+}
+
+void ul_sensors_stop(void)
+{
+    if (s_sensor_task) {
+        vTaskDelete(s_sensor_task);
+        s_sensor_task = NULL;
+    }
 }
 
 void ul_sensors_set_cooldown(int seconds)
