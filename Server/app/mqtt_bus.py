@@ -33,7 +33,7 @@ class MqttBus:
             "effect": effect,
             "brightness": int(brightness),
             "speed": float(speed),
-            "params": params or [],
+            "params": params if params is not None else [],
         }
         self.pub(topic_cmd(node_id, "ws/set"), msg)
 

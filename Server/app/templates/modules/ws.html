@@ -55,7 +55,7 @@ function scheduleSend(){
 
 function renderParams(){
   paramsEl.innerHTML='';
-  const defs=WS_PARAM_DEFS[effectEl.value]||[];
+  const defs=WS_PARAM_DEFS[effectEl.value.trim()]||[];
   defs.forEach((d,idx)=>{
     const wrap=document.createElement('div');
     if(d.label){
@@ -68,6 +68,7 @@ function renderParams(){
     if(d.type==='color'){
       input.type='color';
       input.value=d.value||'#ffffff';
+      input.addEventListener('input',scheduleSend);
     }else if(d.type==='slider'){
       input.type='range';
       input.min=d.min;input.max=d.max;input.value=d.value;
@@ -78,7 +79,6 @@ function renderParams(){
       if(d.step!==undefined)input.step=d.step;
       input.value=d.value!==undefined?d.value:'';
     }
-    input.dataset.index=idx;
     wrap.appendChild(input);
     paramsEl.appendChild(wrap);
   });
@@ -91,10 +91,11 @@ function renderParams(){
 effectEl.onchange=renderParams;
 
 function collectParams(){
-  const defs=WS_PARAM_DEFS[effectEl.value]||[];
+  const defs=WS_PARAM_DEFS[effectEl.value.trim()]||[];
+  const inputs=paramsEl.querySelectorAll('input');
   const out=[];
   defs.forEach((d,idx)=>{
-    const input=paramsEl.querySelector(`[data-index="${idx}"]`);
+    const input=inputs[idx];
     if(!input)return;
     if(d.type==='color'){
       if(effectEl.value==='solid'){
