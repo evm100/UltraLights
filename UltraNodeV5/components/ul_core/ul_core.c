@@ -9,6 +9,7 @@
 #include <time.h>
 #include "esp_netif_sntp.h"
 #include "freertos/event_groups.h"
+#include "freertos/task.h"
 
 static const char *TAG = "ul_core";
 
@@ -87,6 +88,21 @@ bool ul_core_is_connected(void)
     return (bits & WIFI_CONNECTED_BIT) != 0;
 }
 
+static void sntp_sync_task(void *arg)
+{
+    const TickType_t interval = pdMS_TO_TICKS(CONFIG_UL_SNTP_SYNC_INTERVAL_S * 1000);
+    while (1) {
+        vTaskDelay(interval);
+        while (!ul_core_is_connected()) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        esp_err_t err = esp_netif_sntp_sync();
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "SNTP resync failed: %s", esp_err_to_name(err));
+        }
+    }
+}
+
 void ul_core_sntp_start(void)
 {
     setenv("TZ", "PST8PDT,M3.2.0/2,M11.1.0/2", 1); // America/Los_Angeles
@@ -107,4 +123,5 @@ void ul_core_sntp_start(void)
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
     ESP_LOGI(TAG, "Time sync: %ld", now);
+    xTaskCreate(sntp_sync_task, "sntp_sync", 2048, NULL, tskIDLE_PRIORITY, NULL);
 }
