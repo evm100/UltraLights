@@ -82,11 +82,6 @@ function renderParams(){
     wrap.appendChild(input);
     paramsEl.appendChild(wrap);
   });
-  // Attach real-time color updates for solid effect
-  if(effectEl.value==='solid'){
-    const colorInput=paramsEl.querySelector('input[type="color"]');
-    if(colorInput)colorInput.addEventListener('input',scheduleSend);
-  }
 }
 effectEl.onchange=renderParams;
 
@@ -117,7 +112,11 @@ function sendCmd(){
   const bri=parseInt(briEl.value,10);
   if(Number.isNaN(bri))return;
   const speed=parseInt(speedEl.value,10)/100;
-  const params=collectParams();
+  let params=collectParams();
+  if(eff==='solid'&&params.length===0){
+    const colorInput=paramsEl.querySelector('input[type="color"]');
+    if(colorInput)params=hexToRgb(colorInput.value);
+  }
   const msg={strip,effect:eff,brightness:bri,speed,params};
   post(`/api/node/{{ node.id }}/ws/set`,msg);
 }
