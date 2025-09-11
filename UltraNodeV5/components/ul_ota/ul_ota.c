@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "ul_task.h"
+#include "ul_core.h"
 #include <string.h>
 #include "esp_crt_bundle.h"
 #include "mbedtls/x509_crt.h"
@@ -107,6 +108,10 @@ static esp_err_t _http_client_init_cb(esp_http_client_handle_t http_client)
 
 void ul_ota_check_now(bool force)
 {
+    if (!ul_core_is_connected()) {
+        ESP_LOGW(TAG, "Network not connected, skipping OTA check");
+        return;
+    }
     ESP_LOGI(TAG, "OTA check (force=%d): %s", force, CONFIG_UL_OTA_MANIFEST_URL);
 
     esp_http_client_config_t http_cfg = {

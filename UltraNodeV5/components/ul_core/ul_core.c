@@ -80,6 +80,13 @@ bool ul_core_wait_for_ip(TickType_t timeout)
     return (bits & WIFI_CONNECTED_BIT) != 0;
 }
 
+bool ul_core_is_connected(void)
+{
+    if (!s_wifi_event_group) return false;
+    EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
+    return (bits & WIFI_CONNECTED_BIT) != 0;
+}
+
 void ul_core_sntp_start(void)
 {
     setenv("TZ", "PST8PDT,M3.2.0/2,M11.1.0/2", 1); // America/Los_Angeles

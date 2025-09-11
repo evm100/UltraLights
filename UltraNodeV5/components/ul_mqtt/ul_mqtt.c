@@ -27,7 +27,7 @@ static int starts_with(const char* s, const char* pfx) {
 // Helper to publish JSON
 static void publish_json(const char* topic, const char* json) {
 
-    if (!s_client) return;
+    if (!s_client || !ul_core_is_connected()) return;
     esp_mqtt_client_publish(s_client, topic, json, 0, 1, 0);
 }
 
@@ -292,11 +292,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_CONNECTED: {
             ESP_LOGI(TAG, "MQTT connected");
             s_ready = true;
-            char topic[128];
-            snprintf(topic, sizeof(topic), "ul/%s/cmd/#", ul_core_get_node_id());
-            esp_mqtt_client_subscribe(s_client, topic, 1);
-            // Also allow broadcast to any node if you publish to ul/+/cmd/#
-            esp_mqtt_client_subscribe(s_client, "ul/+/cmd/#", 0);
+            if (ul_core_is_connected()) {
+                char topic[128];
+                snprintf(topic, sizeof(topic), "ul/%s/cmd/#", ul_core_get_node_id());
+                esp_mqtt_client_subscribe(s_client, topic, 1);
+                // Also allow broadcast to any node if you publish to ul/+/cmd/#
+                esp_mqtt_client_subscribe(s_client, "ul/+/cmd/#", 0);
+            }
             break;
         }
         case MQTT_EVENT_DISCONNECTED:
@@ -313,6 +315,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 void ul_mqtt_start(void)
 {
+    if (!ul_core_is_connected()) {
+        ESP_LOGW(TAG, "Network not connected; MQTT not started");
+        return;
+    }
     // MQTT runs at modest priority. On the ESP32-C3 all tasks share the
     // single core, so no explicit core assignment is needed.
     esp_mqtt_client_config_t cfg = {
