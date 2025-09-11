@@ -6,24 +6,11 @@
 void solid_init(void) { (void)0; }
 
 void solid_apply_params(int strip, const cJSON* params) {
-    if (!params || !cJSON_IsArray(params) || cJSON_GetArraySize(params) == 0) return;
-    uint8_t r = 0, g = 0, b = 0;
+    if (!params || !cJSON_IsArray(params) || cJSON_GetArraySize(params) < 3) return;
 
-    const cJSON* first = cJSON_GetArrayItem(params, 0);
-    if (cJSON_IsString(first)) {
-        const char* s = first->valuestring;
-        if (s && s[0] == '#') ++s;
-        unsigned long v = strtoul(s, NULL, 16);
-        r = (v >> 16) & 0xFF;
-        g = (v >> 8) & 0xFF;
-        b = v & 0xFF;
-    } else if (cJSON_GetArraySize(params) >= 3) {
-        r = (uint8_t)cJSON_GetArrayItem(params, 0)->valueint;
-        g = (uint8_t)cJSON_GetArrayItem(params, 1)->valueint;
-        b = (uint8_t)cJSON_GetArrayItem(params, 2)->valueint;
-    } else {
-        return;
-    }
+    uint8_t r = (uint8_t)cJSON_GetArrayItem(params, 0)->valueint;
+    uint8_t g = (uint8_t)cJSON_GetArrayItem(params, 1)->valueint;
+    uint8_t b = (uint8_t)cJSON_GetArrayItem(params, 2)->valueint;
 
     ul_ws_set_solid_rgb(strip, r, g, b);
 }
