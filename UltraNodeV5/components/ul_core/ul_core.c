@@ -194,7 +194,8 @@ static void sntp_sync_task(void *arg) {
     while (!ul_core_is_connected()) {
       vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    esp_err_t err = esp_netif_sntp_sync();
+    esp_netif_sntp_stop();
+    esp_err_t err = esp_netif_sntp_start();
     if (err != ESP_OK) {
       ESP_LOGW(TAG, "SNTP resync failed: %s", esp_err_to_name(err));
     } else {
@@ -213,6 +214,7 @@ void ul_core_sntp_start(void) {
 
   esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
   esp_netif_sntp_init(&config);
+  ESP_ERROR_CHECK(esp_netif_sntp_start());
 
   // Wait until time is set (epoch > 1700000000 ~ 2023)
   time_t now = 0;
