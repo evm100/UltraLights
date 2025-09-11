@@ -1,6 +1,7 @@
 #include "effect.h"
 #include "ul_ws_engine.h"
 #include "cJSON.h"
+#include <stdlib.h>
 
 void solid_init(void) { (void)0; }
 

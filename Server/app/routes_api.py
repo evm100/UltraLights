@@ -74,12 +74,17 @@ def api_ws_set(node_id: str, payload: Dict[str, Any]):
         raise HTTPException(400, "invalid speed")
     params = payload.get("params")
     if params is not None:
-        if not (
-            isinstance(params, list)
-            and all(isinstance(p, (int, float)) for p in params)
-        ):
+        if not isinstance(params, list):
             raise HTTPException(400, "invalid params")
-        params = [float(p) for p in params]
+        clean: list[object] = []
+        for p in params:
+            if isinstance(p, (int, float)):
+                clean.append(float(p))
+            elif isinstance(p, str):
+                clean.append(p)
+            else:
+                raise HTTPException(400, "invalid params")
+        params = clean
     get_bus().ws_set(node_id, strip, effect, brightness, speed, params)
     return {"ok": True}
 
