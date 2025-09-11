@@ -38,6 +38,21 @@ const briEl=document.getElementById('wsBri');
 const speedEl=document.getElementById('wsSpeed');
 const paramsEl=document.getElementById('wsParams');
 
+// Throttled sender for real-time updates (max ~10 Hz)
+let lastSend=0;
+let pendingSend=null;
+function scheduleSend(){
+  const now=Date.now();
+  const delay=100-(now-lastSend);
+  if(delay<=0){
+    lastSend=now;
+    sendCmd();
+  }else{
+    clearTimeout(pendingSend);
+    pendingSend=setTimeout(()=>{lastSend=Date.now();sendCmd();},delay);
+  }
+}
+
 function renderParams(){
   paramsEl.innerHTML='';
   const defs=WS_PARAM_DEFS[effectEl.value]||[];
@@ -67,6 +82,11 @@ function renderParams(){
     wrap.appendChild(input);
     paramsEl.appendChild(wrap);
   });
+  // Attach real-time color updates for solid effect
+  if(effectEl.value==='solid'){
+    const colorInput=paramsEl.querySelector('input[type="color"]');
+    if(colorInput)colorInput.addEventListener('input',scheduleSend);
+  }
 }
 effectEl.onchange=renderParams;
 
@@ -88,19 +108,20 @@ function collectParams(){
   return out;
 }
 
-document.getElementById('wsSet').onclick=async()=>{
+function sendCmd(){
   const strip=parseInt(stripEl.value,10);
-  if(Number.isNaN(strip)){alert('Invalid strip');return;}
+  if(Number.isNaN(strip))return;
   const eff=effectEl.value.trim();
-  if(!eff){alert('Select an effect');return;}
+  if(!eff)return;
   const bri=parseInt(briEl.value,10);
-  if(Number.isNaN(bri)){alert('Invalid brightness');return;}
+  if(Number.isNaN(bri))return;
   const speed=parseInt(speedEl.value,10)/100;
   const params=collectParams();
-  const msg={strip,effect:eff,brightness:bri,speed};
-  if(params.length)msg.params=params;
-  await post(`/api/node/{{ node.id }}/ws/set`,msg);
-};
+  const msg={strip,effect:eff,brightness:bri,speed,params};
+  post(`/api/node/{{ node.id }}/ws/set`,msg);
+}
+
+document.getElementById('wsSet').onclick=sendCmd;
 
 document.getElementById('wsOn').onclick=async()=>{
   const s=parseInt(stripEl.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:true});
