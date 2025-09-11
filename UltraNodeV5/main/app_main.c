@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "ul_core.h"
 #include "ul_mqtt.h"
@@ -17,28 +18,39 @@
 static const char *TAG = "app";
 
 static bool s_services_running = false;
+static TaskHandle_t s_service_task = NULL;
+
+static void service_manager_task(void *ctx) {
+  uint32_t value;
+  while (true) {
+    if (xTaskNotifyWait(0, 0, &value, portMAX_DELAY) == pdTRUE) {
+      bool connected = value;
+      int strips = ul_ws_get_strip_count();
+      for (int i = 0; i < strips; ++i) {
+        ul_ws_power(i, connected);
+      }
+      if (connected) {
+        if (!s_services_running) {
+          ul_mqtt_start();
+          ul_ws_engine_start();    // 60 FPS LED engine
+          ul_white_engine_start(); // 200 Hz smoothing
+          ul_sensors_start();
+          ul_ota_start(); // periodic + MQTT trigger
+          s_services_running = true;
+        }
+      } else {
+        if (s_services_running) {
+          ul_mqtt_stop();
+          s_services_running = false;
+        }
+        ESP_LOGW(TAG, "Network disconnected");
+      }
+    }
+  }
+}
 
 static void connectivity_cb(bool connected, void *ctx) {
-  int strips = ul_ws_get_strip_count();
-  for (int i = 0; i < strips; ++i) {
-    ul_ws_power(i, connected);
-  }
-  if (connected) {
-    if (!s_services_running) {
-      ul_mqtt_start();
-      ul_ws_engine_start();    // 60 FPS LED engine
-      ul_white_engine_start(); // 200 Hz smoothing
-      ul_sensors_start();
-      ul_ota_start(); // periodic + MQTT trigger
-      s_services_running = true;
-    }
-  } else {
-    if (s_services_running) {
-      ul_mqtt_stop();
-      s_services_running = false;
-    }
-    ESP_LOGW(TAG, "Network disconnected");
-  }
+  xTaskNotify(s_service_task, connected ? 1 : 0, eSetValueWithOverwrite);
 }
 
 void app_main(void) {
@@ -48,6 +60,8 @@ void app_main(void) {
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+  xTaskCreate(service_manager_task, "svc_mgr", 4096, NULL, 5,
+              &s_service_task);
   ul_core_wifi_start();
   ul_core_register_connectivity_cb(connectivity_cb, NULL);
   bool connected = ul_core_wait_for_ip(portMAX_DELAY);
