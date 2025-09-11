@@ -154,7 +154,11 @@ static void sntp_sync_task(void *arg) {
 }
 
 void ul_core_sntp_start(void) {
-  setenv("TZ", "PST8PDT,M3.2.0/2,M11.1.0/2", 1); // America/Los_Angeles
+  const char *tz = CONFIG_UL_TIMEZONE;
+  if (tz[0] == '\0') {
+    tz = "UTC";
+  }
+  setenv("TZ", tz, 1);
   tzset();
 
   esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");

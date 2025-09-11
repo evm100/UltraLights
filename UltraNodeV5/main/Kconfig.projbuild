@@ -23,6 +23,11 @@ menu "Node / Network"
         int "SNTP sync interval (seconds)"
         range 60 86400
         default 21600
+    config UL_TIMEZONE
+        string "Time zone (TZ string)"
+        default ""
+        help
+            POSIX TZ string (e.g., "PST8PDT,M3.2.0/2,M11.1.0/2"). If left empty, UTC is used.
 endmenu
 
 menu "MQTT"
