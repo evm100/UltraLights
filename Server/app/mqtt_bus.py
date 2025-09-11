@@ -1,6 +1,6 @@
 import threading
 import json
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 import paho.mqtt.client as paho
 from .config import settings
 from . import registry
@@ -26,16 +26,15 @@ class MqttBus:
         effect: str,
         brightness: int,
         speed: float,
-        params: Optional[List[float]] = None,
+        params: Optional[List[Union[float, str]]] = None,
     ):
         msg: Dict[str, object] = {
             "strip": int(strip),
             "effect": effect,
             "brightness": int(brightness),
             "speed": float(speed),
+            "params": params or [],
         }
-        if params:
-            msg["params"] = params
         self.pub(topic_cmd(node_id, "ws/set"), msg)
 
     def ws_power(self, node_id: str, strip: int, on: bool):
@@ -55,9 +54,8 @@ class MqttBus:
             "channel": int(channel),
             "effect": effect,
             "brightness": int(brightness),
+            "params": params or [],
         }
-        if params:
-            msg["params"] = params
         self.pub(topic_cmd(node_id, "white/set"), msg)
 
     # ---- Sensor commands ----
