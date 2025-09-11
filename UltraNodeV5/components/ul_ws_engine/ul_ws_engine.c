@@ -4,6 +4,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "ul_task.h"
+#include "ul_core.h"
 #include "esp_log.h"
 #include "led_strip.h"
 #include "led_strip_spi.h"
@@ -191,6 +192,10 @@ static void led_refresh_task(void *arg) {
 
 void ul_ws_engine_start(void)
 {
+    if (!ul_core_is_connected()) {
+        ESP_LOGW(TAG, "Network not connected; WS engine not started");
+        return;
+    }
 #if CONFIG_UL_WS0_ENABLED
     init_strip(0, CONFIG_UL_WS0_GPIO, CONFIG_UL_WS0_PIXELS, true);
 #else
