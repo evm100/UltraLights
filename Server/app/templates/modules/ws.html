@@ -55,7 +55,11 @@ function scheduleSend(){
 
 function renderParams(){
   paramsEl.innerHTML='';
-  const defs=WS_PARAM_DEFS[effectEl.value.trim()]||[];
+  const eff=effectEl.value.trim();
+  let defs=WS_PARAM_DEFS[eff]||[];
+  if(eff==='solid'&&defs.length===0){
+    defs=[{type:'color',label:'Color'}];
+  }
   defs.forEach((d,idx)=>{
     const wrap=document.createElement('div');
     if(d.label){
@@ -72,18 +76,24 @@ function renderParams(){
     }else if(d.type==='slider'){
       input.type='range';
       input.min=d.min;input.max=d.max;input.value=d.value;
+      input.addEventListener('input',scheduleSend);
     }else{
       input.type='number';
       if(d.min!==undefined)input.min=d.min;
       if(d.max!==undefined)input.max=d.max;
       if(d.step!==undefined)input.step=d.step;
       input.value=d.value!==undefined?d.value:'';
+      input.addEventListener('input',scheduleSend);
     }
     wrap.appendChild(input);
     paramsEl.appendChild(wrap);
   });
 }
-effectEl.onchange=renderParams;
+effectEl.onchange=()=>{renderParams();scheduleSend();};
+stripEl.onchange=scheduleSend;
+briEl.addEventListener('input',scheduleSend);
+speedEl.addEventListener('input',scheduleSend);
+if(effectEl.value)renderParams();
 
 function collectParams(){
   const defs=WS_PARAM_DEFS[effectEl.value.trim()]||[];
