@@ -371,6 +371,8 @@ void ul_mqtt_stop(void) {
   s_ready = false;
 }
 
+bool ul_mqtt_is_connected(void) { return s_ready; }
+
 bool ul_mqtt_is_ready(void) { return s_ready; }
 
 void ul_mqtt_publish_status_now(void) { publish_status_snapshot(); }

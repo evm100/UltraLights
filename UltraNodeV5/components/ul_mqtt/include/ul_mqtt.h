@@ -13,6 +13,7 @@ void ul_mqtt_publish_status(void);
 void ul_mqtt_publish_status_now(void);
 void ul_mqtt_publish_motion(const char *sid, const char *state);
 bool ul_mqtt_is_ready(void);
+bool ul_mqtt_is_connected(void);
 
 // Execute a command locally without publishing over MQTT. The path should match
 // the suffix of a normal command topic (e.g. "ws/set").

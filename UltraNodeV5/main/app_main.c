@@ -56,7 +56,11 @@ void app_main(void) {
 
   // Status heartbeat via MQTT
   while (true) {
-    ul_mqtt_publish_status();
+    if (ul_core_is_connected() && ul_mqtt_is_connected()) {
+      ul_mqtt_publish_status();
+    } else {
+      ESP_LOGW(TAG, "Skipping status publish (disconnected)");
+    }
     vTaskDelay(pdMS_TO_TICKS(30 * 1000));
   }
 }
