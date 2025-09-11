@@ -72,18 +72,23 @@ function renderParams(){
     }else if(d.type==='slider'){
       input.type='range';
       input.min=d.min;input.max=d.max;input.value=d.value;
+      input.addEventListener('input',scheduleSend);
     }else{
       input.type='number';
       if(d.min!==undefined)input.min=d.min;
       if(d.max!==undefined)input.max=d.max;
       if(d.step!==undefined)input.step=d.step;
       input.value=d.value!==undefined?d.value:'';
+      input.addEventListener('input',scheduleSend);
     }
     wrap.appendChild(input);
     paramsEl.appendChild(wrap);
   });
 }
-effectEl.onchange=renderParams;
+effectEl.onchange=()=>{renderParams();scheduleSend();};
+stripEl.onchange=scheduleSend;
+briEl.addEventListener('input',scheduleSend);
+speedEl.addEventListener('input',scheduleSend);
 
 function collectParams(){
   const defs=WS_PARAM_DEFS[effectEl.value.trim()]||[];
