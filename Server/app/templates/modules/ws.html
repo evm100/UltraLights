@@ -117,8 +117,7 @@ function sendCmd(){
   if(Number.isNaN(bri))return;
   const speed=parseInt(speedEl.value,10)/100;
   const params=collectParams();
-  const msg={strip,effect:eff,brightness:bri,speed};
-  if(params.length)msg.params=params;
+  const msg={strip,effect:eff,brightness:bri,speed,params};
   post(`/api/node/{{ node.id }}/ws/set`,msg);
 }
 
