@@ -4,7 +4,7 @@
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include "sdkconfig.h"
-// #include "esp_sntp.h"
+#include "esp_sntp.h"
 #include "esp_netif_sntp.h"
 #include "esp_timer.h"
 #include "esp_system.h"
@@ -194,7 +194,7 @@ static void sntp_sync_task(void *arg) {
     while (!ul_core_is_connected()) {
       vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    esp_netif_sntp_stop();
+    esp_sntp_stop();
     esp_err_t err = esp_netif_sntp_start();
     if (err != ESP_OK) {
       ESP_LOGW(TAG, "SNTP resync failed: %s", esp_err_to_name(err));
