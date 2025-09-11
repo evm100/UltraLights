@@ -6,6 +6,7 @@
 #include "sdkconfig.h"
 // #include "esp_sntp.h"
 #include "esp_netif_sntp.h"
+#include "esp_timer.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -21,6 +22,10 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_MAX_RETRY 5
 #define WIFI_MAX_BACKOFF_MS 30000
 
+static esp_timer_handle_t s_reconnect_timer;
+static int s_retry_num = 0;
+static int s_backoff_ms = 1000;
+
 const char *ul_core_get_node_id(void) { return s_node_id; }
 
 static ul_core_conn_cb_t s_conn_cb = NULL;
@@ -31,34 +36,35 @@ void ul_core_register_connectivity_cb(ul_core_conn_cb_t cb, void *ctx) {
   s_conn_ctx = ctx;
 }
 
+static void wifi_reconnect_timer_cb(void *arg) {
+  esp_wifi_connect();
+  s_retry_num++;
+  s_backoff_ms = s_backoff_ms * 2;
+  if (s_backoff_ms > WIFI_MAX_BACKOFF_MS)
+    s_backoff_ms = WIFI_MAX_BACKOFF_MS;
+}
+
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data) {
-  static int retry_num = 0;
-  static int backoff_ms = 1000;
-
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-    retry_num = 0;
-    backoff_ms = 1000;
+    s_retry_num = 0;
+    s_backoff_ms = 1000;
     esp_wifi_connect();
   } else if (event_base == WIFI_EVENT &&
              event_id == WIFI_EVENT_STA_DISCONNECTED) {
     xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     if (s_conn_cb)
       s_conn_cb(false, s_conn_ctx);
-    if (retry_num < WIFI_MAX_RETRY) {
-      vTaskDelay(pdMS_TO_TICKS(backoff_ms));
-      esp_wifi_connect();
-      retry_num++;
-      backoff_ms = backoff_ms * 2;
-      if (backoff_ms > WIFI_MAX_BACKOFF_MS)
-        backoff_ms = WIFI_MAX_BACKOFF_MS;
+    if (s_retry_num < WIFI_MAX_RETRY) {
+      esp_timer_stop(s_reconnect_timer);
+      esp_timer_start_once(s_reconnect_timer, s_backoff_ms * 1000);
     } else {
       xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
     }
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
     ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
-    retry_num = 0;
+    s_retry_num = 0;
     xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     if (s_conn_cb)
       s_conn_cb(true, s_conn_ctx);
@@ -67,6 +73,12 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
 void ul_core_wifi_start(void) {
   s_wifi_event_group = xEventGroupCreate();
+
+  const esp_timer_create_args_t reconnect_timer_args = {
+      .callback = &wifi_reconnect_timer_cb,
+      .name = "wifi_reconnect",
+  };
+  ESP_ERROR_CHECK(esp_timer_create(&reconnect_timer_args, &s_reconnect_timer));
 
   esp_netif_create_default_wifi_sta();
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
