@@ -65,7 +65,9 @@ void app_main(void) {
   ul_core_wifi_start();
   ul_core_register_connectivity_cb(connectivity_cb, NULL);
   bool connected = ul_core_wait_for_ip(portMAX_DELAY);
-  connectivity_cb(connected, NULL);
+  if (!connected) {
+    ESP_LOGE(TAG, "Failed to obtain IP address");
+  }
   ul_core_sntp_start();
 
   // Status heartbeat via MQTT
