@@ -114,6 +114,29 @@ bool ul_core_is_connected(void) {
   return (bits & WIFI_CONNECTED_BIT) != 0;
 }
 
+void ul_core_wifi_stop(void) {
+  if (s_reconnect_timer) {
+    esp_timer_stop(s_reconnect_timer);
+    esp_timer_delete(s_reconnect_timer);
+    s_reconnect_timer = NULL;
+  }
+
+  ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, WIFI_EVENT_STA_START,
+                                               &wifi_event_handler));
+  ESP_ERROR_CHECK(esp_event_handler_unregister(
+      WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &wifi_event_handler));
+  ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                                               &wifi_event_handler));
+
+  ESP_ERROR_CHECK(esp_wifi_stop());
+  ESP_ERROR_CHECK(esp_wifi_deinit());
+
+  if (s_wifi_event_group) {
+    vEventGroupDelete(s_wifi_event_group);
+    s_wifi_event_group = NULL;
+  }
+}
+
 static void sntp_sync_task(void *arg) {
   const TickType_t interval =
       pdMS_TO_TICKS(CONFIG_UL_SNTP_SYNC_INTERVAL_S * 1000);
