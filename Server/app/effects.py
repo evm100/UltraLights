@@ -57,6 +57,13 @@ WS_PARAM_DEFS = {
         {"type": "color", "label": "Color 1"},
         {"type": "color", "label": "Color 2"},
     ],
+
+    # Spacewaves – three RGB colors for interfering waves
+    "spacewaves": [
+        {"type": "color", "label": "Wave 1 Color"},
+        {"type": "color", "label": "Wave 2 Color"},
+        {"type": "color", "label": "Wave 3 Color"},
+    ],
 }
 
 WHITE_PARAM_DEFS = {
