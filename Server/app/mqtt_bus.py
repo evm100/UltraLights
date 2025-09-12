@@ -15,8 +15,15 @@ class MqttBus:
         self.thread = threading.Thread(target=self.client.loop_forever, daemon=True)
         self.thread.start()
 
-    def pub(self, topic: str, payload: Dict[str, object]):
-        self.client.publish(topic, payload=json.dumps(payload), qos=1, retain=True)
+    def pub(self, topic: str, payload: Dict[str, object], retain: bool = True):
+        """Publish a command payload to the given topic.
+
+        By default, messages are retained on the broker so that new clients
+        immediately receive the latest command.  Some commands, such as OTA
+        checks, should not be retained to avoid re-triggering actions after a
+        reboot.  The ``retain`` flag allows callers to override this behaviour.
+        """
+        self.client.publish(topic, payload=json.dumps(payload), qos=1, retain=retain)
 
     # ---- WS strip commands ----
     def ws_set(
@@ -69,7 +76,8 @@ class MqttBus:
 
     # ---- OTA ----
     def ota_check(self, node_id: str):
-        self.pub(topic_cmd(node_id, "ota/check"), {})
+        """Trigger an OTA update check without retaining the command."""
+        self.pub(topic_cmd(node_id, "ota/check"), {}, retain=False)
 
     def all_off(self):
         """Turn off all known nodes."""
