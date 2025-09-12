@@ -27,6 +27,7 @@ WHITE_EFFECTS = set(_load_effects("UltraNodeV5/components/ul_white_engine/effect
 #              integer value.
 # ``number`` – render an ``<input type="number">`` for floating‑point or
 #              free‑form numeric input.
+# ``toggle`` – render a checkbox and append 1 if checked, otherwise 0.
 
 WS_PARAM_DEFS = {
     # Solid color – single RGB value

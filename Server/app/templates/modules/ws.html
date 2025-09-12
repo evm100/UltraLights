@@ -29,7 +29,8 @@
   </div>
 </section>
 <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
-<script>
+<script type="module">
+import {renderParams,collectParams} from '/static/params.js';
 const WS_PARAM_DEFS={{ ws_param_defs|tojson }};
 
 function getParamDefs(eff){
@@ -38,19 +39,6 @@ function getParamDefs(eff){
     defs=[{type:'color',label:'Color'}];
   }
   return defs;
-}
-function hexToRgb(hex){hex=hex.replace('#','');if(hex.length===3)hex=hex.split('').map(x=>x+x).join('');const num=parseInt(hex,16);return[(num>>16)&255,(num>>8)&255,num&255];}
-function spawnColorPicker(parent,value,onChange){
-  const pickerDiv=document.createElement('div');
-  pickerDiv.className='w-32 h-32';
-  parent.appendChild(pickerDiv);
-  const input=document.createElement('input');
-  input.type='hidden';
-  input.value=value||'#ffffff';
-  parent.appendChild(input);
-  const picker=new iro.ColorPicker(pickerDiv,{color:input.value,width:128});
-  picker.on('color:change',c=>{input.value=c.hexString;if(onChange)onChange();});
-  return input;
 }
 async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
 const stripEl=document.getElementById('wsStrip');
@@ -74,63 +62,16 @@ function scheduleSend(){
   }
 }
 
-function renderParams(){
-  paramsEl.innerHTML='';
+function updateParams(){
   const eff=effectEl.value.trim();
   const defs=getParamDefs(eff);
-  defs.forEach((d,idx)=>{
-    const wrap=document.createElement('div');
-    if(d.label){
-      const lab=document.createElement('label');
-      lab.className='text-xs opacity-70';
-      lab.textContent=d.label;
-      wrap.appendChild(lab);
-    }
-    let input;
-    if(d.type==='color'){
-      input=spawnColorPicker(wrap,d.value,scheduleSend);
-    }else{
-      input=document.createElement('input');
-      if(d.type==='slider'){
-        input.type='range';
-        input.min=d.min;input.max=d.max;input.value=d.value;
-      }else{
-        input.type='number';
-        if(d.min!==undefined)input.min=d.min;
-        if(d.max!==undefined)input.max=d.max;
-        if(d.step!==undefined)input.step=d.step;
-        input.value=d.value!==undefined?d.value:'';
-      }
-      input.addEventListener('input',scheduleSend);
-      wrap.appendChild(input);
-    }
-    paramsEl.appendChild(wrap);
-  });
+  renderParams(defs,paramsEl,scheduleSend);
 }
-effectEl.onchange=()=>{renderParams();scheduleSend();};
+effectEl.onchange=()=>{updateParams();scheduleSend();};
 stripEl.onchange=scheduleSend;
 briEl.addEventListener('input',scheduleSend);
 speedEl.addEventListener('input',scheduleSend);
-if(effectEl.value)renderParams();
-
-function collectParams(){
-  const defs=getParamDefs(effectEl.value.trim());
-  const inputs=paramsEl.querySelectorAll('input');
-  const out=[];
-  defs.forEach((d,idx)=>{
-    const input=inputs[idx];
-    if(!input)return;
-      if(d.type==='color'){
-        const rgb=hexToRgb(input.value);
-        out.push(...rgb);
-      }else if(d.type==='slider'){
-        out.push(parseInt(input.value,10));
-      }else{
-        out.push(parseFloat(input.value));
-      }
-  });
-  return out;
-}
+if(effectEl.value)updateParams();
 
 function sendCmd(){
   const strip=parseInt(stripEl.value,10);
@@ -140,7 +81,7 @@ function sendCmd(){
   const bri=parseInt(briEl.value,10);
   if(Number.isNaN(bri))return;
   const speed=parseInt(speedEl.value,10)/100;
-  const params=collectParams();
+  const params=collectParams(getParamDefs(eff),paramsEl);
   const msg={strip,effect:eff,brightness:bri,speed,params};
   post(`/api/node/{{ node.id }}/ws/set`,msg);
 }

@@ -24,7 +24,8 @@
     <button id="wSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
   </div>
 </section>
-<script>
+<script type="module">
+import {renderParams,collectParams} from '/static/params.js';
 const WHITE_PARAM_DEFS={{ white_param_defs|tojson }};
 async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
 const chEl=document.getElementById('wChannel');
@@ -46,60 +47,13 @@ function scheduleWhite(){
     wPendingSend=setTimeout(()=>{wLastSend=Date.now();sendWhite();},delay);
   }
 }
-
-function renderParams(){
-  wParamsEl.innerHTML='';
+function updateParams(){
   const defs=WHITE_PARAM_DEFS[effEl.value]||[];
-  defs.forEach((d,idx)=>{
-    const wrap=document.createElement('div');
-    if(d.label){
-      const lab=document.createElement('label');
-      lab.className='text-xs opacity-70';
-      lab.textContent=d.label;
-      wrap.appendChild(lab);
-    }
-    let input=document.createElement('input');
-    if(d.type==='slider'){
-      input.type='range';
-      input.min=d.min;input.max=d.max;input.value=d.value;
-      input.addEventListener('input',scheduleWhite);
-    }else if(d.type==='toggle'){
-      input.type='checkbox';
-      input.checked=!!d.value;
-      input.addEventListener('change',scheduleWhite);
-    }else{
-      input.type='number';
-      if(d.min!==undefined)input.min=d.min;
-      if(d.max!==undefined)input.max=d.max;
-      if(d.step!==undefined)input.step=d.step;
-      input.value=d.value!==undefined?d.value:'';
-      input.addEventListener('input',scheduleWhite);
-    }
-    input.dataset.index=idx;
-    wrap.appendChild(input);
-    wParamsEl.appendChild(wrap);
-  });
+  renderParams(defs,wParamsEl,scheduleWhite);
 }
-effEl.onchange=()=>{renderParams();scheduleWhite();};
+effEl.onchange=()=>{updateParams();scheduleWhite();};
 chEl.onchange=scheduleWhite;
 wBriEl.addEventListener('input',scheduleWhite);
-
-function collectParams(){
-  const defs=WHITE_PARAM_DEFS[effEl.value]||[];
-  const out=[];
-  defs.forEach((d,idx)=>{
-    const input=wParamsEl.querySelector(`[data-index="${idx}"]`);
-    if(!input)return;
-    if(d.type==='slider'){
-      out.push(parseInt(input.value,10));
-    }else if(d.type==='toggle'){
-      out.push(input.checked?1:0);
-    }else{
-      out.push(parseFloat(input.value));
-    }
-  });
-  return out;
-}
 
 function sendWhite(){
   const channel=parseInt(chEl.value,10);
@@ -108,7 +62,7 @@ function sendWhite(){
   if(!effect)return;
   const brightness=parseInt(wBriEl.value,10);
   if(Number.isNaN(brightness))return;
-  const params=collectParams();
+  const params=collectParams(WHITE_PARAM_DEFS[effEl.value]||[],wParamsEl);
   const msg={channel,effect,brightness};
   if(params.length)msg.params=params;
   post(`/api/node/{{ node.id }}/white/set`,msg);
