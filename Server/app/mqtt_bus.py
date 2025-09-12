@@ -16,7 +16,7 @@ class MqttBus:
         self.thread.start()
 
     def pub(self, topic: str, payload: Dict[str, object]):
-        self.client.publish(topic, payload=json.dumps(payload), qos=1, retain=False)
+        self.client.publish(topic, payload=json.dumps(payload), qos=1, retain=True)
 
     # ---- WS strip commands ----
     def ws_set(
