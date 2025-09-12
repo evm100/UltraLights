@@ -71,6 +71,12 @@ def node_page(request: Request, node_id: str):
         subtitle = f"{house.get('name', house['id'])} • {room.get('name', room['id'])}"
     else:
         subtitle = None
+
+    missing = [eff for eff in WS_EFFECTS if eff not in WS_PARAM_DEFS]
+    if missing:
+        import logging
+        logging.warning("WS_PARAM_DEFS missing entries for: %s", ", ".join(sorted(missing)))
+
     return templates.TemplateResponse(
         "node.html",
         {

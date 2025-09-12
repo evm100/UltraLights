@@ -33,11 +33,7 @@
 const WS_PARAM_DEFS={{ ws_param_defs|tojson }};
 
 function getParamDefs(eff){
-  let defs=WS_PARAM_DEFS[eff]||[];
-  if(eff==='solid'&&defs.length===0){
-    defs=[{type:'color',label:'Color'}];
-  }
-  return defs;
+  return WS_PARAM_DEFS[eff]||[];
 }
 function hexToRgb(hex){hex=hex.replace('#','');if(hex.length===3)hex=hex.split('').map(x=>x+x).join('');const num=parseInt(hex,16);return[(num>>16)&255,(num>>8)&255,num&255];}
 function spawnColorPicker(parent,value,onChange){
