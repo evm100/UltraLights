@@ -28,9 +28,30 @@
     <button id="wsOff" class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white">Off</button>
   </div>
 </section>
+<script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
 <script>
 const WS_PARAM_DEFS={{ ws_param_defs|tojson }};
+
+function getParamDefs(eff){
+  let defs=WS_PARAM_DEFS[eff]||[];
+  if(eff==='solid'&&defs.length===0){
+    defs=[{type:'color',label:'Color'}];
+  }
+  return defs;
+}
 function hexToRgb(hex){hex=hex.replace('#','');if(hex.length===3)hex=hex.split('').map(x=>x+x).join('');const num=parseInt(hex,16);return[(num>>16)&255,(num>>8)&255,num&255];}
+function spawnColorPicker(parent,value,onChange){
+  const pickerDiv=document.createElement('div');
+  pickerDiv.className='w-32 h-32';
+  parent.appendChild(pickerDiv);
+  const input=document.createElement('input');
+  input.type='hidden';
+  input.value=value||'#ffffff';
+  parent.appendChild(input);
+  const picker=new iro.ColorPicker(pickerDiv,{color:input.value,width:128});
+  picker.on('color:change',c=>{input.value=c.hexString;if(onChange)onChange();});
+  return input;
+}
 async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
 const stripEl=document.getElementById('wsStrip');
 const effectEl=document.getElementById('wsEffect');
@@ -55,7 +76,8 @@ function scheduleSend(){
 
 function renderParams(){
   paramsEl.innerHTML='';
-  const defs=WS_PARAM_DEFS[effectEl.value.trim()]||[];
+  const eff=effectEl.value.trim();
+  const defs=getParamDefs(eff);
   defs.forEach((d,idx)=>{
     const wrap=document.createElement('div');
     if(d.label){
@@ -64,29 +86,35 @@ function renderParams(){
       lab.textContent=d.label;
       wrap.appendChild(lab);
     }
-    let input=document.createElement('input');
+    let input;
     if(d.type==='color'){
-      input.type='color';
-      input.value=d.value||'#ffffff';
-      input.addEventListener('input',scheduleSend);
-    }else if(d.type==='slider'){
-      input.type='range';
-      input.min=d.min;input.max=d.max;input.value=d.value;
+      input=spawnColorPicker(wrap,d.value,scheduleSend);
     }else{
-      input.type='number';
-      if(d.min!==undefined)input.min=d.min;
-      if(d.max!==undefined)input.max=d.max;
-      if(d.step!==undefined)input.step=d.step;
-      input.value=d.value!==undefined?d.value:'';
+      input=document.createElement('input');
+      if(d.type==='slider'){
+        input.type='range';
+        input.min=d.min;input.max=d.max;input.value=d.value;
+      }else{
+        input.type='number';
+        if(d.min!==undefined)input.min=d.min;
+        if(d.max!==undefined)input.max=d.max;
+        if(d.step!==undefined)input.step=d.step;
+        input.value=d.value!==undefined?d.value:'';
+      }
+      input.addEventListener('input',scheduleSend);
+      wrap.appendChild(input);
     }
-    wrap.appendChild(input);
     paramsEl.appendChild(wrap);
   });
 }
-effectEl.onchange=renderParams;
+effectEl.onchange=()=>{renderParams();scheduleSend();};
+stripEl.onchange=scheduleSend;
+briEl.addEventListener('input',scheduleSend);
+speedEl.addEventListener('input',scheduleSend);
+if(effectEl.value)renderParams();
 
 function collectParams(){
-  const defs=WS_PARAM_DEFS[effectEl.value.trim()]||[];
+  const defs=getParamDefs(effectEl.value.trim());
   const inputs=paramsEl.querySelectorAll('input');
   const out=[];
   defs.forEach((d,idx)=>{
@@ -112,11 +140,7 @@ function sendCmd(){
   const bri=parseInt(briEl.value,10);
   if(Number.isNaN(bri))return;
   const speed=parseInt(speedEl.value,10)/100;
-  let params=collectParams();
-  if(eff==='solid'&&params.length===0){
-    const colorInput=paramsEl.querySelector('input[type="color"]');
-    if(colorInput)params=hexToRgb(colorInput.value);
-  }
+  const params=collectParams();
   const msg={strip,effect:eff,brightness:bri,speed,params};
   post(`/api/node/{{ node.id }}/ws/set`,msg);
 }

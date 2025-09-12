@@ -32,6 +32,21 @@ const effEl=document.getElementById('wEffect');
 const wBriEl=document.getElementById('wBri');
 const wParamsEl=document.getElementById('wParams');
 
+// Throttled sender for real-time updates (max ~10 Hz)
+let wLastSend=0;
+let wPendingSend=null;
+function scheduleWhite(){
+  const now=Date.now();
+  const delay=100-(now-wLastSend);
+  if(delay<=0){
+    wLastSend=now;
+    sendWhite();
+  }else{
+    clearTimeout(wPendingSend);
+    wPendingSend=setTimeout(()=>{wLastSend=Date.now();sendWhite();},delay);
+  }
+}
+
 function renderParams(){
   wParamsEl.innerHTML='';
   const defs=WHITE_PARAM_DEFS[effEl.value]||[];
@@ -47,23 +62,27 @@ function renderParams(){
     if(d.type==='slider'){
       input.type='range';
       input.min=d.min;input.max=d.max;input.value=d.value;
+      input.addEventListener('input',scheduleWhite);
     }else if(d.type==='toggle'){
       input.type='checkbox';
       input.checked=!!d.value;
+      input.addEventListener('change',scheduleWhite);
     }else{
       input.type='number';
       if(d.min!==undefined)input.min=d.min;
       if(d.max!==undefined)input.max=d.max;
       if(d.step!==undefined)input.step=d.step;
       input.value=d.value!==undefined?d.value:'';
+      input.addEventListener('input',scheduleWhite);
     }
     input.dataset.index=idx;
     wrap.appendChild(input);
     wParamsEl.appendChild(wrap);
   });
 }
-
-effEl.onchange=renderParams;
+effEl.onchange=()=>{renderParams();scheduleWhite();};
+chEl.onchange=scheduleWhite;
+wBriEl.addEventListener('input',scheduleWhite);
 
 function collectParams(){
   const defs=WHITE_PARAM_DEFS[effEl.value]||[];
@@ -82,16 +101,18 @@ function collectParams(){
   return out;
 }
 
-document.getElementById('wSet').onclick=async()=>{
+function sendWhite(){
   const channel=parseInt(chEl.value,10);
-  if(Number.isNaN(channel)){alert('Invalid channel');return;}
+  if(Number.isNaN(channel))return;
   const effect=effEl.value.trim();
-  if(!effect){alert('Select an effect');return;}
+  if(!effect)return;
   const brightness=parseInt(wBriEl.value,10);
-  if(Number.isNaN(brightness)){alert('Invalid brightness');return;}
+  if(Number.isNaN(brightness))return;
   const params=collectParams();
   const msg={channel,effect,brightness};
   if(params.length)msg.params=params;
-  await post(`/api/node/{{ node.id }}/white/set`,msg);
-};
+  post(`/api/node/{{ node.id }}/white/set`,msg);
+}
+
+document.getElementById('wSet').onclick=sendWhite;
 </script>
