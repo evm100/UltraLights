@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 #include "ul_task.h"
 #include "ul_core.h"
+#include "ul_mqtt.h"
 #include <string.h>
 #include "esp_crt_bundle.h"
 #include "mbedtls/x509_crt.h"
@@ -119,9 +120,11 @@ void ul_ota_check_now(bool force)
 {
     if (!ul_core_is_connected()) {
         ESP_LOGW(TAG, "Network not connected, skipping OTA check");
+        ul_mqtt_publish_ota_event("skipped", "network_down");
         return;
     }
     ESP_LOGI(TAG, "OTA check (force=%d): %s", force, CONFIG_UL_OTA_MANIFEST_URL);
+    ul_mqtt_publish_ota_event("check_start", CONFIG_UL_OTA_MANIFEST_URL);
 
     esp_http_client_config_t http_cfg = {
         .url = CONFIG_UL_OTA_MANIFEST_URL,
@@ -146,6 +149,7 @@ void ul_ota_check_now(bool force)
     };
     esp_https_ota_handle_t handle = NULL;
     ESP_LOGD(TAG, "Starting HTTPS OTA");
+    ul_mqtt_publish_ota_event("begin", NULL);
     esp_err_t err = esp_https_ota_begin(&ota_cfg, &handle);
     if (err == ESP_OK) {
         while ((err = esp_https_ota_perform(handle)) == ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
@@ -153,18 +157,22 @@ void ul_ota_check_now(bool force)
         }
         if (err == ESP_OK && esp_https_ota_is_complete_data_received(handle)) {
             if (esp_https_ota_finish(handle) == ESP_OK) {
+                ul_mqtt_publish_ota_event("success", NULL);
                 ESP_LOGI(TAG, "OTA successful, rebooting...");
                 esp_restart();
             } else {
+                ul_mqtt_publish_ota_event("finish_fail", esp_err_to_name(err));
                 ESP_LOGE(TAG, "OTA finish failed");
                 log_ota_error_hint(err, handle);
             }
         } else {
+            ul_mqtt_publish_ota_event("perform_fail", esp_err_to_name(err));
             ESP_LOGE(TAG, "OTA perform failed: %s", esp_err_to_name(err));
             log_ota_error_hint(err, handle);
             esp_https_ota_abort(handle);
         }
     } else {
+        ul_mqtt_publish_ota_event("begin_fail", esp_err_to_name(err));
         ESP_LOGE(TAG, "OTA begin failed: %s", esp_err_to_name(err));
         log_ota_error_hint(err, handle);
     }
