@@ -72,3 +72,7 @@ WHITE_PARAM_DEFS = {
     ],
 }
 
+# ``solid`` is fundamental and must always exist for the web interface. Ensure
+# a default parameter definition is present even if trimmed elsewhere.
+WS_PARAM_DEFS.setdefault("solid", [{"type": "color", "label": "Color"}])
+
