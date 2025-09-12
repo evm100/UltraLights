@@ -31,6 +31,14 @@
 <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
 <script>
 const WS_PARAM_DEFS={{ ws_param_defs|tojson }};
+
+function getParamDefs(eff){
+  let defs=WS_PARAM_DEFS[eff]||[];
+  if(eff==='solid'&&defs.length===0){
+    defs=[{type:'color',label:'Color'}];
+  }
+  return defs;
+}
 function hexToRgb(hex){hex=hex.replace('#','');if(hex.length===3)hex=hex.split('').map(x=>x+x).join('');const num=parseInt(hex,16);return[(num>>16)&255,(num>>8)&255,num&255];}
 function spawnColorPicker(parent,value,onChange){
   const pickerDiv=document.createElement('div');
@@ -69,10 +77,7 @@ function scheduleSend(){
 function renderParams(){
   paramsEl.innerHTML='';
   const eff=effectEl.value.trim();
-  let defs=WS_PARAM_DEFS[eff]||[];
-  if(eff==='solid'&&defs.length===0){
-    defs=[{type:'color',label:'Color'}];
-  }
+  const defs=getParamDefs(eff);
   defs.forEach((d,idx)=>{
     const wrap=document.createElement('div');
     if(d.label){
@@ -109,7 +114,7 @@ speedEl.addEventListener('input',scheduleSend);
 if(effectEl.value)renderParams();
 
 function collectParams(){
-  const defs=WS_PARAM_DEFS[effectEl.value.trim()]||[];
+  const defs=getParamDefs(effectEl.value.trim());
   const inputs=paramsEl.querySelectorAll('input');
   const out=[];
   defs.forEach((d,idx)=>{
