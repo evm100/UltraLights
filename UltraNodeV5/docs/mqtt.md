@@ -11,6 +11,7 @@ All topics are rooted at `ul/<node-id>/`. The node subscribes to commands addres
 | → node | `ul/<node-id>/cmd/...` | Control commands |
 | ← node | `ul/<node-id>/evt/status` | Status updates and snapshots |
 | ← node | `ul/<node-id>/evt/sensor/motion` | Motion events |
+| ← node | `ul/<node-id>/evt/ota` | OTA check and update progress |
 
 `<node-id>` is set at build time by `ul_core_get_node_id()`.
 
@@ -182,6 +183,9 @@ Motion state meanings:
 3. `2` – motion near (ultrasonic within threshold)
 
 `ul/<node-id>/cmd/ota/check` – empty JSON `{}` triggers an OTA manifest check.
+
+OTA progress events are published on `ul/<node-id>/evt/ota` with payload
+`{"status":"<state>","detail":"..."}` describing each step.
 
 `ul/<node-id>/cmd/status` – request a full status snapshot.
 

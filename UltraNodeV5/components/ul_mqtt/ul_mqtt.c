@@ -150,6 +150,19 @@ void ul_mqtt_publish_motion(const char *sid, const char *state) {
   publish_json(topic, payload);
 }
 
+void ul_mqtt_publish_ota_event(const char *status, const char *detail) {
+  char topic[128];
+  snprintf(topic, sizeof(topic), "ul/%s/evt/ota", ul_core_get_node_id());
+  cJSON *root = cJSON_CreateObject();
+  cJSON_AddStringToObject(root, "status", status);
+  if (detail)
+    cJSON_AddStringToObject(root, "detail", detail);
+  char *json = cJSON_PrintUnformatted(root);
+  publish_json(topic, json);
+  cJSON_free(json);
+  cJSON_Delete(root);
+}
+
 static void handle_cmd_ws_set(cJSON *root) {
   int strip = 0;
   cJSON *jstrip = cJSON_GetObjectItem(root, "strip");
