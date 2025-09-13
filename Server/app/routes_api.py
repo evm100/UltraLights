@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from .mqtt_bus import MqttBus
 from . import registry
 from .effects import WS_EFFECTS, WHITE_EFFECTS
+from .presets import get_preset, apply_preset
 
 router = APIRouter()
 BUS: Optional[MqttBus] = None
@@ -47,6 +48,15 @@ def api_add_node(house_id: str, room_id: str, payload: Dict[str, Any]):
     except KeyError:
         raise HTTPException(404, "Unknown room")
     return {"ok": True, "node": node}
+
+
+@router.post("/api/house/{house_id}/room/{room_id}/preset/{preset_id}")
+def api_apply_preset(house_id: str, room_id: str, preset_id: str):
+    preset = get_preset(house_id, room_id, preset_id)
+    if not preset:
+        raise HTTPException(404, "Unknown preset")
+    apply_preset(get_bus(), preset)
+    return {"ok": True}
 
 # ---- Node command APIs -------------------------------------------------
 
