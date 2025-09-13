@@ -12,7 +12,7 @@ def _white_swell_action(node: str, ch: int, start: int, end: int, ms: int) -> Di
         "module": "white",
         "channel": ch,
         "effect": "swell",
-        "brightness": start,
+        "brightness": 255,
         "params": [start, end, ms],
     }
 
@@ -46,7 +46,7 @@ ROOM_PRESETS: Dict[str, Dict[str, List[Dict[str, Any]]]] = {
                 "id": "white-swell-100",
                 "name": "White Swell 0→100",
                 "actions": _white_swell_actions(
-                    ["del-sur-room-1-node1", "node"], start=0, end=100, ms=5000
+                    ["del-sur-room-1-node1", "node"], start=0, end=255, ms=5000
                 ),
             }
         ],
@@ -57,30 +57,31 @@ ROOM_PRESETS: Dict[str, Dict[str, List[Dict[str, Any]]]] = {
 
 # Kitchen presets for each house
 for house_id, node_id in (
-    ("del-sur", "del-sur-kitchen-node1"),
+    ("del-sur", "kitchen"),
     ("sdsu", "sdsu-kitchen-node1"),
 ):
     ROOM_PRESETS[house_id]["kitchen"] = [
         {
             "id": "swell-on",
             "name": "Swell On",
-            "actions": _white_swell_actions([node_id], 0, 100, 5000, channels=[0, 1, 2]),
+            "actions": _white_swell_actions([node_id], 0, 255, 5000, channels=[0, 1, 2]),
         },
         {
             "id": "midnight-snack",
             "name": "Midnight Snack",
             "actions": [
-                _white_swell_action(node_id, 0, 0, 10, 5000),
+                _white_swell_action(node_id, 0, 0, 10, 2000),
                 _white_swell_action(node_id, 1, 0, 50, 5000),
+                _white_swell_action(node_id, 2, 0, 0, 5000),
             ],
         },
         {
             "id": "kitchens-closed",
             "name": "Kitchen's Closed",
             "actions": [
-                _white_swell_action(node_id, 2, 100, 255, 5000),
-                _white_swell_action(node_id, 1, 100, 0, 5000),
-                _white_swell_action(node_id, 0, 100, 0, 5000),
+                _white_swell_action(node_id, 2, 150, 255, 5000),
+                _white_swell_action(node_id, 1, 150, 0, 5000),
+                _white_swell_action(node_id, 0, 150, 0, 5000),
             ],
         },
         {

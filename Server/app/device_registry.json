@@ -17,6 +17,17 @@
               "sensor",
               "ota"
             ]
+          },
+          {
+            "id": "kitchen",
+            "name": "kitchen",
+            "kind": "ultranode",
+            "modules": [
+              "ws",
+              "white",
+              "sensor",
+              "ota"
+            ]
           }
         ]
       },
