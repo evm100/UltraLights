@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 from .config import settings
 from . import registry
 from .effects import WS_EFFECTS, WHITE_EFFECTS, WS_PARAM_DEFS, WHITE_PARAM_DEFS
+from .presets import get_room_presets
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -48,6 +49,7 @@ def room_page(request: Request, house_id: str, room_id: str):
             status_code=404,
         )
     title = f"{house.get('name', house_id)} - {room.get('name', room_id)}"
+    presets = get_room_presets(house_id, room_id)
     return templates.TemplateResponse(
         "room.html",
         {
@@ -56,6 +58,7 @@ def room_page(request: Request, house_id: str, room_id: str):
             "room": room,
             "title": title,
             "subtitle": title,
+            "presets": presets,
         },
     )
 
