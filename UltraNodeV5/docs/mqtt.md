@@ -120,9 +120,10 @@ Example – flash between red and blue:
 }
 ```
 
-Registered effects: `solid` and `breathe`.
+Registered effects: `solid`, `breathe`, and `swell`.
 * `solid` – static output with no parameters.
 * `breathe` – optional params: `[period_ms]` to control the breath cycle length.
+* `swell` – params `[x, y, t_ms]` fade from brightness `x` to `y` over `t_ms` milliseconds then hold at `y`.
 
 ### Sensor and OTA commands
 

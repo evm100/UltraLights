@@ -12,3 +12,4 @@ typedef struct {
 } white_effect_t;
 
 const white_effect_t* ul_white_get_effects(int* count);
+int ul_white_effect_current_channel(void);

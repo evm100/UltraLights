@@ -13,6 +13,16 @@
   </a>
   {% endfor %}
 </div>
+<div class="mt-8">
+  <h2 class="text-2xl font-semibold mb-4">Presets</h2>
+  <div class="flex flex-wrap gap-2">
+    {% for p in presets %}
+    <button class="preset glass px-4 py-2 rounded-lg hover:ring-2 hover:ring-indigo-400" data-id="{{ p.id }}">{{ p.name }}</button>
+    {% else %}
+    <div class="opacity-60">No presets configured.</div>
+    {% endfor %}
+  </div>
+</div>
 <script>
 document.getElementById('addNode').onclick = async () => {
   const name = prompt('New node name');
@@ -22,5 +32,14 @@ document.getElementById('addNode').onclick = async () => {
   });
   if(res.ok) location.reload(); else alert('Failed to add node');
 };
+document.querySelectorAll('.preset').forEach(btn => {
+  btn.onclick = async () => {
+    const id = btn.dataset.id;
+    const res = await fetch(`/api/house/{{ house.id }}/room/{{ room.id }}/preset/${id}`, {
+      method:'POST'
+    });
+    if(!res.ok) alert('Failed to apply preset');
+  };
+});
 </script>
 {% endblock %}
