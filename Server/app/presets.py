@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 
 from .mqtt_bus import MqttBus
 
-
 def _white_swell_action(node: str, ch: int, start: int, end: int, ms: int) -> Dict[str, Any]:
     """Return a single white-channel swell action."""
 
@@ -34,7 +33,7 @@ def _white_swell_actions(nodes: List[str], start: int, end: int, ms: int,
         for ch in channels:
             actions.append(_white_swell_action(node, ch, start, end, ms))
     return actions
-
+  
 # Presets are organized by house and room. Each preset contains a list of
 # actions to perform when the preset is applied. Actions target a node and one
 # of its modules (ws, white, etc.). This structure intentionally mirrors the
