@@ -31,6 +31,7 @@ typedef struct {
 static white_ch_t s_ch[4];
 static int s_count = 0;
 static TaskHandle_t s_white_task = NULL;
+static int s_current_ch_idx = 0;
 
 static const white_effect_t* find_eff(const char* name) {
     int n=0; const white_effect_t* t = ul_white_get_effects(&n);
@@ -59,6 +60,8 @@ static void setup_ledc_channel(int ch, int gpio, int freq_hz)
     };
     ledc_channel_config(&ccfg);
 }
+
+int ul_white_effect_current_channel(void) { return s_current_ch_idx; }
 
 static void ch_init(int idx, bool enabled, int gpio, int ledc_ch, int pwm_hz) {
     s_ch[idx].enabled = enabled;
@@ -89,6 +92,7 @@ static void white_task(void*)
         for (int i=0;i<4;i++) {
             if (!s_ch[i].enabled) continue;
             uint8_t v = 0;
+            s_current_ch_idx = i;
             if (s_ch[i].eff && s_ch[i].eff->render) {
                 v = s_ch[i].eff->render(s_ch[i].frame_idx++);
             }

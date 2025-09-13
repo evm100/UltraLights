@@ -12,7 +12,7 @@ nodes, e.g.::
                     "id": "kitchen",
                     "name": "Kitchen",
                     "nodes": [
-                        {"id": "del-sur-kitchen-node1", "name": "Kitchen Node", "kind": "rgb"}
+                        {"id": "kitchen", "name": "Kitchen Node", "kind": "rgb"}
                     ]
                 }
             ]
