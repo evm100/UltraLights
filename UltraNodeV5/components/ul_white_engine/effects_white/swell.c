@@ -1,18 +1,23 @@
 #include "effect.h"
 #include "sdkconfig.h"
 #include "cJSON.h"
+#include <stdbool.h>
 
 static uint8_t s_start[4];
 static uint8_t s_end[4];
 static int s_frames[4];
 static int s_progress[4];
+static bool s_initialized;
 
 void white_swell_init(void) {
-    for (int i = 0; i < 4; ++i) {
-        s_start[i] = 0;
-        s_end[i] = 255;
-        s_frames[i] = 1;
-        s_progress[i] = 0;
+    if (!s_initialized) {
+        for (int i = 0; i < 4; ++i) {
+            s_start[i] = 0;
+            s_end[i] = 255;
+            s_frames[i] = 1;
+            s_progress[i] = 0;
+        }
+        s_initialized = true;
     }
 }
 
