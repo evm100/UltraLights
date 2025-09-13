@@ -35,7 +35,7 @@ class Settings:
                     "name": "Kitchen",
                     "nodes": [
                         {
-                            "id": "del-sur-kitchen-node1",
+                            "id": "kitchen",
                             "name": "Kitchen Node",
                             "kind": "ultranode",
                             "modules": ["ws", "white", "sensor", "ota"],
