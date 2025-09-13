@@ -59,7 +59,6 @@ ROOM_PRESETS: Dict[str, Dict[str, List[Dict[str, Any]]]] = {
 # Kitchen presets for each house
 for house_id, node_id in (
     ("del-sur", "kitchen"),
-    ("sdsu", "sdsu-kitchen-node1"),
 ):
     ROOM_PRESETS[house_id]["kitchen"] = [
         {
