@@ -10,9 +10,14 @@
 
 #include "ul_core.h"
 #include "ul_mqtt.h"
-#include "ul_sensors.h"
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
+#if CONFIG_UL_PIR_ENABLED
+#include "ul_pir.h"
+#endif
+#if CONFIG_UL_ULTRA_ENABLED
+#include "ul_ultra.h"
+#endif
 
 static const char *TAG = "app";
 
@@ -33,7 +38,12 @@ static void service_manager_task(void *ctx) {
           ul_mqtt_start();
           ul_ws_engine_start();    // 60 FPS LED engine
           ul_white_engine_start(); // 200 Hz smoothing
-          ul_sensors_start();
+#if CONFIG_UL_PIR_ENABLED
+          ul_pir_start();
+#endif
+#if CONFIG_UL_ULTRA_ENABLED
+          ul_ultra_start();
+#endif
           s_services_running = true;
         }
       } else {
@@ -41,7 +51,12 @@ static void service_manager_task(void *ctx) {
           ul_mqtt_stop();
           ul_ws_engine_stop();
           ul_white_engine_stop();
-          ul_sensors_stop();
+#if CONFIG_UL_PIR_ENABLED
+          ul_pir_stop();
+#endif
+#if CONFIG_UL_ULTRA_ENABLED
+          ul_ultra_stop();
+#endif
           s_services_running = false;
         }
         ESP_LOGW(TAG, "Network disconnected");

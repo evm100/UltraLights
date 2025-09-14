@@ -11,7 +11,9 @@ void ul_mqtt_start(void);
 void ul_mqtt_stop(void);
 void ul_mqtt_publish_status(void);
 void ul_mqtt_publish_status_now(void);
-void ul_mqtt_publish_motion(const char *sid, const char *state);
+// Publish a motion event for a specific sensor. The event is published on
+// topic "ul/<node>/evt/<sensor>/motion" with the given state string.
+void ul_mqtt_publish_motion(const char *sensor, const char *state);
 void ul_mqtt_publish_ota_event(const char *status, const char *detail);
 bool ul_mqtt_is_ready(void);
 bool ul_mqtt_is_connected(void);
