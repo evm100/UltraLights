@@ -41,8 +41,12 @@ menu "MQTT"
 endmenu
 
 menu "OTA"
+    config UL_OTA_ENABLED
+        bool "Enable OTA updates"
+        default n
     config UL_OTA_MANIFEST_URL
         string "Manifest URL"
+        default "https://lights.evm100.org/firmware/UltraLights/<node-id>/latest.bin"
     config UL_OTA_BEARER_TOKEN
         string "Bearer token"
     config UL_OTA_HMAC_SECRET
