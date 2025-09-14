@@ -15,13 +15,14 @@ class MqttBus:
         self.thread = threading.Thread(target=self.client.loop_forever, daemon=True)
         self.thread.start()
 
-    def pub(self, topic: str, payload: Dict[str, object], retain: bool = True):
+    def pub(self, topic: str, payload: Dict[str, object], retain: bool = False):
         """Publish a command payload to the given topic.
 
-        By default, messages are retained on the broker so that new clients
-        immediately receive the latest command.  Some commands, such as OTA
-        checks, should not be retained to avoid re-triggering actions after a
-        reboot.  The ``retain`` flag allows callers to override this behaviour.
+        Most commands should *not* be retained to prevent them from being
+        re-applied after a reboot.  Callers can enable the ``retain`` flag for
+        those commands, such as ``ws/set`` and ``white/set``, where remembering
+        the last value is desirable so lights resume their previous state after
+        reconnecting.
         """
         self.client.publish(topic, payload=json.dumps(payload), qos=1, retain=retain)
 
@@ -42,7 +43,7 @@ class MqttBus:
             "speed": float(speed),
             "params": params if params is not None else [],
         }
-        self.pub(topic_cmd(node_id, "ws/set"), msg)
+        self.pub(topic_cmd(node_id, "ws/set"), msg, retain=True)
 
     def ws_power(self, node_id: str, strip: int, on: bool):
         msg = {"strip": int(strip), "on": bool(on)}
@@ -63,7 +64,7 @@ class MqttBus:
             "brightness": int(brightness),
             "params": params or [],
         }
-        self.pub(topic_cmd(node_id, "white/set"), msg)
+        self.pub(topic_cmd(node_id, "white/set"), msg, retain=True)
 
     # ---- Sensor commands ----
     def sensor_cooldown(self, node_id: str, seconds: int):
