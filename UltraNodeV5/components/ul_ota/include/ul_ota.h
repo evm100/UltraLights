@@ -2,6 +2,9 @@
 #include "sdkconfig.h"
 #include <stdbool.h>
 
+/* OTA functions are always available; CONFIG_UL_OTA_AUTO_CHECK controls
+ * only the periodic background task.
+ */
 #ifdef __cplusplus
 extern "C" {
 #endif
