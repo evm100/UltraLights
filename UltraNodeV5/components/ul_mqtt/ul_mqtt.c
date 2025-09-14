@@ -118,12 +118,10 @@ static void publish_status_snapshot(void) {
   cJSON_AddNumberToObject(jsens, "motion_state", ss.motion_state);
   cJSON_AddItemToObject(root, "sensors", jsens);
 
-#if CONFIG_UL_OTA_ENABLED
   // OTA (static fields from Kconfig)
   cJSON *jota = cJSON_CreateObject();
   cJSON_AddStringToObject(jota, "manifest_url", CONFIG_UL_OTA_MANIFEST_URL);
   cJSON_AddItemToObject(root, "ota", jota);
-#endif
 
   char *json = cJSON_PrintUnformatted(root);
   publish_json(topic, json);
