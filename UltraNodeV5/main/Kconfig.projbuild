@@ -51,10 +51,6 @@ menu "OTA"
         string "Bearer token"
     config UL_OTA_HMAC_SECRET
         string "Manifest HMAC secret"
-    config UL_OTA_INTERVAL_S
-        int "Auto-check interval (seconds)"
-        range 60 86400
-        default 3600
     config UL_OTA_ROLLBACK_ENABLE
         bool "Enable rollback"
         default y

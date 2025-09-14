@@ -5,9 +5,6 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_tls.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "ul_task.h"
 #include "ul_core.h"
 #include "ul_mqtt.h"
 #include <string.h>
@@ -15,7 +12,6 @@
 #include "mbedtls/x509_crt.h"
 
 static const char* TAG = "ul_ota";
-static TaskHandle_t s_ota_task = NULL;
 
 static void log_ota_error_hint(esp_err_t err, esp_https_ota_handle_t handle)
 {
@@ -84,28 +80,6 @@ static esp_err_t _http_event_handler(esp_http_client_event_t *evt)
             break;
     }
     return ESP_OK;
-}
-
-static void ota_task(void*)
-{
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(CONFIG_UL_OTA_INTERVAL_S * 1000));
-        ul_ota_check_now(false);
-    }
-}
-
-void ul_ota_start(void)
-{
-    // Periodic OTA checks pinned to core 0 when multiple cores are available
-    ul_task_create(ota_task, "ota_task", 6144, NULL, 4, &s_ota_task, 0);
-}
-
-void ul_ota_stop(void)
-{
-    if (s_ota_task) {
-        vTaskDelete(s_ota_task);
-        s_ota_task = NULL;
-    }
 }
 
 static esp_err_t _http_client_init_cb(esp_http_client_handle_t http_client)
