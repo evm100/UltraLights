@@ -1,6 +1,5 @@
-#include "ul_ota.h"
-
 #include "sdkconfig.h"
+#include "ul_ota.h"
 #include "esp_https_ota.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
