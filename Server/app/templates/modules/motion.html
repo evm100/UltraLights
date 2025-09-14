@@ -4,9 +4,16 @@
     <input id="motion" type="checkbox" class="w-5 h-5">
     <span>Enabled</span>
   </label>
+  <label class="flex items-center gap-3 mt-3">
+    <span>Active Time (s)</span>
+    <input id="motionDuration" type="number" min="1" max="600" value="30" class="w-20 rounded border px-2 py-1">
+  </label>
 </section>
 <script>
 const motion=document.getElementById('motion');
+const duration=document.getElementById('motionDuration');
 async function post(path, body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
-motion.addEventListener('change',async()=>{await post(`/api/node/{{ node.id }}/motion`,{enabled:motion.checked});});
+async function send(){await post(`/api/node/{{ node.id }}/motion`,{enabled:motion.checked,duration:parseInt(duration.value)});}
+motion.addEventListener('change',send);
+duration.addEventListener('change',send);
 </script>
