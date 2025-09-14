@@ -1,5 +1,4 @@
 #include "ul_ota.h"
-
 #include "sdkconfig.h"
 #include "esp_https_ota.h"
 #include "esp_http_client.h"
@@ -178,4 +177,3 @@ void ul_ota_check_now(bool force)
         log_ota_error_hint(err, handle);
     }
 }
-
