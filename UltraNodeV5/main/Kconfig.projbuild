@@ -41,8 +41,8 @@ menu "MQTT"
 endmenu
 
 menu "OTA"
-    config UL_OTA_ENABLED
-        bool "Enable OTA updates"
+    config UL_OTA_AUTO_CHECK
+        bool "Enable periodic auto-check"
         default n
     config UL_OTA_MANIFEST_URL
         string "Manifest URL"

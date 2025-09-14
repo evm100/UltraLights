@@ -334,13 +334,11 @@ static void on_message(esp_mqtt_event_handle_t event) {
     } else if (starts_with(sub, "sensor/motion")) {
       handle_cmd_sensor_motion(root);
     }
-#if CONFIG_UL_OTA_ENABLED
     else if (starts_with(sub, "ota/check")) {
       ul_mqtt_publish_status();
       ul_ota_check_now(true);
       publish_status_snapshot();
     }
-#endif
     else if (starts_with(sub, "white/set")) {
       override_index_from_path(root, sub, "white/set", "channel");
       handle_cmd_white_set(root);
