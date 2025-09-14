@@ -21,13 +21,13 @@ Every command is a JSON object. For addressable strips the payload always includ
 
 ### Addressable RGB strips (`ws`)
 
-`ul/<node-id>/cmd/ws/set`
+`ul/<node-id>/cmd/ws/set/<strip>`
 
 Fields:
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `strip` | int | Strip index (0‑3) |
+| `strip` | int | Strip index (0‑3). Optional when encoded in the topic path |
 | `effect` | string | One of the registered effect names |
 | `brightness` | int 0‑255 | Overall brightness |
 | `speed` | number | Multiplier for frame advance (1.0 = normal) |
@@ -55,6 +55,11 @@ Example – set strip 1 to a green solid color:
 }
 ```
 
+The `strip` index identifies which RGB strip to control. It is echoed in the
+topic path (`ws/set/<strip>`), so the field may be omitted from the payload and
+the topic value takes precedence. This allows each strip's last state to be
+retained independently.
+
 Example – triple wave combining red, green, and blue waves:
 
 ```json
@@ -74,7 +79,7 @@ Example – triple wave combining red, green, and blue waves:
 Shell command using `mosquitto_pub`:
 
 ```sh
-mosquitto_pub -t "ul/<node-id>/cmd/ws/set" -m '{"strip":0,"effect":"triple_wave","brightness":200,"speed":0.5,"params":[255,0,0,30,0.20,0,255,0,45,0.15,0,0,255,60,0.10]}'
+mosquitto_pub -t "ul/<node-id>/cmd/ws/set/0" -m '{"strip":0,"effect":"triple_wave","brightness":200,"speed":0.5,"params":[255,0,0,30,0.20,0,255,0,45,0.15,0,0,255,60,0.10]}'
 ```
 
 Example – spacewaves with three calm colors:
@@ -109,7 +114,7 @@ Example – flash between red and blue:
 
 ### White PWM channels (`white`)
 
-`ul/<node-id>/cmd/white/set`
+`ul/<node-id>/cmd/white/set/<channel>`
 
 ```json
 {
@@ -119,6 +124,11 @@ Example – flash between red and blue:
   "params": [<int>, ...]
 }
 ```
+
+The `channel` value selects the white PWM output (0‑3). It is also encoded in
+the topic path, so the field may be omitted from the payload and the topic
+value will be used. This enables each channel's state to be retained
+separately.
 
 Registered effects: `solid`, `breathe`, and `swell`.
 * `solid` – static output with no parameters.
@@ -217,7 +227,7 @@ payload = {
     "speed": 1.0,
     "params": [32]
 }
-client.publish(f"ul/{NODE}/cmd/ws/set", json.dumps(payload), qos=1)
+client.publish(f"ul/{NODE}/cmd/ws/set/{payload['strip']}", json.dumps(payload), qos=1)
 
 solid = {
     "strip": 1,
@@ -226,7 +236,7 @@ solid = {
     "speed": 1.0,
     "params": [255, 0, 0]
 }
-client.publish(f"ul/{NODE}/cmd/ws/set", json.dumps(solid), qos=1)
+client.publish(f"ul/{NODE}/cmd/ws/set/{solid['strip']}", json.dumps(solid), qos=1)
 ```
 
 Always include the global fields; tailor the `params` array to the selected effect.

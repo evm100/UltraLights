@@ -12,6 +12,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 static const char *TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
@@ -23,6 +24,26 @@ static bool j_is_int_in(cJSON *obj, const char *key, int minv, int maxv,
 
 static int starts_with(const char *s, const char *pfx) {
   return strncmp(s, pfx, strlen(pfx)) == 0;
+}
+
+// If the topic path encodes an integer index after the given prefix,
+// overwrite or insert that field into the JSON payload.
+static void override_index_from_path(cJSON *root, const char *sub,
+                                     const char *prefix, const char *field) {
+  const char *suffix = sub + strlen(prefix);
+  if (!root || suffix[0] != '/')
+    return;
+  char *end;
+  long v = strtol(suffix + 1, &end, 10);
+  if (end <= suffix + 1)
+    return; // no digits found
+  cJSON *j = cJSON_GetObjectItem(root, field);
+  if (!j) {
+    cJSON_AddNumberToObject(root, field, (int)v);
+  } else {
+    j->valueint = (int)v;
+    j->valuedouble = (double)v;
+  }
 }
 
 // Helper to publish JSON
@@ -302,6 +323,7 @@ static void on_message(esp_mqtt_event_handle_t event) {
   if (cmdlen >= 3 && strncmp(cmdroot, "cmd", 3) == 0) {
     const char *sub = cmdroot + 4; // skip "cmd/"
     if (starts_with(sub, "ws/set")) {
+      override_index_from_path(root, sub, "ws/set", "strip");
       handle_cmd_ws_set(root);
     } else if (starts_with(sub, "ws/power")) {
       handle_cmd_ws_power(root);
@@ -314,6 +336,7 @@ static void on_message(esp_mqtt_event_handle_t event) {
       ul_ota_check_now(true);
       publish_status_snapshot();
     } else if (starts_with(sub, "white/set")) {
+      override_index_from_path(root, sub, "white/set", "channel");
       handle_cmd_white_set(root);
       ul_mqtt_publish_status();
     } else if (starts_with(sub, "status")) {
@@ -395,10 +418,12 @@ void ul_mqtt_run_local(const char *path, const char *json) {
   if (!root)
     return;
   if (starts_with(path, "ws/set")) {
+    override_index_from_path(root, path, "ws/set", "strip");
     handle_cmd_ws_set(root);
   } else if (starts_with(path, "ws/power")) {
     handle_cmd_ws_power(root);
   } else if (starts_with(path, "white/set")) {
+    override_index_from_path(root, path, "white/set", "channel");
     handle_cmd_white_set(root);
   } else if (starts_with(path, "sensor/motion")) {
     handle_cmd_sensor_motion(root);

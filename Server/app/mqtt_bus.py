@@ -43,7 +43,10 @@ class MqttBus:
             "speed": float(speed),
             "params": params if params is not None else [],
         }
-        self.pub(topic_cmd(node_id, "ws/set"), msg, retain=True)
+        # Retain state per-strip by publishing to a unique sub-topic.  The
+        # ``strip`` field is kept in the payload for compatibility with older
+        # firmware that still expects it.
+        self.pub(topic_cmd(node_id, f"ws/set/{strip}"), msg, retain=True)
 
     def ws_power(self, node_id: str, strip: int, on: bool):
         msg = {"strip": int(strip), "on": bool(on)}
@@ -64,7 +67,9 @@ class MqttBus:
             "brightness": int(brightness),
             "params": params or [],
         }
-        self.pub(topic_cmd(node_id, "white/set"), msg, retain=True)
+        # Publish to a channel-specific topic so each retained message stores
+        # the last state for that channel independently.
+        self.pub(topic_cmd(node_id, f"white/set/{channel}"), msg, retain=True)
 
     # ---- Sensor commands ----
     def sensor_cooldown(self, node_id: str, seconds: int):
