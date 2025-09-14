@@ -1,0 +1,71 @@
+#include "ul_ultra.h"
+#include "sdkconfig.h"
+#include "driver/gpio.h"
+#include "esp_rom_sys.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "ul_mqtt.h"
+#include "esp_log.h"
+#include "ul_task.h"
+
+static const char *TAG = "ul_ultra";
+static TaskHandle_t s_ultra_task = NULL;
+static int64_t s_last_publish_us = 0;
+
+static void ultra_task(void *arg) {
+    gpio_config_t trig = {
+        .pin_bit_mask = 1ULL << CONFIG_UL_ULTRA_TRIG_GPIO,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&trig);
+    gpio_config_t echo = {
+        .pin_bit_mask = 1ULL << CONFIG_UL_ULTRA_ECHO_GPIO,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE
+    };
+    gpio_config(&echo);
+
+    while (1) {
+        gpio_set_level(CONFIG_UL_ULTRA_TRIG_GPIO, 0);
+        esp_rom_delay_us(2);
+        gpio_set_level(CONFIG_UL_ULTRA_TRIG_GPIO, 1);
+        esp_rom_delay_us(10);
+        gpio_set_level(CONFIG_UL_ULTRA_TRIG_GPIO, 0);
+
+        int64_t t0 = esp_timer_get_time();
+        while (gpio_get_level(CONFIG_UL_ULTRA_ECHO_GPIO) == 0 && esp_timer_get_time() - t0 < 25000) {}
+        int64_t start = esp_timer_get_time();
+        while (gpio_get_level(CONFIG_UL_ULTRA_ECHO_GPIO) == 1 && esp_timer_get_time() - start < 25000) {}
+        int64_t dur = esp_timer_get_time() - start;
+        int dist_mm = (int)(dur * 0.1715);
+
+        if (dist_mm > 0 && dist_mm < CONFIG_UL_ULTRA_DISTANCE_MM) {
+            int64_t now = esp_timer_get_time();
+            if (now - s_last_publish_us >= (int64_t)CONFIG_UL_ULTRA_EVENT_MIN_INTERVAL_S * 1000000LL) {
+                ESP_LOGD(TAG, "Ultrasonic motion detected: %d mm", dist_mm);
+                ul_mqtt_publish_motion("ultra", "MOTION_DETECTED");
+                s_last_publish_us = now;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(CONFIG_UL_SENSOR_POLL_MS));
+    }
+}
+
+void ul_ultra_start(void) {
+    if (!s_ultra_task) {
+        ul_task_create(ultra_task, "ultra", 4096, NULL, 5, &s_ultra_task, 0);
+    }
+}
+
+void ul_ultra_stop(void) {
+    if (s_ultra_task) {
+        vTaskDelete(s_ultra_task);
+        s_ultra_task = NULL;
+    }
+}
