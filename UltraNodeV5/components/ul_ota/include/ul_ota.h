@@ -8,12 +8,8 @@ extern "C" {
 
 // Triggered via MQTT: ul/<node_id>/cmd/ota/check
 void ul_ota_check_now(bool force);
-#else
-static inline void ul_ota_start(void) {}
-static inline void ul_ota_stop(void) {}
-static inline void ul_ota_check_now(bool force) {}
-#endif
 
 #ifdef __cplusplus
 }
 #endif
+
