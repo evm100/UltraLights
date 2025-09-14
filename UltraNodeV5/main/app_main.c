@@ -10,7 +10,6 @@
 
 #include "ul_core.h"
 #include "ul_mqtt.h"
-#include "ul_ota.h"
 #include "ul_sensors.h"
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
@@ -35,7 +34,6 @@ static void service_manager_task(void *ctx) {
           ul_ws_engine_start();    // 60 FPS LED engine
           ul_white_engine_start(); // 200 Hz smoothing
           ul_sensors_start();
-          ul_ota_start(); // periodic + MQTT trigger
           s_services_running = true;
         }
       } else {
@@ -44,7 +42,6 @@ static void service_manager_task(void *ctx) {
           ul_ws_engine_stop();
           ul_white_engine_stop();
           ul_sensors_stop();
-          ul_ota_stop();
           s_services_running = false;
         }
         ESP_LOGW(TAG, "Network disconnected");

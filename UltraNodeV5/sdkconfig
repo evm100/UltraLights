@@ -526,10 +526,9 @@ CONFIG_UL_MQTT_PASS="ulpwd"
 #
 # OTA
 #
-CONFIG_UL_OTA_MANIFEST_URL="https://lights.evm100.org/firmware/UltraLights/living-room-1/latest.bin"
+CONFIG_UL_OTA_MANIFEST_URL="https://lights.evm100.org/firmware/UltraLights/<node-id>/latest.bin"
 CONFIG_UL_OTA_BEARER_TOKEN=""
 CONFIG_UL_OTA_HMAC_SECRET=""
-CONFIG_UL_OTA_INTERVAL_S=3600
 CONFIG_UL_OTA_ROLLBACK_ENABLE=y
 CONFIG_UL_OTA_SERVER_HOST=""
 CONFIG_UL_OTA_COMMON_NAME="lights.evm100.org"
