@@ -526,7 +526,8 @@ CONFIG_UL_MQTT_PASS="ulpwd"
 #
 # OTA
 #
-CONFIG_UL_OTA_MANIFEST_URL="https://lights.evm100.org/firmware/UltraLights/node01/latest.bin"
+CONFIG_UL_OTA_ENABLED=n
+CONFIG_UL_OTA_MANIFEST_URL="https://lights.evm100.org/firmware/UltraLights/<node-id>/latest.bin"
 CONFIG_UL_OTA_BEARER_TOKEN=""
 CONFIG_UL_OTA_HMAC_SECRET=""
 CONFIG_UL_OTA_INTERVAL_S=3600

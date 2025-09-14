@@ -118,10 +118,12 @@ static void publish_status_snapshot(void) {
   cJSON_AddNumberToObject(jsens, "motion_state", ss.motion_state);
   cJSON_AddItemToObject(root, "sensors", jsens);
 
+#if CONFIG_UL_OTA_ENABLED
   // OTA (static fields from Kconfig)
   cJSON *jota = cJSON_CreateObject();
   cJSON_AddStringToObject(jota, "manifest_url", CONFIG_UL_OTA_MANIFEST_URL);
   cJSON_AddItemToObject(root, "ota", jota);
+#endif
 
   char *json = cJSON_PrintUnformatted(root);
   publish_json(topic, json);
@@ -331,11 +333,15 @@ static void on_message(esp_mqtt_event_handle_t event) {
       handle_cmd_sensor_cooldown(root);
     } else if (starts_with(sub, "sensor/motion")) {
       handle_cmd_sensor_motion(root);
-    } else if (starts_with(sub, "ota/check")) {
+    }
+#if CONFIG_UL_OTA_ENABLED
+    else if (starts_with(sub, "ota/check")) {
       ul_mqtt_publish_status();
       ul_ota_check_now(true);
       publish_status_snapshot();
-    } else if (starts_with(sub, "white/set")) {
+    }
+#endif
+    else if (starts_with(sub, "white/set")) {
       override_index_from_path(root, sub, "white/set", "channel");
       handle_cmd_white_set(root);
       ul_mqtt_publish_status();
