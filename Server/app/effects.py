@@ -40,6 +40,9 @@ WS_PARAM_DEFS = {
         {"type": "slider", "label": "Wavelength", "min": 1, "max": 255, "value": 32},
     ],
 
+    # Modern rainbow – fixed 80 pixel cycle
+    "modern_rainbow": [],
+
     # Triple wave – three sets of color, wavelength and frequency
     "triple_wave": [
         {"type": "color", "label": "Wave 1 Color"},
