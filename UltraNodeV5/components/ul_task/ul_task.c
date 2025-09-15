@@ -1,4 +1,5 @@
 #include "esp_system.h"
+#include "esp_chip_info.h"
 #include "ul_task.h"
 
 uint8_t ul_core_count;
