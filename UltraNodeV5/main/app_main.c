@@ -13,6 +13,7 @@
 #include "ul_task.h"
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
+#include "ul_task.h"
 #if CONFIG_UL_PIR_ENABLED
 #include "ul_pir.h"
 #endif
@@ -77,8 +78,10 @@ void app_main(void) {
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-  ul_task_create(service_manager_task, "svc_mgr", 4096, NULL, 5,
-                 &s_service_task, 0);
+  ul_task_init();
+
+  xTaskCreate(service_manager_task, "svc_mgr", 4096, NULL, 5,
+              &s_service_task);
   ul_core_wifi_start();
   ul_core_register_connectivity_cb(connectivity_cb, NULL);
   bool connected = ul_core_wait_for_ip(portMAX_DELAY);
