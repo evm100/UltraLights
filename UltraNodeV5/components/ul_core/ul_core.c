@@ -10,6 +10,7 @@
 #include "esp_system.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
+#include "ul_task.h"
 #include <string.h>
 #include <time.h>
 
@@ -229,5 +230,6 @@ void ul_core_sntp_start(void) {
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
   ESP_LOGI(TAG, "Time sync: %ld", now);
-  xTaskCreate(sntp_sync_task, "sntp_sync", 2048, NULL, tskIDLE_PRIORITY, NULL);
+  ul_task_create(sntp_sync_task, "sntp_sync", 2048, NULL, tskIDLE_PRIORITY,
+                 NULL, 0);
 }
