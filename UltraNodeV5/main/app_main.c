@@ -10,6 +10,7 @@
 
 #include "ul_core.h"
 #include "ul_mqtt.h"
+#include "ul_task.h"
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
 #include "ul_task.h"
