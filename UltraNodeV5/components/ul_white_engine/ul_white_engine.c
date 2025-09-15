@@ -12,8 +12,10 @@
 
 #if CONFIG_UL_IS_ESP32C3
 #define UL_LEDC_SPEED_MODE LEDC_LOW_SPEED_MODE
-#else
+#elif defined(LEDC_HIGH_SPEED_MODE)
 #define UL_LEDC_SPEED_MODE LEDC_HIGH_SPEED_MODE
+#else
+#define UL_LEDC_SPEED_MODE LEDC_LOW_SPEED_MODE
 #endif
 
 static const char* TAG = "ul_white";
