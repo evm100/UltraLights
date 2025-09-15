@@ -26,6 +26,9 @@ class MotionManager:
         for info in list(self.active.values()):
             for t in info.get("timers", {}).values():
                 t.cancel()
+            timer = info.get("timer")
+            if timer:
+                timer.cancel()
         self.active.clear()
 
     def configure_node(self, node_id: str, enabled: bool, duration: int) -> None:
@@ -49,6 +52,25 @@ class MotionManager:
         if not room or not house:
             return
         room_id = room["id"]
+        # Special handling for Del Sur kitchen motion
+        if house["id"] == "del-sur" and room_id == "kitchen":
+            entry = self.active.get(room_id)
+            duration = int(cfg.get("duration", 30))
+            if entry and entry.get("timer"):
+                entry["timer"].cancel()
+            else:
+                entry = {"house_id": house["id"], "timer": None, "on": False}
+                self.active[room_id] = entry
+            timer = threading.Timer(duration, self._turn_off_kitchen, args=(room_id,))
+            timer.start()
+            entry["timer"] = timer
+            if not entry.get("on"):
+                preset = get_preset(house["id"], room_id, "swell-on")
+                if preset:
+                    apply_preset(self.bus, preset)
+                entry["on"] = True
+            return
+
         entry = self.active.setdefault(
             room_id, {"house_id": house["id"], "current": None, "timers": {}}
         )
@@ -65,6 +87,16 @@ class MotionManager:
         preset = get_preset(entry["house_id"], room_id, preset_id)
         if preset:
             apply_preset(self.bus, preset)
+
+    def _turn_off_kitchen(self, room_id: str) -> None:
+        entry = self.active.get(room_id)
+        if not entry:
+            return
+        house_id = entry["house_id"]
+        preset = get_preset(house_id, room_id, "swell-off")
+        if preset:
+            apply_preset(self.bus, preset)
+        self.active.pop(room_id, None)
 
     def _clear_sensor(self, room_id: str, sensor: str) -> None:
         entry = self.active.get(room_id)

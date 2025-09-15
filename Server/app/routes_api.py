@@ -161,7 +161,7 @@ def api_node_motion(node_id: str, payload: Dict[str, Any]):
         duration = int(payload.get("duration", 30))
     except Exception:
         raise HTTPException(400, "invalid duration")
-    if not 1 <= duration <= 600:
+    if not 10 <= duration <= 3600:
         raise HTTPException(400, "invalid duration")
     motion_manager.configure_node(node_id, enabled, duration)
     return {"ok": True}

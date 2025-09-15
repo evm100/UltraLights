@@ -5,6 +5,7 @@ from .config import settings
 from . import registry
 from .effects import WS_EFFECTS, WHITE_EFFECTS, WS_PARAM_DEFS, WHITE_PARAM_DEFS
 from .presets import get_room_presets
+from .motion import motion_manager
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -50,6 +51,10 @@ def room_page(request: Request, house_id: str, room_id: str):
         )
     title = f"{house.get('name', house_id)} - {room.get('name', room_id)}"
     presets = get_room_presets(house_id, room_id)
+    motion_duration = None
+    if house_id == "del-sur" and room_id == "kitchen":
+        cfg = motion_manager.config.get("kitchen", {})
+        motion_duration = int(cfg.get("duration", 30))
     return templates.TemplateResponse(
         "room.html",
         {
@@ -59,6 +64,7 @@ def room_page(request: Request, house_id: str, room_id: str):
             "title": title,
             "subtitle": title,
             "presets": presets,
+            "motion_duration": motion_duration,
         },
     )
 
