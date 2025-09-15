@@ -43,6 +43,18 @@ class Settings:
                     ],
                 },
                 {
+                    "id": "master",
+                    "name": "Master",
+                    "nodes": [
+                        {
+                            "id": "master-closet",
+                            "name": "Master Closet",
+                            "kind": "ultranode",
+                            "modules": ["ws", "white", "sensor", "ota"],
+                        }
+                    ],
+                },
+                {
                     "id": "room-1",
                     "name": "Room 1",
                     "nodes": [
