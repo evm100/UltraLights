@@ -6,7 +6,6 @@
 #include "sdkconfig.h"
 #include "ul_core.h"
 #include "ul_ota.h"
-#include "ul_sensors.h"
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
 #include <ctype.h>
@@ -19,8 +18,6 @@ static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
 
 // JSON helpers (defined later)
-static bool j_is_int_in(cJSON *obj, const char *key, int minv, int maxv,
-                        int *out);
 
 static int starts_with(const char *s, const char *pfx) {
   return strncmp(s, pfx, strlen(pfx)) == 0;
@@ -103,21 +100,6 @@ static void publish_status_snapshot(void) {
   }
   cJSON_AddItemToObject(root, "white", jw);
 
-  // Sensors
-  ul_sensor_status_t ss;
-  ul_sensors_get_status(&ss);
-  cJSON *jsens = cJSON_CreateObject();
-  cJSON_AddNumberToObject(jsens, "pir_motion_time_s", ss.pir_motion_time_s);
-  cJSON_AddNumberToObject(jsens, "sonic_motion_time_s", ss.sonic_motion_time_s);
-  cJSON_AddNumberToObject(jsens, "sonic_threshold_mm", ss.sonic_threshold_mm);
-  cJSON_AddNumberToObject(jsens, "motion_on_channel", ss.motion_on_channel);
-  cJSON_AddBoolToObject(jsens, "pir_enabled", ss.pir_enabled);
-  cJSON_AddBoolToObject(jsens, "ultra_enabled", ss.ultra_enabled);
-  cJSON_AddBoolToObject(jsens, "pir_active", ss.pir_active);
-  cJSON_AddBoolToObject(jsens, "ultra_active", ss.ultra_active);
-  cJSON_AddNumberToObject(jsens, "motion_state", ss.motion_state);
-  cJSON_AddItemToObject(root, "sensors", jsens);
-
   // OTA (static fields from Kconfig)
   cJSON *jota = cJSON_CreateObject();
   cJSON_AddStringToObject(jota, "manifest_url", CONFIG_UL_OTA_MANIFEST_URL);
@@ -161,13 +143,11 @@ static void publish_ws_ack(int strip, const char *effect, cJSON *params,
   cJSON_Delete(root);
 }
 
-void ul_mqtt_publish_motion(const char *sid, const char *state) {
+void ul_mqtt_publish_motion(const char *sensor, const char *state) {
   char topic[128];
-  char payload[160];
-  snprintf(topic, sizeof(topic), "ul/%s/evt/sensor/motion",
-           ul_core_get_node_id());
-  snprintf(payload, sizeof(payload), "{\"sid\":\"%s\",\"state\":\"%s\"}", sid,
-           state);
+  char payload[64];
+  snprintf(topic, sizeof(topic), "ul/%s/evt/%s/motion", ul_core_get_node_id(), sensor);
+  snprintf(payload, sizeof(payload), "{\"state\":\"%s\"}", state);
   publish_json(topic, payload);
 }
 
@@ -220,66 +200,6 @@ static void handle_cmd_ws_power(cJSON *root) {
   ul_mqtt_publish_status();
 }
 
-// ---- Minimal JSON schema helpers ----
-static bool j_is_int_in(cJSON *obj, const char *key, int minv, int maxv,
-                        int *out) {
-  cJSON *j = cJSON_GetObjectItem(obj, key);
-  if (!j || !cJSON_IsNumber(j))
-    return false;
-  int v = j->valueint;
-  if (v < minv || v > maxv)
-    return false;
-  if (out)
-    *out = v;
-  return true;
-}
-static void handle_cmd_sensor_cooldown(cJSON *root) {
-  int s;
-  if (j_is_int_in(root, "seconds", 10, 3600, &s)) {
-    ul_sensors_set_cooldown(s);
-    ul_mqtt_publish_status();
-  } else {
-    ESP_LOGW(TAG, "invalid seconds");
-  }
-}
-
-static void handle_cmd_sensor_motion(cJSON *root) {
-  int v;
-  if (j_is_int_in(root, "pir_motion_time", 1, 3600, &v)) {
-    ul_sensors_set_pir_motion_time(v);
-  }
-  if (j_is_int_in(root, "sonic_motion_time", 1, 3600, &v)) {
-    ul_sensors_set_sonic_motion_time(v);
-  }
-  if (j_is_int_in(root, "sonic_threshold_distance", 50, 4000, &v)) {
-    ul_sensors_set_sonic_threshold_mm(v);
-  }
-  if (j_is_int_in(root, "motion_on_channel", -1, 3, &v)) {
-    ul_sensors_set_motion_on_channel(v);
-  }
-  for (int i = 0; i < 3; ++i) {
-    char key[8];
-    snprintf(key, sizeof(key), "state%d", i);
-    cJSON *st = cJSON_GetObjectItem(root, key);
-    if (st && cJSON_IsObject(st)) {
-      char *ws = NULL;
-      char *white = NULL;
-      cJSON *jws = cJSON_GetObjectItem(st, "ws");
-      if (jws)
-        ws = cJSON_PrintUnformatted(jws);
-      cJSON *jw = cJSON_GetObjectItem(st, "white");
-      if (jw)
-        white = cJSON_PrintUnformatted(jw);
-      ul_sensors_set_motion_command((ul_motion_state_t)i, ws, white);
-      if (ws)
-        cJSON_free(ws);
-      if (white)
-        cJSON_free(white);
-    }
-  }
-  ul_mqtt_publish_status();
-}
-
 static void handle_cmd_white_set(cJSON *root) { ul_white_apply_json(root); }
 static void on_message(esp_mqtt_event_handle_t event) {
   // topic expected: ul/<node>/cmd/...
@@ -327,12 +247,7 @@ static void on_message(esp_mqtt_event_handle_t event) {
       handle_cmd_ws_set(root);
     } else if (starts_with(sub, "ws/power")) {
       handle_cmd_ws_power(root);
-    } else if (starts_with(sub, "sensor/cooldown")) {
-      handle_cmd_sensor_cooldown(root);
-    } else if (starts_with(sub, "sensor/motion")) {
-      handle_cmd_sensor_motion(root);
-    }
-    else if (starts_with(sub, "ota/check")) {
+    } else if (starts_with(sub, "ota/check")) {
       ul_mqtt_publish_status();
       ul_ota_check_now(true);
       publish_status_snapshot();
@@ -427,10 +342,6 @@ void ul_mqtt_run_local(const char *path, const char *json) {
   } else if (starts_with(path, "white/set")) {
     override_index_from_path(root, path, "white/set", "channel");
     handle_cmd_white_set(root);
-  } else if (starts_with(path, "sensor/motion")) {
-    handle_cmd_sensor_motion(root);
-  } else if (starts_with(path, "sensor/cooldown")) {
-    handle_cmd_sensor_cooldown(root);
   }
   cJSON_Delete(root);
 }

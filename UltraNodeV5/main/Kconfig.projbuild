@@ -4,7 +4,7 @@ menu "System"
     config UL_CORE_COUNT
         int "CPU core count"
         range 1 2
-        default 1
+        default 2
 
     config UL_IS_ESP32C3
         bool "Target is ESP32-C3"
@@ -92,6 +92,15 @@ menu "Sensors"
     config UL_PIR_GPIO
         int "PIR GPIO"
         default 25
+    config UL_PIR_EVENT_MIN_INTERVAL_S
+        int "PIR minimum publish interval (s)"
+        range 1 600
+        default 1
+
+    config UL_PIR_POLL_MS
+        int "PIR poll rate (ms)"
+        range 100 10000
+        default 1000
 
     config UL_ULTRA_ENABLED
         bool "Ultrasonic enabled"
@@ -106,15 +115,14 @@ menu "Sensors"
         int "Near threshold (mm)"
         range 50 4000
         default 800
-
-    config UL_SENSOR_COOLDOWN_S
-        int "Sensor cooldown (seconds)"
-        range 1 3600
+    config UL_ULTRA_EVENT_MIN_INTERVAL_S
+        int "Ultrasonic minimum publish interval (s)"
+        range 1 600
         default 1
 
-    config UL_SENSOR_POLL_MS
-        int "Sensor poll interval (ms)"
-        range 50 1000
+    config UL_ULTRA_POLL_MS
+        int "Ultrasonic poll rate (ms)"
+        range 5 1000
         default 100
 endmenu
 
