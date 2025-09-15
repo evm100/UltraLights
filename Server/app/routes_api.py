@@ -4,6 +4,7 @@ from .mqtt_bus import MqttBus
 from . import registry
 from .effects import WS_EFFECTS, WHITE_EFFECTS
 from .presets import get_preset, apply_preset
+from .motion import motion_manager
 
 router = APIRouter()
 BUS: Optional[MqttBus] = None
@@ -151,6 +152,19 @@ def api_sensor_cooldown(node_id: str, payload: Dict[str, Any]):
         raise HTTPException(400, "invalid seconds")
     get_bus().sensor_cooldown(node_id, seconds)
     return {"ok": True, "seconds": seconds}
+
+@router.post("/api/node/{node_id}/motion")
+def api_node_motion(node_id: str, payload: Dict[str, Any]):
+    _valid_node(node_id)
+    enabled = bool(payload.get("enabled", True))
+    try:
+        duration = int(payload.get("duration", 30))
+    except Exception:
+        raise HTTPException(400, "invalid duration")
+    if not 1 <= duration <= 600:
+        raise HTTPException(400, "invalid duration")
+    motion_manager.configure_node(node_id, enabled, duration)
+    return {"ok": True}
 
 @router.post("/api/node/{node_id}/ota/check")
 def api_ota_check(node_id: str):
