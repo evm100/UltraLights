@@ -8,6 +8,7 @@
 #include "ul_mqtt.h"
 #include "esp_log.h"
 #include "ul_task.h"
+#include <stdio.h>
 
 static const char *TAG = "ul_ultra";
 static TaskHandle_t s_ultra_task = NULL;
@@ -31,7 +32,15 @@ static void ultra_task(void *arg) {
     };
     gpio_config(&echo);
 
+    const int64_t min_interval_us = (int64_t)CONFIG_UL_ULTRA_EVENT_MIN_INTERVAL_S * 1000000LL;
     while (1) {
+        int64_t now = esp_timer_get_time();
+        if (now - s_last_publish_us < min_interval_us) {
+            int64_t remain_ms = (min_interval_us - (now - s_last_publish_us)) / 1000;
+            vTaskDelay(pdMS_TO_TICKS(remain_ms));
+            continue;
+        }
+
         gpio_set_level(CONFIG_UL_ULTRA_TRIG_GPIO, 0);
         esp_rom_delay_us(2);
         gpio_set_level(CONFIG_UL_ULTRA_TRIG_GPIO, 1);
@@ -46,14 +55,15 @@ static void ultra_task(void *arg) {
         int dist_mm = (int)(dur * 0.1715);
 
         if (dist_mm > 0 && dist_mm < CONFIG_UL_ULTRA_DISTANCE_MM) {
-            int64_t now = esp_timer_get_time();
-            if (now - s_last_publish_us >= (int64_t)CONFIG_UL_ULTRA_EVENT_MIN_INTERVAL_S * 1000000LL) {
-                ESP_LOGD(TAG, "Ultrasonic motion detected: %d mm", dist_mm);
-                ul_mqtt_publish_motion("ultra", "MOTION_DETECTED");
-                s_last_publish_us = now;
-            }
+            char msg[32];
+            snprintf(msg, sizeof(msg), "MOTION_DETECTED:%d", dist_mm);
+            ESP_LOGD(TAG, "Ultrasonic motion detected: %d mm", dist_mm);
+            ul_mqtt_publish_motion("ultra", msg);
+            s_last_publish_us = now;
+            continue;
         }
-        vTaskDelay(pdMS_TO_TICKS(CONFIG_UL_SENSOR_POLL_MS));
+
+        vTaskDelay(pdMS_TO_TICKS(CONFIG_UL_ULTRA_POLL_MS));
     }
 }
 

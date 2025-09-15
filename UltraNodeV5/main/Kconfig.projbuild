@@ -97,6 +97,11 @@ menu "Sensors"
         range 1 600
         default 1
 
+    config UL_PIR_POLL_MS
+        int "PIR poll rate (ms)"
+        range 100 10000
+        default 1000
+
     config UL_ULTRA_ENABLED
         bool "Ultrasonic enabled"
         default y
@@ -115,9 +120,9 @@ menu "Sensors"
         range 1 600
         default 1
 
-    config UL_SENSOR_POLL_MS
-        int "Sensor poll interval (ms)"
-        range 50 1000
+    config UL_ULTRA_POLL_MS
+        int "Ultrasonic poll rate (ms)"
+        range 5 1000
         default 100
 endmenu
 

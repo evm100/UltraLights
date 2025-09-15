@@ -22,17 +22,24 @@ static void pir_task(void *arg) {
     };
     gpio_config(&cfg);
 
+    const int64_t min_interval_us = (int64_t)CONFIG_UL_PIR_EVENT_MIN_INTERVAL_S * 1000000LL;
     while (1) {
-        int level = gpio_get_level(CONFIG_UL_PIR_GPIO);
-        if (level) {
-            int64_t now = esp_timer_get_time();
-            if (now - s_last_publish_us >= (int64_t)CONFIG_UL_PIR_EVENT_MIN_INTERVAL_S * 1000000LL) {
-                ESP_LOGD(TAG, "PIR motion detected");
-                ul_mqtt_publish_motion("pir", "MOTION_DETECTED");
-                s_last_publish_us = now;
-            }
+        int64_t now = esp_timer_get_time();
+
+        if (now - s_last_publish_us < min_interval_us) {
+            int64_t remain_ms = (min_interval_us - (now - s_last_publish_us)) / 1000;
+            vTaskDelay(pdMS_TO_TICKS(remain_ms));
+            continue;
         }
-        vTaskDelay(pdMS_TO_TICKS(CONFIG_UL_SENSOR_POLL_MS));
+
+        if (gpio_get_level(CONFIG_UL_PIR_GPIO)) {
+            ESP_LOGD(TAG, "PIR motion detected");
+            ul_mqtt_publish_motion("pir", "MOTION_DETECTED");
+            s_last_publish_us = now;
+            continue;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(CONFIG_UL_PIR_POLL_MS));
     }
 }
 
