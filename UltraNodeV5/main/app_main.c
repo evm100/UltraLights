@@ -17,9 +17,6 @@
 #if CONFIG_UL_PIR_ENABLED
 #include "ul_pir.h"
 #endif
-#if CONFIG_UL_ULTRA_ENABLED
-#include "ul_ultra.h"
-#endif
 
 static const char *TAG = "app";
 
@@ -43,9 +40,6 @@ static void service_manager_task(void *ctx) {
 #if CONFIG_UL_PIR_ENABLED
           ul_pir_start();
 #endif
-#if CONFIG_UL_ULTRA_ENABLED
-          ul_ultra_start();
-#endif
           s_services_running = true;
         }
       } else {
@@ -55,9 +49,6 @@ static void service_manager_task(void *ctx) {
           ul_white_engine_stop();
 #if CONFIG_UL_PIR_ENABLED
           ul_pir_stop();
-#endif
-#if CONFIG_UL_ULTRA_ENABLED
-          ul_ultra_stop();
 #endif
           s_services_running = false;
         }

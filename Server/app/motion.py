@@ -40,6 +40,8 @@ class MotionManager:
         if len(parts) < 5:
             return
         node_id, sensor = parts[1], parts[3]
+        if sensor != "pir":
+            return
         cfg = self.config.get(node_id, {"enabled": True, "duration": 30})
         if not cfg.get("enabled", True):
             return
@@ -58,19 +60,11 @@ class MotionManager:
         timer = threading.Timer(duration, self._clear_sensor, args=(room_id, sensor))
         timer.start()
         timers[sensor] = timer
-        if sensor == "ultra":
-            entry["current"] = "ultra"
-            preset_id = "motion-near" + ("-repeat" if repeat else "")
-            preset = get_preset(entry["house_id"], room_id, preset_id)
-            if preset:
-                apply_preset(self.bus, preset)
-        else:  # PIR
-            if entry["current"] != "ultra":
-                entry["current"] = "pir"
-                preset_id = "motion-far" + ("-repeat" if repeat else "")
-                preset = get_preset(entry["house_id"], room_id, preset_id)
-                if preset:
-                    apply_preset(self.bus, preset)
+        entry["current"] = "pir"
+        preset_id = "motion-far" + ("-repeat" if repeat else "")
+        preset = get_preset(entry["house_id"], room_id, preset_id)
+        if preset:
+            apply_preset(self.bus, preset)
 
     def _clear_sensor(self, room_id: str, sensor: str) -> None:
         entry = self.active.get(room_id)
@@ -79,17 +73,7 @@ class MotionManager:
         timers = entry["timers"]
         timers.pop(sensor, None)
         house_id = entry["house_id"]
-        if sensor == "ultra" and entry.get("current") == "ultra":
-            if "pir" in timers:
-                entry["current"] = "pir"
-                preset_id = "motion-near-to-far"
-            else:
-                entry["current"] = None
-                preset_id = "motion-near-off"
-            preset = get_preset(house_id, room_id, preset_id)
-            if preset:
-                apply_preset(self.bus, preset)
-        elif sensor == "pir" and entry.get("current") == "pir":
+        if sensor == "pir" and entry.get("current") == "pir":
             entry["current"] = None
             preset_id = "motion-far-off"
             preset = get_preset(house_id, room_id, preset_id)

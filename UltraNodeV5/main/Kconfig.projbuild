@@ -97,28 +97,6 @@ menu "Sensors"
         range 100 10000
         default 1000
 
-    config UL_ULTRA_ENABLED
-        bool "Ultrasonic enabled"
-        default y
-    config UL_ULTRA_TRIG_GPIO
-        int "Ultrasonic TRIG GPIO"
-        default 26
-    config UL_ULTRA_ECHO_GPIO
-        int "Ultrasonic ECHO GPIO"
-        default 27
-    config UL_ULTRA_DISTANCE_MM
-        int "Near threshold (mm)"
-        range 50 4000
-        default 800
-    config UL_ULTRA_EVENT_MIN_INTERVAL_S
-        int "Ultrasonic minimum publish interval (s)"
-        range 1 600
-        default 1
-
-    config UL_ULTRA_POLL_MS
-        int "Ultrasonic poll rate (ms)"
-        range 5 1000
-        default 100
 endmenu
 
 menu "WS2812 Strips"
