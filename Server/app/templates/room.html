@@ -23,6 +23,13 @@
     {% endfor %}
   </div>
 </div>
+{% if motion_duration is not none %}
+<div class="mt-8">
+  <h2 class="text-2xl font-semibold mb-4">Motion Timer</h2>
+  <input type="range" id="motionTimer" min="10" max="3600" step="10" value="{{ motion_duration }}" class="w-full" />
+  <div id="motionTimerLabel" class="text-center mt-2"></div>
+</div>
+{% endif %}
 <script>
 document.getElementById('addNode').onclick = async () => {
   const name = prompt('New node name');
@@ -41,5 +48,29 @@ document.querySelectorAll('.preset').forEach(btn => {
     if(!res.ok) alert('Failed to apply preset');
   };
 });
+{% if motion_duration is not none %}
+const timerSlider = document.getElementById('motionTimer');
+const timerLabel = document.getElementById('motionTimerLabel');
+function fmtTime(sec){
+  if(sec < 60) return `${sec}s`;
+  const m = Math.floor(sec/60);
+  const s = sec%60;
+  return s ? `${m}m ${s}s` : `${m}m`;
+}
+function updateTimer(){
+  timerLabel.textContent = fmtTime(parseInt(timerSlider.value));
+}
+timerSlider.addEventListener('input', updateTimer);
+timerSlider.addEventListener('change', async () => {
+  const duration = parseInt(timerSlider.value);
+  const res = await fetch('/api/node/kitchen/motion', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({enabled:true, duration})
+  });
+  if(!res.ok) alert('Failed to update timer');
+});
+updateTimer();
+{% endif %}
 </script>
 {% endblock %}

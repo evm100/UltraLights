@@ -67,6 +67,11 @@ for house_id, node_id in (
             "actions": _white_swell_actions([node_id], 0, 255, 5000, channels=[0, 1, 2]),
         },
         {
+            "id": "swell-off",
+            "name": "Swell Off",
+            "actions": _white_swell_actions([node_id], 255, 0, 5000, channels=[0, 1, 2]),
+        },
+        {
             "id": "midnight-snack",
             "name": "Midnight Snack",
             "actions": [
