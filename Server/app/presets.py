@@ -51,6 +51,7 @@ ROOM_PRESETS: Dict[str, Dict[str, List[Dict[str, Any]]]] = {
             }
         ],
         "kitchen": [],
+        "master": [],
     },
     "sdsu": {"kitchen": []},
 }
@@ -95,6 +96,20 @@ for house_id, node_id in (
             "actions": _white_swell_actions([node_id], 0, 150, 5000, channels=[0, 1, 2]),
         },
     ]
+
+# Master closet presets for Del Sur
+ROOM_PRESETS["del-sur"]["master"] = [
+    {
+        "id": "swell-on",
+        "name": "Swell On",
+        "actions": _white_swell_actions(["master-closet"], 0, 255, 5000, channels=[0, 1]),
+    },
+    {
+        "id": "swell-off",
+        "name": "Swell Off",
+        "actions": _white_swell_actions(["master-closet"], 255, 0, 5000, channels=[0, 1]),
+    },
+]
 
 
 def get_room_presets(house_id: str, room_id: str) -> List[Dict[str, Any]]:

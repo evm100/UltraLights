@@ -1,10 +1,24 @@
 import threading
 from typing import Dict, Any
+
 import paho.mqtt.client as mqtt
 from .config import settings
 from .mqtt_bus import MqttBus
 from .presets import get_preset, apply_preset
 from . import registry
+
+SPECIAL_ROOM_PRESETS = {
+    ("del-sur", "kitchen"): {
+        "node": "kitchen",
+        "on": "swell-on",
+        "off": "swell-off",
+    },
+    ("del-sur", "master"): {
+        "node": "master-closet",
+        "on": "swell-on",
+        "off": "swell-off",
+    },
+}
 
 class MotionManager:
     def __init__(self) -> None:
@@ -13,6 +27,8 @@ class MotionManager:
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         # room_id -> {"house_id": str, "current": str|None, "timers": {sensor: Timer}}
+        # Special-case entries may also include keys like "timer", "on",
+        # "preset_on" and "preset_off".
         self.active: Dict[str, Dict[str, Any]] = {}
         self.config: Dict[str, Dict[str, Any]] = {}
 
@@ -52,20 +68,28 @@ class MotionManager:
         if not room or not house:
             return
         room_id = room["id"]
-        # Special handling for Del Sur kitchen motion
-        if house["id"] == "del-sur" and room_id == "kitchen":
+        special = SPECIAL_ROOM_PRESETS.get((house["id"], room_id))
+        if special:
             entry = self.active.get(room_id)
             duration = int(cfg.get("duration", 30))
             if entry and entry.get("timer"):
                 entry["timer"].cancel()
             else:
-                entry = {"house_id": house["id"], "timer": None, "on": False}
+                entry = {
+                    "house_id": house["id"],
+                    "timer": None,
+                    "on": False,
+                    "preset_on": special["on"],
+                    "preset_off": special["off"],
+                }
                 self.active[room_id] = entry
-            timer = threading.Timer(duration, self._turn_off_kitchen, args=(room_id,))
+            entry["preset_on"] = special["on"]
+            entry["preset_off"] = special["off"]
+            timer = threading.Timer(duration, self._turn_off_special, args=(room_id,))
             timer.start()
             entry["timer"] = timer
             if not entry.get("on"):
-                preset = get_preset(house["id"], room_id, "swell-on")
+                preset = get_preset(house["id"], room_id, special["on"])
                 if preset:
                     apply_preset(self.bus, preset)
                 entry["on"] = True
@@ -88,12 +112,13 @@ class MotionManager:
         if preset:
             apply_preset(self.bus, preset)
 
-    def _turn_off_kitchen(self, room_id: str) -> None:
+    def _turn_off_special(self, room_id: str) -> None:
         entry = self.active.get(room_id)
         if not entry:
             return
         house_id = entry["house_id"]
-        preset = get_preset(house_id, room_id, "swell-off")
+        preset_id = entry.get("preset_off", "swell-off")
+        preset = get_preset(house_id, room_id, preset_id)
         if preset:
             apply_preset(self.bus, preset)
         self.active.pop(room_id, None)
