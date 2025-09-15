@@ -9,6 +9,7 @@ extern "C" {
 
 extern uint8_t ul_core_count;
 
+void ul_task_init(void);
 void ul_set_core_count(uint8_t count);
 
 BaseType_t ul_task_create(TaskFunction_t task_func,

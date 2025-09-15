@@ -12,6 +12,7 @@
 #include "ul_mqtt.h"
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
+#include "ul_task.h"
 #if CONFIG_UL_PIR_ENABLED
 #include "ul_pir.h"
 #endif
@@ -75,6 +76,8 @@ void app_main(void) {
   ESP_ERROR_CHECK(nvs_flash_init());
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+  ul_task_init();
 
   xTaskCreate(service_manager_task, "svc_mgr", 4096, NULL, 5,
               &s_service_task);

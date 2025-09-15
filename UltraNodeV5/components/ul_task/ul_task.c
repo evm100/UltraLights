@@ -1,7 +1,13 @@
-#include "sdkconfig.h"
+#include "esp_system.h"
 #include "ul_task.h"
 
-uint8_t ul_core_count = CONFIG_UL_CORE_COUNT;
+uint8_t ul_core_count;
+
+void ul_task_init(void) {
+    esp_chip_info_t chip_info;
+    esp_chip_info(&chip_info);
+    ul_core_count = chip_info.cores;
+}
 
 void ul_set_core_count(uint8_t count) {
     ul_core_count = count;
