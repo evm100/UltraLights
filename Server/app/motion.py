@@ -8,8 +8,16 @@ from .presets import get_preset, apply_preset
 from . import registry
 
 SPECIAL_ROOM_PRESETS = {
-    ("del-sur", "kitchen"): {"on": "swell-on", "off": "swell-off"},
-    ("del-sur", "master"): {"on": "swell-on", "off": "swell-off"},
+    ("del-sur", "kitchen"): {
+        "node": "kitchen",
+        "on": "swell-on",
+        "off": "swell-off",
+    },
+    ("del-sur", "master"): {
+        "node": "master-closet",
+        "on": "swell-on",
+        "off": "swell-off",
+    },
 }
 
 class MotionManager:

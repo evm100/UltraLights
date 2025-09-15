@@ -23,10 +23,10 @@
     {% endfor %}
   </div>
 </div>
-{% if motion_duration is not none %}
+{% if motion_config %}
 <div class="mt-8">
   <h2 class="text-2xl font-semibold mb-4">Motion Timer</h2>
-  <input type="range" id="motionTimer" min="10" max="3600" step="10" value="{{ motion_duration }}" class="w-full" />
+  <input type="range" id="motionTimer" min="10" max="3600" step="10" value="{{ motion_config.duration }}" data-node="{{ motion_config.node_id }}" class="w-full" />
   <div id="motionTimerLabel" class="text-center mt-2"></div>
 </div>
 {% endif %}
@@ -48,9 +48,10 @@ document.querySelectorAll('.preset').forEach(btn => {
     if(!res.ok) alert('Failed to apply preset');
   };
 });
-{% if motion_duration is not none %}
+{% if motion_config %}
 const timerSlider = document.getElementById('motionTimer');
 const timerLabel = document.getElementById('motionTimerLabel');
+const timerNodeId = timerSlider.dataset.node;
 function fmtTime(sec){
   if(sec < 60) return `${sec}s`;
   const m = Math.floor(sec/60);
@@ -63,7 +64,7 @@ function updateTimer(){
 timerSlider.addEventListener('input', updateTimer);
 timerSlider.addEventListener('change', async () => {
   const duration = parseInt(timerSlider.value);
-  const res = await fetch('/api/node/kitchen/motion', {
+  const res = await fetch(`/api/node/${timerNodeId}/motion`, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({enabled:true, duration})
