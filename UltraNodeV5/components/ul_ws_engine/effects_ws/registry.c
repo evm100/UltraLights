@@ -13,6 +13,7 @@ void gradient_scroll_init(void);void gradient_scroll_render(uint8_t*,int,int);
 void triple_wave_init(void);  void triple_wave_render(uint8_t*,int,int);   void triple_wave_apply_params(int,const cJSON*);
 void flash_init(void);        void flash_render(uint8_t*,int,int);        void flash_apply_params(int,const cJSON*);
 void spacewaves_init(void);   void spacewaves_render(uint8_t*,int,int);   void spacewaves_apply_params(int,const cJSON*);
+void fire_init(void);         void fire_render(uint8_t*,int,int);         void fire_apply_params(int,const cJSON*);
 
 static const ws_effect_t effects[] = {
     {"solid", solid_init, solid_render, solid_apply_params},
@@ -26,6 +27,7 @@ static const ws_effect_t effects[] = {
     {"triple_wave", triple_wave_init, triple_wave_render, triple_wave_apply_params},
     {"flash", flash_init, flash_render, flash_apply_params},
     {"spacewaves", spacewaves_init, spacewaves_render, spacewaves_apply_params},
+    {"fire", fire_init, fire_render, fire_apply_params},
 };
 
 const ws_effect_t* ul_ws_get_effects(int* count) {

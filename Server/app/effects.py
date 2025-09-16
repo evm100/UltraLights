@@ -62,6 +62,13 @@ WS_PARAM_DEFS = {
         {"type": "color", "label": "Color 2"},
     ],
 
+    # Fire – intensity slider plus two-colour gradient
+    "fire": [
+        {"type": "slider", "label": "Intensity", "min": 0, "max": 200, "value": 120},
+        {"type": "color", "label": "Primary Color", "value": "#ff4000"},
+        {"type": "color", "label": "Secondary Color", "value": "#ffd966"},
+    ],
+
     # Spacewaves – three RGB colors for interfering waves
     "spacewaves": [
         {"type": "color", "label": "Wave 1 Color"},
