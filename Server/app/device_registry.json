@@ -46,6 +46,16 @@
               "white",
               "ota"
             ]
+          },
+          {
+            "id": "amp-lights",
+            "name": "amp-lights",
+            "kind": "ultranode",
+            "modules": [
+              "ws",
+              "white",
+              "ota"
+            ]
           }
         ]
       }
@@ -54,8 +64,6 @@
   {
     "id": "sdsu",
     "name": "SDSU",
-    "rooms": [
-      
-    ]
+    "rooms": []
   }
 ]

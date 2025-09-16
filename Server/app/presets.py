@@ -146,6 +146,15 @@ ROOM_PRESETS["del-sur"]["edgar"] = [
         "actions": _white_swell_actions(["amp-lights"], 0, 255, 3000, channels=[0, 1]),
     },
     {
+        "id": "blue",
+        "name": "Blue",
+        "actions": [
+            _color_action("amp-lights", 0, 20, 0, 55),
+            _white_swell_action("amp-lights", 0, 0, 0, 3000),
+            _white_swell_action("amp-lights", 1, 0, 0, 3000)
+    ]
+    },
+    {
         "id": "guitar",
         "name": "Guitar",
         "actions": [
