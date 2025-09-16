@@ -6,6 +6,7 @@ from . import registry
 from .effects import WS_EFFECTS, WHITE_EFFECTS, WS_PARAM_DEFS, WHITE_PARAM_DEFS
 from .presets import get_room_presets
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
+from .motion_schedule import motion_schedule
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -57,9 +58,38 @@ def room_page(request: Request, house_id: str, room_id: str):
         node_id = special.get("node")
         if node_id:
             cfg = motion_manager.config.get(node_id, {})
+            default_preset = special.get("on")
+            schedule = motion_schedule.get_schedule_or_default(
+                house_id, room_id, default=default_preset
+            )
+            palette = [
+                "#f97316",
+                "#38bdf8",
+                "#a855f7",
+                "#22c55e",
+                "#eab308",
+                "#f43f5e",
+                "#6366f1",
+                "#14b8a6",
+                "#ec4899",
+                "#facc15",
+            ]
+            preset_colors = {}
+            preset_names = {}
+            for idx, preset in enumerate(presets):
+                preset_colors[preset["id"]] = palette[idx % len(palette)]
+                preset_names[preset["id"]] = preset.get("name", preset["id"])
+            if default_preset and default_preset not in preset_colors:
+                preset_colors[default_preset] = palette[len(preset_colors) % len(palette)]
+                preset_names.setdefault(default_preset, default_preset)
             motion_config = {
                 "duration": int(cfg.get("duration", 30)),
                 "node_id": node_id,
+                "schedule": schedule,
+                "slot_minutes": motion_schedule.slot_minutes,
+                "preset_colors": preset_colors,
+                "preset_names": preset_names,
+                "no_motion_color": "#1f2937",
             }
     return templates.TemplateResponse(
         "room.html",

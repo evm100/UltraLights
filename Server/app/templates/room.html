@@ -24,6 +24,57 @@
   </div>
 </div>
 {% if motion_config %}
+<div class="mt-8" id="motionSchedule" data-save-url="/api/house/{{ house.id }}/room/{{ room.id }}/motion-schedule" data-slot-minutes="{{ motion_config.slot_minutes|default(60) }}">
+  <h2 class="text-2xl font-semibold mb-4">Motion Schedule</h2>
+  <div class="glass rounded-xl p-4 overflow-x-auto">
+    <div class="motion-schedule-grid" id="motionScheduleGrid">
+      {% for slot in motion_config.schedule %}
+      <div class="motion-schedule-slot" data-slot="{{ loop.index0 }}">
+        <span class="motion-schedule-hour"></span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="glass rounded-xl p-4 mt-4">
+    <div class="flex flex-wrap gap-4 items-end">
+      <label class="motion-field">
+        <span class="motion-field-label">From</span>
+        <select id="motionScheduleStart" class="motion-select"></select>
+      </label>
+      <label class="motion-field">
+        <span class="motion-field-label">To</span>
+        <select id="motionScheduleEnd" class="motion-select"></select>
+      </label>
+      <label class="motion-field flex-1 min-w-[180px]">
+        <span class="motion-field-label">Preset</span>
+        <select id="motionSchedulePreset" class="motion-select w-full">
+          <option value="">No Motion</option>
+          {% for preset in presets %}
+          <option value="{{ preset.id }}">{{ preset.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button id="motionScheduleApply" class="motion-button">Apply to Range</button>
+      <button id="motionScheduleSave" class="motion-button motion-button--primary">Save Schedule</button>
+    </div>
+    <div id="motionScheduleStatus" class="text-sm mt-3 opacity-80"></div>
+  </div>
+  <div class="glass rounded-xl p-4 mt-4">
+    <div class="text-xs uppercase tracking-wide opacity-70 mb-2">Legend</div>
+    <div class="flex flex-wrap gap-2">
+      <div class="motion-legend-item">
+        <span class="motion-legend-swatch" style="--swatch-color: {{ motion_config.no_motion_color }}"></span>
+        <span class="motion-legend-label">No Motion</span>
+      </div>
+      {% for preset in presets %}
+      <div class="motion-legend-item">
+        <span class="motion-legend-swatch" style="--swatch-color: {{ motion_config.preset_colors[preset.id] }}"></span>
+        <span class="motion-legend-label">{{ preset.name }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
 <div class="mt-8">
   <h2 class="text-2xl font-semibold mb-4">Motion Timer</h2>
   <input type="range" id="motionTimer" min="10" max="3600" step="10" value="{{ motion_config.duration }}" data-node="{{ motion_config.node_id }}" class="w-full" />
@@ -49,29 +100,317 @@ document.querySelectorAll('.preset').forEach(btn => {
   };
 });
 {% if motion_config %}
-const timerSlider = document.getElementById('motionTimer');
-const timerLabel = document.getElementById('motionTimerLabel');
-const timerNodeId = timerSlider.dataset.node;
-function fmtTime(sec){
-  if(sec < 60) return `${sec}s`;
-  const m = Math.floor(sec/60);
-  const s = sec%60;
-  return s ? `${m}m ${s}s` : `${m}m`;
-}
-function updateTimer(){
-  timerLabel.textContent = fmtTime(parseInt(timerSlider.value));
-}
-timerSlider.addEventListener('input', updateTimer);
-timerSlider.addEventListener('change', async () => {
-  const duration = parseInt(timerSlider.value);
-  const res = await fetch(`/api/node/${timerNodeId}/motion`, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({enabled:true, duration})
-  });
-  if(!res.ok) alert('Failed to update timer');
-});
-updateTimer();
+(function(){
+  const scheduleContainer = document.getElementById('motionSchedule');
+  if (scheduleContainer) {
+    const scheduleGrid = document.getElementById('motionScheduleGrid');
+    const scheduleData = {{ motion_config.schedule|tojson }};
+    if (!Array.isArray(scheduleData)) {
+      return;
+    }
+    if (!scheduleData.length) {
+      scheduleData.push(null);
+    }
+    const presetNames = {{ motion_config.preset_names|tojson }};
+    const presetColors = {{ motion_config.preset_colors|tojson }};
+    const noMotionColor = "{{ motion_config.no_motion_color }}";
+    const slotMinutes = parseInt(scheduleContainer.dataset.slotMinutes || "60", 10) || 60;
+    const startSelect = document.getElementById('motionScheduleStart');
+    const endSelect = document.getElementById('motionScheduleEnd');
+    const presetSelect = document.getElementById('motionSchedulePreset');
+    const applyButton = document.getElementById('motionScheduleApply');
+    const saveButton = document.getElementById('motionScheduleSave');
+    const statusEl = document.getElementById('motionScheduleStatus');
+    const saveUrl = scheduleContainer.dataset.saveUrl;
+    let slots = scheduleGrid ? Array.from(scheduleGrid.querySelectorAll('.motion-schedule-slot')) : [];
+    const slotCount = scheduleData.length;
+    let statusTimeout = null;
+    let dirty = false;
+    let selectedSlot = 0;
+    const beforeUnloadHandler = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    presetNames[''] = 'No Motion';
+
+    if (scheduleGrid && slots.length < slotCount) {
+      for (let i = slots.length; i < slotCount; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'motion-schedule-slot';
+        slot.dataset.slot = String(i);
+        const hour = document.createElement('span');
+        hour.className = 'motion-schedule-hour';
+        slot.appendChild(hour);
+        scheduleGrid.appendChild(slot);
+      }
+      slots = Array.from(scheduleGrid.querySelectorAll('.motion-schedule-slot'));
+    }
+
+    const formatLabel = (index) => {
+      const minutes = ((index % slotCount) + slotCount) % slotCount * slotMinutes;
+      const hour = Math.floor(minutes / 60) % 24;
+      const minute = minutes % 60;
+      const suffix = hour >= 12 ? 'p' : 'a';
+      const displayHour = hour % 12 || 12;
+      const minuteText = minute ? `:${String(minute).padStart(2, '0')}` : '';
+      return `${displayHour}${minuteText}${suffix}`;
+    };
+
+    const pickTextColor = (color) => {
+      if (!color || !color.startsWith('#')) {
+        return '#f8fafc';
+      }
+      let hex = color.slice(1);
+      if (hex.length === 3) {
+        hex = hex.split('').map((ch) => ch + ch).join('');
+      }
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+      return brightness > 155 ? '#0f172a' : '#f8fafc';
+    };
+
+    const updateSlotHighlight = () => {
+      slots.forEach((slot, idx) => {
+        slot.classList.toggle('motion-schedule-slot--selected', idx === selectedSlot);
+      });
+    };
+
+    const renderSchedule = () => {
+      slots.forEach((slot, idx) => {
+        const presetId = scheduleData[idx] || '';
+        const color = presetColors[presetId] || noMotionColor;
+        slot.style.setProperty('--slot-color', color);
+        slot.style.setProperty('--slot-text', pickTextColor(color));
+        slot.dataset.preset = presetId;
+        const hourEl = slot.querySelector('.motion-schedule-hour');
+        if (hourEl) {
+          hourEl.textContent = formatLabel(idx);
+        }
+        const presetName = presetNames[presetId] || presetId || 'No Motion';
+        slot.setAttribute('title', `${formatLabel(idx)} – ${presetName}`);
+      });
+      updateSlotHighlight();
+    };
+
+    const updateSaveState = () => {
+      if (!saveButton) return;
+      saveButton.disabled = !dirty;
+      saveButton.classList.toggle('motion-button--dirty', dirty);
+      if (dirty) {
+        window.addEventListener('beforeunload', beforeUnloadHandler);
+      } else {
+        window.removeEventListener('beforeunload', beforeUnloadHandler);
+      }
+    };
+
+    const populateSelects = () => {
+      if (!startSelect || !endSelect) return;
+      startSelect.innerHTML = '';
+      endSelect.innerHTML = '';
+      for (let i = 0; i < slotCount; i++) {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = formatLabel(i);
+        startSelect.appendChild(opt);
+      }
+      for (let i = 1; i <= slotCount; i++) {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = formatLabel(i % slotCount);
+        endSelect.appendChild(opt);
+      }
+      startSelect.value = '0';
+      endSelect.value = '1';
+    };
+
+    const updateEndOptions = () => {
+      if (!endSelect || !startSelect) return;
+      const start = parseInt(startSelect.value, 10);
+      Array.from(endSelect.options).forEach((opt) => {
+        const val = parseInt(opt.value, 10);
+        opt.disabled = Number.isInteger(val) && val <= start;
+      });
+      if (parseInt(endSelect.value, 10) <= start) {
+        endSelect.value = String(Math.min(slotCount, start + 1));
+      }
+    };
+
+    const updateSelection = (index) => {
+      if (!Number.isInteger(index)) {
+        index = 0;
+      }
+      selectedSlot = ((index % slotCount) + slotCount) % slotCount;
+      if (startSelect) {
+        startSelect.value = String(selectedSlot);
+      }
+      updateEndOptions();
+      if (endSelect) {
+        const currentEnd = parseInt(endSelect.value, 10);
+        if (!Number.isInteger(currentEnd) || currentEnd <= selectedSlot) {
+          endSelect.value = String(Math.min(slotCount, selectedSlot + 1));
+        }
+      }
+      if (presetSelect) {
+        const presetId = scheduleData[selectedSlot] || '';
+        const hasOption = Array.from(presetSelect.options).some((opt) => opt.value === presetId);
+        presetSelect.value = hasOption ? presetId : '';
+      }
+      updateSlotHighlight();
+    };
+
+    const setStatus = (message, cls) => {
+      if (!statusEl) return;
+      if (statusTimeout) {
+        clearTimeout(statusTimeout);
+        statusTimeout = null;
+      }
+      if (!message) {
+        statusEl.textContent = '';
+        statusEl.className = 'text-sm mt-3 opacity-80';
+        return;
+      }
+      statusEl.textContent = message;
+      statusEl.className = `text-sm mt-3 ${cls}`;
+    };
+
+    const markDirty = () => {
+      if (!dirty) {
+        dirty = true;
+        updateSaveState();
+      }
+      setStatus('Unsaved changes – click save to persist.', 'text-amber-300');
+    };
+
+    const clearStatus = () => {
+      dirty = false;
+      updateSaveState();
+      setStatus('Schedule saved ✓', 'text-emerald-300');
+      statusTimeout = setTimeout(() => setStatus('', ''), 2200);
+    };
+
+    const showError = (message) => {
+      setStatus(message, 'text-rose-300');
+    };
+
+    populateSelects();
+    updateEndOptions();
+    renderSchedule();
+    updateSelection(0);
+    updateSaveState();
+    setStatus('', '');
+
+    if (startSelect) {
+      startSelect.addEventListener('change', () => {
+        const startIdx = parseInt(startSelect.value, 10);
+        updateSelection(Number.isInteger(startIdx) ? startIdx : 0);
+      });
+    }
+    if (endSelect) {
+      endSelect.addEventListener('change', () => {
+        updateEndOptions();
+      });
+    }
+    slots.forEach((slot) => {
+      slot.addEventListener('click', () => {
+        const idx = parseInt(slot.dataset.slot || '', 10);
+        if (Number.isInteger(idx)) {
+          updateSelection(idx);
+        }
+      });
+    });
+    if (applyButton) {
+      applyButton.addEventListener('click', () => {
+        const start = parseInt(startSelect ? startSelect.value : '0', 10);
+        const end = parseInt(endSelect ? endSelect.value : '0', 10);
+        if (!Number.isInteger(start) || !Number.isInteger(end)) {
+          showError('Select a valid time range.');
+          return;
+        }
+        if (end <= start) {
+          showError('End time must be after start time.');
+          return;
+        }
+        const presetId = presetSelect ? presetSelect.value : '';
+        for (let idx = start; idx < end; idx++) {
+          scheduleData[idx] = presetId || null;
+        }
+        renderSchedule();
+        updateSelection(start);
+        markDirty();
+      });
+    }
+    if (saveButton) {
+      saveButton.addEventListener('click', async () => {
+        if (!dirty) {
+          setStatus('No changes to save.', 'text-slate-200 opacity-80');
+          statusTimeout = setTimeout(() => setStatus('', ''), 1800);
+          return;
+        }
+        setStatus('Saving schedule...', 'text-slate-200 opacity-80');
+        saveButton.disabled = true;
+        try {
+          const response = await fetch(saveUrl, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({schedule: scheduleData}),
+          });
+          let data = null;
+          try {
+            data = await response.json();
+          } catch (err) {
+            data = null;
+          }
+          if (!response.ok) {
+            const detail = data && data.detail ? data.detail : 'Failed to save schedule.';
+            throw new Error(detail);
+          }
+          if (data && Array.isArray(data.schedule)) {
+            for (let i = 0; i < slotCount; i++) {
+              scheduleData[i] = data.schedule[i];
+            }
+          }
+          renderSchedule();
+          updateSelection(selectedSlot);
+          clearStatus();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Failed to save schedule.';
+          showError(message);
+          dirty = true;
+          updateSaveState();
+        }
+      });
+    }
+  }
+
+  const timerSlider = document.getElementById('motionTimer');
+  if (timerSlider) {
+    const timerLabel = document.getElementById('motionTimerLabel');
+    const timerNodeId = timerSlider.dataset.node;
+    const fmtTime = (sec) => {
+      if (sec < 60) return `${sec}s`;
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return s ? `${m}m ${s}s` : `${m}m`;
+    };
+    const updateTimer = () => {
+      timerLabel.textContent = fmtTime(parseInt(timerSlider.value, 10));
+    };
+    timerSlider.addEventListener('input', updateTimer);
+    timerSlider.addEventListener('change', async () => {
+      const duration = parseInt(timerSlider.value, 10);
+      const res = await fetch(`/api/node/${timerNodeId}/motion`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({enabled:true, duration})
+      });
+      if(!res.ok) alert('Failed to update timer');
+    });
+    updateTimer();
+  }
+})();
 {% endif %}
 </script>
 {% endblock %}
