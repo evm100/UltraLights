@@ -34,6 +34,16 @@ def _white_swell_actions(nodes: List[str], start: int, end: int, ms: int,
         for ch in channels:
             actions.append(_white_swell_action(node, ch, start, end, ms))
     return actions
+
+def _color_action(node: str, strip: int, r: int, g: int, b: int) -> Dict[str, Any]:
+    return {
+        "node": node,
+        "module": "ws",
+        "strip": strip,
+        "effect": "solid",
+        "brightness": 255,
+        "params": [r,g,b],
+    }
   
 # Presets are organized by house and room. Each preset contains a list of
 # actions to perform when the preset is applied. Actions target a node and one
@@ -69,16 +79,11 @@ for house_id, node_id in (
             "actions": _white_swell_actions([node_id], 0, 255, 3000, channels=[0, 1, 2]),
         },
         {
-            "id": "swell-off",
-            "name": "Off",
-            "actions": _white_swell_actions([node_id], 255, 0, 3000, channels=[0, 1, 2]),
-        },
-        {
             "id": "midnight-snack",
             "name": "Midnight Snack",
             "actions": [
                 _white_swell_action(node_id, 0, 0, 4, 2000),
-                _white_swell_action(node_id, 1, 0, 50, 5000),
+                _white_swell_action(node_id, 1, 0, 4, 2000),
                 _white_swell_action(node_id, 2, 0, 0, 5000),
             ],
         },
@@ -116,9 +121,9 @@ ROOM_PRESETS["del-sur"]["master"] = [
         "actions": _white_swell_actions(["master-closet"], 0, 255, 3000, channels=[0, 1]),
     },
     {
-        "id": "swell-off",
-        "name": "Off",
-        "actions": _white_swell_actions(["master-closet"], 255, 0, 3000, channels=[0, 1]),
+        "id": "half-bright",
+        "name": "Half Bright",
+        "actions": _white_swell_actions(["master-closet"], 0, 50, 2000, channels=[0, 1]),
     },
     {
         "id": "floor-on",
@@ -126,20 +131,52 @@ ROOM_PRESETS["del-sur"]["master"] = [
         "actions": _white_swell_actions(["master-closet"], 0, 255, 3000, channels=[0]),
     },
     {
-        "id": "floor-off",
-        "name": "Floor Off",
-        "actions": _white_swell_actions(["master-closet"], 255, 0, 3000, channels=[0]),
-    },
-    {
         "id": "nightlight",
         "name": "Night Light",
         "actions": _white_swell_actions(["master-closet"], 0, 4, 2000, channels=[0]),
         
     },
+]
+
+# Edgar presets
+ROOM_PRESETS["del-sur"]["edgar"] = [
     {
-        "id": "nightlight-off",
-        "name": "Night Light Off",
-        "actions": _white_swell_actions(["master-closet"], 4, 0, 2000, channels=[0]),
+        "id": "swell-on",
+        "name": "On",
+        "actions": _white_swell_actions(["amp-lights"], 0, 255, 3000, channels=[0, 1]),
+    },
+    {
+        "id": "guitar",
+        "name": "Guitar",
+        "actions": [
+            _white_swell_action("amp-lights", 0, 0, 255, 3000),
+            _white_swell_action("amp-lights", 1, 0, 6, 3000)
+        ],
+    },
+    {
+        "id": "guitar-no-amp",
+        "name": "Guitar No Amp",
+        "actions": [
+            _white_swell_action("amp-lights", 0, 0, 255, 3000),
+            _white_swell_action("amp-lights", 1, 0, 0, 3000)
+        ],
+    },
+    {
+        "id": "nightlight",
+        "name": "Night Light",
+        "actions": [
+            _white_swell_action("amp-lights", 0, 0, 50, 2000),
+            _white_swell_action("amp-lights", 1, 0, 0, 2000),
+        ],
+    },
+    {
+        "id": "all-off",
+        "name": "Off",
+        "actions": [
+            _white_swell_action("amp-lights", 0, 0, 0, 2000),
+            _white_swell_action("amp-lights", 1, 0, 0, 2000),
+            _color_action("amp_lights", 0, 0, 0, 0),
+        ],
     },
 ]
 
