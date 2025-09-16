@@ -177,7 +177,6 @@ document.querySelectorAll('.preset').forEach(btn => {
         slot.classList.toggle('motion-schedule-slot--selected', idx === selectedSlot);
       });
     };
-
     const renderSchedule = () => {
       slots.forEach((slot, idx) => {
         const presetId = scheduleData[idx] || '';
@@ -260,7 +259,7 @@ document.querySelectorAll('.preset').forEach(btn => {
       }
       updateSlotHighlight();
     };
-
+    
     const setStatus = (message, cls) => {
       if (!statusEl) return;
       if (statusTimeout) {
