@@ -48,6 +48,23 @@ class MqttBus:
         # firmware that still expects it.
         self.pub(topic_cmd(node_id, f"ws/set/{strip}"), msg, retain=True)
 
+    # ---- RGB strip commands ----
+    def rgb_set(
+        self,
+        node_id: str,
+        strip: int,
+        effect: str,
+        brightness: int,
+        params: Optional[List[int]] = None,
+    ):
+        msg: Dict[str, object] = {
+            "strip": int(strip),
+            "effect": effect,
+            "brightness": int(brightness),
+            "params": params if params is not None else [],
+        }
+        self.pub(topic_cmd(node_id, f"rgb/set/{strip}"), msg, retain=True)
+
     # ---- White channel commands ----
     def white_set(
         self,
@@ -87,5 +104,6 @@ class MqttBus:
             nid = n["id"]
             for i in range(4):
                 self.ws_set(nid, i, "solid", 255, 1.0, [0, 0, 0])
+                self.rgb_set(nid, i, "solid", 0, [0, 0, 0])
                 self.white_set(nid, i, "solid", 0)
 

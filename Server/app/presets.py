@@ -252,6 +252,22 @@ def apply_preset(bus: MqttBus, preset: Dict[str, Any]) -> None:
                 float(action.get("speed", 1.0)),
                 action.get("params"),
             )
+        elif module == "rgb":
+            params = action.get("params")
+            clean_params: Optional[List[int]]
+            if params is None:
+                clean_params = None
+            elif isinstance(params, list):
+                clean_params = [int(p) for p in params]
+            else:
+                clean_params = None
+            bus.rgb_set(
+                node,
+                int(action.get("strip", 0)),
+                action.get("effect", ""),
+                int(action.get("brightness", 0)),
+                clean_params,
+            )
         elif module == "white":
             bus.white_set(
                 node,

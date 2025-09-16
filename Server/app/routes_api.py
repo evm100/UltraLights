@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException
 from .mqtt_bus import MqttBus
 from . import registry
-from .effects import WS_EFFECTS, WHITE_EFFECTS
+from .effects import WS_EFFECTS, WHITE_EFFECTS, RGB_EFFECTS
 from .presets import get_preset, apply_preset, get_room_presets
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
@@ -154,6 +154,43 @@ def api_white_set(node_id: str, payload: Dict[str, Any]):
             raise HTTPException(400, "invalid params")
         params = [float(p) for p in params]
     get_bus().white_set(node_id, channel, effect, brightness, params)
+    return {"ok": True}
+
+
+@router.post("/api/node/{node_id}/rgb/set")
+def api_rgb_set(node_id: str, payload: Dict[str, Any]):
+    _valid_node(node_id)
+    try:
+        strip = int(payload.get("strip"))
+    except Exception:
+        raise HTTPException(400, "invalid strip")
+    if not 0 <= strip < 4:
+        raise HTTPException(400, "invalid strip")
+    effect = str(payload.get("effect", "")).strip()
+    if effect not in RGB_EFFECTS:
+        raise HTTPException(400, "invalid effect")
+    try:
+        brightness = int(payload.get("brightness"))
+    except Exception:
+        raise HTTPException(400, "invalid brightness")
+    if not 0 <= brightness <= 255:
+        raise HTTPException(400, "invalid brightness")
+    params = payload.get("params")
+    if params is not None:
+        if not isinstance(params, list):
+            raise HTTPException(400, "invalid params")
+        if len(params) < 3:
+            raise HTTPException(400, "invalid params")
+        clean: List[int] = []
+        for value in params:
+            if not isinstance(value, (int, float)):
+                raise HTTPException(400, "invalid params")
+            v = int(value)
+            if not 0 <= v <= 255:
+                raise HTTPException(400, "invalid params")
+            clean.append(v)
+        params = clean
+    get_bus().rgb_set(node_id, strip, effect, brightness, params)
     return {"ok": True}
 
 @router.post("/api/node/{node_id}/sensor/cooldown")

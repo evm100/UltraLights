@@ -1,0 +1,76 @@
+<section class="glass rounded-2xl p-6">
+  <h3 class="text-lg font-semibold mb-3">RGB Strip</h3>
+  <div class="mb-2">
+    <label class="text-xs opacity-70">Strip</label>
+    <select id="rgbStrip" class="p-1 rounded bg-slate-900 border border-slate-700">
+      {% for i in range(4) %}
+      <option value="{{ i }}">{{ i }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="mb-3">
+    <label class="text-xs opacity-70">Color</label>
+    <div id="rgbParams" class="mt-2 space-y-2"></div>
+    <label class="text-xs opacity-70 block mt-2">Brightness</label>
+    <input id="rgbBri" type="range" min="0" max="255" value="255" class="w-full">
+  </div>
+  <div class="flex gap-2">
+    <button id="rgbSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
+    <button id="rgbOn" class="px-4 py-2 pill bg-green-600 hover:bg-green-500 text-white">On</button>
+    <button id="rgbOff" class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white">Off</button>
+  </div>
+</section>
+<script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
+<script type="module">
+import {renderParams,collectParams} from '/static/params.js';
+const RGB_PARAM_DEFS={{ rgb_param_defs|tojson }};
+const stripEl=document.getElementById('rgbStrip');
+const briEl=document.getElementById('rgbBri');
+const paramsEl=document.getElementById('rgbParams');
+const solidParams=RGB_PARAM_DEFS['solid']||[{"type":"color","label":"Color"}];
+
+async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
+
+let lastSend=0;
+let pending=null;
+function scheduleSend(){
+  const now=Date.now();
+  const delay=100-(now-lastSend);
+  if(delay<=0){
+    lastSend=now;
+    sendCmd();
+  }else{
+    clearTimeout(pending);
+    pending=setTimeout(()=>{lastSend=Date.now();sendCmd();},delay);
+  }
+}
+
+function updateParams(){
+  renderParams(solidParams,paramsEl,scheduleSend);
+}
+
+function collectColorParams(){
+  const params=collectParams(solidParams,paramsEl);
+  while(params.length<3){params.push(0);}
+  return params;
+}
+
+function sendCmd(brightOverride){
+  const strip=parseInt(stripEl.value,10);
+  if(Number.isNaN(strip))return;
+  const brightness=brightOverride!==undefined?brightOverride:parseInt(briEl.value,10);
+  if(Number.isNaN(brightness))return;
+  const params=collectColorParams();
+  const msg={strip,effect:'solid',brightness,params};
+  post(`/api/node/{{ node.id }}/rgb/set`,msg);
+}
+
+stripEl.onchange=scheduleSend;
+briEl.addEventListener('input',scheduleSend);
+updateParams();
+
+const setBtn=document.getElementById('rgbSet');
+setBtn.onclick=()=>sendCmd();
+document.getElementById('rgbOn').onclick=()=>{briEl.value=255;sendCmd(255);};
+document.getElementById('rgbOff').onclick=()=>{briEl.value=0;sendCmd(0);};
+</script>

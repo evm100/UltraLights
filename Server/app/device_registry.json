@@ -43,6 +43,7 @@
             "kind": "ultranode",
             "modules": [
               "ws",
+              "rgb",
               "white",
               "ota"
             ]

@@ -110,6 +110,24 @@ Example – flash between red and blue:
 To turn a strip off, publish a `ws/set` command with the `solid` effect and
 RGB parameters `[0, 0, 0]`.
 
+### Analog RGB strips (`rgb`)
+
+`ul/<node-id>/cmd/rgb/set/<strip>`
+
+```json
+{
+  "strip": <int>,
+  "brightness": <int 0-255>,
+  "effect": "<name>",
+  "params": [<int>, <int>, <int>]
+}
+```
+
+Analog strips expose three PWM channels and currently ship with a single
+`solid` effect that accepts RGB parameters `[r, g, b]`.  Publish with
+`brightness: 0` to turn a strip off while preserving its colour for the next
+command.
+
 ### White PWM channels (`white`)
 
 `ul/<node-id>/cmd/white/set/<channel>`
@@ -172,7 +190,7 @@ Most commands produce a short acknowledgement on `ul/<node-id>/evt/status`:
 * General commands reply with `{ "status": "ok" }`.
 * `ws/set` echoes the chosen effect and its parameters.
 
-To retrieve the full device state, publish an empty JSON object to `ul/<node-id>/cmd/status`. The node then responds on `ul/<node-id>/evt/status` with a detailed snapshot describing each strip and channel. The `color` field is meaningful only when the corresponding strip effect is `solid`.
+To retrieve the full device state, publish an empty JSON object to `ul/<node-id>/cmd/status`. The node then responds on `ul/<node-id>/evt/status` with a detailed snapshot describing each strip and channel. The `color` fields in the `ws` and `rgb` sections are meaningful only when the corresponding strip effect is `solid`.
 
 ## Publishing from Python
 

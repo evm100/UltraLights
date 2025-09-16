@@ -74,6 +74,10 @@ menu "Engine"
         int "White smoothing (Hz)"
         range 10 1000
         default 200
+    config UL_RGB_SMOOTH_HZ
+        int "RGB smoothing (Hz)"
+        range 10 1000
+        default 200
     config UL_GAMMA_ENABLE
         bool "Enable gamma correction"
         default y
@@ -96,6 +100,141 @@ menu "Sensors"
         range 100 10000
         default 1000
 
+endmenu
+
+menu "RGB Strips (LEDC)"
+    menu "RGB 0"
+        config UL_RGB0_ENABLED
+            bool "Enabled"
+            default n
+        config UL_RGB0_PWM_HZ
+            int "PWM Hz"
+            default 1000
+        config UL_RGB0_LEDC_MODE
+            int "LEDC mode (0=low speed, 1=high speed)"
+            range 0 1
+            default 0
+        config UL_RGB0_R_GPIO
+            int "Red GPIO"
+            default 16
+        config UL_RGB0_R_LEDC_CH
+            int "Red LEDC Channel"
+            range 0 7
+            default 4
+        config UL_RGB0_G_GPIO
+            int "Green GPIO"
+            default 17
+        config UL_RGB0_G_LEDC_CH
+            int "Green LEDC Channel"
+            range 0 7
+            default 5
+        config UL_RGB0_B_GPIO
+            int "Blue GPIO"
+            default 21
+        config UL_RGB0_B_LEDC_CH
+            int "Blue LEDC Channel"
+            range 0 7
+            default 6
+    endmenu
+    menu "RGB 1"
+        config UL_RGB1_ENABLED
+            bool "Enabled"
+            default n
+        config UL_RGB1_PWM_HZ
+            int "PWM Hz"
+            default 1000
+        config UL_RGB1_LEDC_MODE
+            int "LEDC mode (0=low speed, 1=high speed)"
+            range 0 1
+            default 0
+        config UL_RGB1_R_GPIO
+            int "Red GPIO"
+            default 22
+        config UL_RGB1_R_LEDC_CH
+            int "Red LEDC Channel"
+            range 0 7
+            default 1
+        config UL_RGB1_G_GPIO
+            int "Green GPIO"
+            default 23
+        config UL_RGB1_G_LEDC_CH
+            int "Green LEDC Channel"
+            range 0 7
+            default 2
+        config UL_RGB1_B_GPIO
+            int "Blue GPIO"
+            default 19
+        config UL_RGB1_B_LEDC_CH
+            int "Blue LEDC Channel"
+            range 0 7
+            default 3
+    endmenu
+    menu "RGB 2"
+        config UL_RGB2_ENABLED
+            bool "Enabled"
+            default n
+        config UL_RGB2_PWM_HZ
+            int "PWM Hz"
+            default 1000
+        config UL_RGB2_LEDC_MODE
+            int "LEDC mode (0=low speed, 1=high speed)"
+            range 0 1
+            default 0
+        config UL_RGB2_R_GPIO
+            int "Red GPIO"
+            default 25
+        config UL_RGB2_R_LEDC_CH
+            int "Red LEDC Channel"
+            range 0 7
+            default 4
+        config UL_RGB2_G_GPIO
+            int "Green GPIO"
+            default 26
+        config UL_RGB2_G_LEDC_CH
+            int "Green LEDC Channel"
+            range 0 7
+            default 5
+        config UL_RGB2_B_GPIO
+            int "Blue GPIO"
+            default 27
+        config UL_RGB2_B_LEDC_CH
+            int "Blue LEDC Channel"
+            range 0 7
+            default 6
+    endmenu
+    menu "RGB 3"
+        config UL_RGB3_ENABLED
+            bool "Enabled"
+            default n
+        config UL_RGB3_PWM_HZ
+            int "PWM Hz"
+            default 1000
+        config UL_RGB3_LEDC_MODE
+            int "LEDC mode (0=low speed, 1=high speed)"
+            range 0 1
+            default 0
+        config UL_RGB3_R_GPIO
+            int "Red GPIO"
+            default 32
+        config UL_RGB3_R_LEDC_CH
+            int "Red LEDC Channel"
+            range 0 7
+            default 0
+        config UL_RGB3_G_GPIO
+            int "Green GPIO"
+            default 33
+        config UL_RGB3_G_LEDC_CH
+            int "Green LEDC Channel"
+            range 0 7
+            default 1
+        config UL_RGB3_B_GPIO
+            int "Blue GPIO"
+            default 27
+        config UL_RGB3_B_LEDC_CH
+            int "Blue LEDC Channel"
+            range 0 7
+            default 2
+    endmenu
 endmenu
 
 menu "WS2812 Strips"
