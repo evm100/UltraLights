@@ -69,7 +69,6 @@ static void publish_status_snapshot(void) {
       cJSON *o = cJSON_CreateObject();
       cJSON_AddNumberToObject(o, "strip", i);
       cJSON_AddBoolToObject(o, "enabled", st.enabled);
-      cJSON_AddBoolToObject(o, "power", st.power);
       cJSON_AddStringToObject(o, "effect", st.effect);
       cJSON_AddNumberToObject(o, "brightness", st.brightness);
       cJSON_AddNumberToObject(o, "pixels", st.pixels);
@@ -190,16 +189,6 @@ static void handle_cmd_ws_set(cJSON *root) {
   publish_ws_ack(strip, effect, params, ok);
 }
 
-static void handle_cmd_ws_power(cJSON *root) {
-  int strip = cJSON_GetObjectItem(root, "strip")
-                  ? cJSON_GetObjectItem(root, "strip")->valueint
-                  : 0;
-  cJSON *jon = cJSON_GetObjectItem(root, "on");
-  bool on = (jon && cJSON_IsBool(jon)) ? cJSON_IsTrue(jon) : true;
-  ul_ws_power(strip, on);
-  ul_mqtt_publish_status();
-}
-
 static void handle_cmd_white_set(cJSON *root) { ul_white_apply_json(root); }
 static void on_message(esp_mqtt_event_handle_t event) {
   // topic expected: ul/<node>/cmd/...
@@ -245,8 +234,6 @@ static void on_message(esp_mqtt_event_handle_t event) {
     if (starts_with(sub, "ws/set")) {
       override_index_from_path(root, sub, "ws/set", "strip");
       handle_cmd_ws_set(root);
-    } else if (starts_with(sub, "ws/power")) {
-      handle_cmd_ws_power(root);
     } else if (starts_with(sub, "ota/check")) {
       ul_mqtt_publish_status();
       ul_ota_check_now(true);
@@ -337,8 +324,6 @@ void ul_mqtt_run_local(const char *path, const char *json) {
   if (starts_with(path, "ws/set")) {
     override_index_from_path(root, path, "ws/set", "strip");
     handle_cmd_ws_set(root);
-  } else if (starts_with(path, "ws/power")) {
-    handle_cmd_ws_power(root);
   } else if (starts_with(path, "white/set")) {
     override_index_from_path(root, path, "white/set", "channel");
     handle_cmd_white_set(root);

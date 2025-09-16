@@ -106,11 +106,8 @@ Example – flash between red and blue:
 }
 ```
 
-`ul/<node-id>/cmd/ws/power`
-
-```json
-{ "strip": <int>, "on": <bool> }
-```
+To turn a strip off, publish a `ws/set` command with the `solid` effect and
+RGB parameters `[0, 0, 0]`.
 
 ### White PWM channels (`white`)
 

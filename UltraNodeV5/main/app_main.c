@@ -28,10 +28,6 @@ static void service_manager_task(void *ctx) {
   while (true) {
     if (xTaskNotifyWait(0, 0, &value, portMAX_DELAY) == pdTRUE) {
       bool connected = value;
-      int strips = ul_ws_get_strip_count();
-      for (int i = 0; i < strips; ++i) {
-        ul_ws_power(i, connected);
-      }
       if (connected) {
         if (!s_services_running) {
           ul_mqtt_start();

@@ -127,19 +127,6 @@ def api_ws_set(node_id: str, payload: Dict[str, Any]):
     get_bus().ws_set(node_id, strip, effect, brightness, speed, params)
     return {"ok": True}
 
-@router.post("/api/node/{node_id}/ws/power")
-def api_ws_power(node_id: str, payload: Dict[str, Any]):
-    _valid_node(node_id)
-    try:
-        strip = int(payload.get("strip"))
-    except Exception:
-        raise HTTPException(400, "invalid strip")
-    if not 0 <= strip < 4:
-        raise HTTPException(400, "invalid strip")
-    on = bool(payload.get("on", True))
-    get_bus().ws_power(node_id, strip, on)
-    return {"ok": True}
-
 @router.post("/api/node/{node_id}/white/set")
 def api_white_set(node_id: str, payload: Dict[str, Any]):
     _valid_node(node_id)
