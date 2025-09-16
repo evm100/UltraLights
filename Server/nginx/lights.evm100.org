@@ -34,7 +34,7 @@ server {
 
     # Static assets served by Nginx
     location /static/ {
-        alias /home/evm100/Documents/UltraLightsV5/Server/static/;
+        alias /home/evm100/Documents/UltraLights/UltraLights/Server/static/;
         access_log off;
         expires 7d;
         add_header Cache-Control "public, max-age=604800";
@@ -60,7 +60,7 @@ server {
     }
 
     location = /favicon.ico {
-    	alias /home/evm100/Documents/UltraLightsV5/Server/static/favicon.ico;
+    	alias /home/evm100/Documents/UltraLights/UltraLights/Server/static/favicon.ico;
     	access_log off;
     	expires 7d;
     	add_header Cache-Control "public, max-age=604800";
