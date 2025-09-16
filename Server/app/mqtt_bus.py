@@ -48,10 +48,6 @@ class MqttBus:
         # firmware that still expects it.
         self.pub(topic_cmd(node_id, f"ws/set/{strip}"), msg, retain=True)
 
-    def ws_power(self, node_id: str, strip: int, on: bool):
-        msg = {"strip": int(strip), "on": bool(on)}
-        self.pub(topic_cmd(node_id, "ws/power"), msg)
-
     # ---- White channel commands ----
     def white_set(
         self,
@@ -90,6 +86,6 @@ class MqttBus:
         for _, _, n in registry.iter_nodes():
             nid = n["id"]
             for i in range(4):
-                self.ws_power(nid, i, False)
+                self.ws_set(nid, i, "solid", 255, 1.0, [0, 0, 0])
                 self.white_set(nid, i, "solid", 0)
 

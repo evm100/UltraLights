@@ -25,7 +25,6 @@ typedef struct {
     const ws_effect_t* eff;
     uint8_t solid_r, solid_g, solid_b;
     uint8_t brightness; // 0..255
-    bool power;
     float speed;
     float frame_pos;
     int pixels;
@@ -153,9 +152,8 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
     // defaults
     int n=0; const ws_effect_t* tbl = ul_ws_get_effects(&n);
     s_strips[idx].eff = &tbl[0]; // solid
-    s_strips[idx].solid_r = s_strips[idx].solid_g = s_strips[idx].solid_b = 255;
+    s_strips[idx].solid_r = s_strips[idx].solid_g = s_strips[idx].solid_b = 0;
     s_strips[idx].brightness = 255;
-    s_strips[idx].power = true;
     s_strips[idx].speed = 1.0f;
     s_strips[idx].frame_pos = 0.0f;
 }
@@ -186,10 +184,6 @@ static void render_one(ws_strip_t* s, int idx) {
     }
 #endif
     apply_brightness(s->frame, s->pixels*3, s->brightness);
-    // Power gating
-    if (!s->power) {
-        memset(s->frame, 0, s->pixels*3);
-    }
     // Push to device
     for (int i=0;i<s->pixels;i++) {
         led_strip_set_pixel(s->handle, i, s->frame[3*i+0], s->frame[3*i+1], s->frame[3*i+2]);
@@ -327,13 +321,6 @@ void ul_ws_set_brightness(int strip, uint8_t bri) {
     s->brightness = bri;
 }
 
-void ul_ws_power(int strip, bool on) {
-    ws_strip_t* s = get_strip(strip);
-    if (!s) return;
-    s->power = on;
-}
-
-
 int ul_ws_get_strip_count(void) {
     int n=0;
 #if CONFIG_UL_WS0_ENABLED
@@ -350,7 +337,6 @@ bool ul_ws_get_status(int idx, ul_ws_strip_status_t* out) {
     ws_strip_t* s = get_strip(idx);
     if (!s) { memset(out,0,sizeof(*out)); return false; }
     out->enabled = true;
-    out->power = s->power;
     out->brightness = s->brightness;
     out->pixels = s->pixels;
     out->gpio = 0; // not tracked in led_strip

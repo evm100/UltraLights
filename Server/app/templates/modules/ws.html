@@ -84,11 +84,11 @@ function sendCmd(){
 
 document.getElementById('wsSet').onclick=sendCmd;
 
-document.getElementById('wsOn').onclick=async()=>{
-  const s=parseInt(stripEl.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:true});
-};
+document.getElementById('wsOn').onclick=sendCmd;
 document.getElementById('wsOff').onclick=async()=>{
-  const s=parseInt(stripEl.value,10);if(Number.isNaN(s)){alert('Invalid strip');return;}await post(`/api/node/{{ node.id }}/ws/power`,{strip:s,on:false});
+  const s=parseInt(stripEl.value,10);
+  if(Number.isNaN(s)){alert('Invalid strip');return;}
+  await post(`/api/node/{{ node.id }}/ws/set`,{strip:s,effect:'solid',brightness:255,speed:1.0,params:[0,0,0]});
 };
 </script>
 

@@ -212,8 +212,6 @@ def apply_preset(bus: MqttBus, preset: Dict[str, Any]) -> None:
                 int(action.get("brightness", 0)),
                 action.get("params"),
             )
-        elif module == "ws_power":
-            bus.ws_power(node, int(action.get("strip", 0)), bool(action.get("on", False)))
         elif module == "sensor_cooldown":
             bus.sensor_cooldown(node, int(action.get("seconds", 30)))
         else:
