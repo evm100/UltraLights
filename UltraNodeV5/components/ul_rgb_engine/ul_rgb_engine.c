@@ -1,5 +1,54 @@
 #include "ul_rgb_engine.h"
 #include "sdkconfig.h"
+
+#if !(CONFIG_UL_RGB0_ENABLED || CONFIG_UL_RGB1_ENABLED || CONFIG_UL_RGB2_ENABLED || CONFIG_UL_RGB3_ENABLED)
+
+#include <string.h>
+
+int ul_rgb_effect_current_strip(void) { return -1; }
+
+void ul_rgb_engine_start(void) {}
+
+void ul_rgb_engine_stop(void) {}
+
+void ul_rgb_apply_json(cJSON* root) { (void)root; }
+
+bool ul_rgb_set_effect(int strip, const char* name) {
+    (void)strip;
+    (void)name;
+    return false;
+}
+
+bool ul_rgb_set_brightness(int strip, uint8_t bri) {
+    (void)strip;
+    (void)bri;
+    return false;
+}
+
+void ul_rgb_set_solid_rgb(int strip, uint8_t r, uint8_t g, uint8_t b) {
+    (void)strip;
+    (void)r;
+    (void)g;
+    (void)b;
+}
+
+void ul_rgb_get_solid_rgb(int strip, uint8_t* r, uint8_t* g, uint8_t* b) {
+    (void)strip;
+    if (r) *r = 0;
+    if (g) *g = 0;
+    if (b) *b = 0;
+}
+
+int ul_rgb_get_strip_count(void) { return 0; }
+
+bool ul_rgb_get_status(int strip, ul_rgb_strip_status_t* out) {
+    (void)strip;
+    if (out) memset(out, 0, sizeof(*out));
+    return false;
+}
+
+#else
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/ledc.h"
@@ -317,3 +366,5 @@ bool ul_rgb_get_status(int strip, ul_rgb_strip_status_t* out) {
     }
     return true;
 }
+
+#endif  // any RGB strips enabled

@@ -1,5 +1,8 @@
-#include "effect.h"
 #include "sdkconfig.h"
+
+#if CONFIG_UL_RGB0_ENABLED || CONFIG_UL_RGB1_ENABLED || CONFIG_UL_RGB2_ENABLED || CONFIG_UL_RGB3_ENABLED
+
+#include "effect.h"
 #include "cJSON.h"
 #include <stdbool.h>
 
@@ -99,3 +102,5 @@ void rgb_color_swell_render(int strip, uint8_t out_rgb[3], int frame_idx) {
     out_rgb[1] = (uint8_t)((s_color[strip][1] * value) / 255);
     out_rgb[2] = (uint8_t)((s_color[strip][2] * value) / 255);
 }
+
+#endif
