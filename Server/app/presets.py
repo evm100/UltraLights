@@ -35,7 +35,7 @@ def _white_swell_actions(nodes: List[str], start: int, end: int, ms: int,
             actions.append(_white_swell_action(node, ch, start, end, ms))
     return actions
 
-def _color_action(node: str, strip: int, r: int, g: int, b: int) -> Dict[str, Any]:
+def _color_action(node: str, strip: int, r: float, g: float, b: float) -> Dict[str, Any]:
     return {
         "node": node,
         "module": "ws",
@@ -44,6 +44,8 @@ def _color_action(node: str, strip: int, r: int, g: int, b: int) -> Dict[str, An
         "brightness": 255,
         "params": [r,g,b],
     }
+
+#def _color_off(node: str)
   
 # Presets are organized by house and room. Each preset contains a list of
 # actions to perform when the preset is applied. Actions target a node and one
@@ -182,9 +184,9 @@ ROOM_PRESETS["del-sur"]["edgar"] = [
         "id": "all-off",
         "name": "Off",
         "actions": [
+            _color_action("amp-lights", 0, 0.0, 0.0, 0.0),
             _white_swell_action("amp-lights", 0, 0, 0, 2000),
             _white_swell_action("amp-lights", 1, 0, 0, 2000),
-            _color_action("amp_lights", 0, 0, 0, 0),
         ],
     },
 ]

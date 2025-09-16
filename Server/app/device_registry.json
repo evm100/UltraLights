@@ -38,16 +38,6 @@
         "name": "Edgar",
         "nodes": [
           {
-            "id": "edgar",
-            "name": "Edgar",
-            "kind": "ultranode",
-            "modules": [
-              "ws",
-              "white",
-              "ota"
-            ]
-          },
-          {
             "id": "amp-lights",
             "name": "amp-lights",
             "kind": "ultranode",
