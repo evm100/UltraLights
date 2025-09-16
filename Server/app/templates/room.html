@@ -31,6 +31,7 @@
       {% for slot in motion_config.schedule %}
       <div class="motion-schedule-slot" data-slot="{{ loop.index0 }}">
         <span class="motion-schedule-hour"></span>
+        <span class="motion-schedule-label"></span>
       </div>
       {% endfor %}
     </div>
@@ -66,10 +67,10 @@
         <span class="motion-legend-swatch" style="--swatch-color: {{ motion_config.no_motion_color }}"></span>
         <span class="motion-legend-label">No Motion</span>
       </div>
-      {% for preset in presets %}
+      {% for entry in motion_config.legend %}
       <div class="motion-legend-item">
-        <span class="motion-legend-swatch" style="--swatch-color: {{ motion_config.preset_colors[preset.id] }}"></span>
-        <span class="motion-legend-label">{{ preset.name }}</span>
+        <span class="motion-legend-swatch" style="--swatch-color: {{ entry.color }}"></span>
+        <span class="motion-legend-label">{{ entry.name }}</span>
       </div>
       {% endfor %}
     </div>
@@ -142,19 +143,45 @@ document.querySelectorAll('.preset').forEach(btn => {
         const hour = document.createElement('span');
         hour.className = 'motion-schedule-hour';
         slot.appendChild(hour);
+        const label = document.createElement('span');
+        label.className = 'motion-schedule-label';
+        slot.appendChild(label);
         scheduleGrid.appendChild(slot);
       }
       slots = Array.from(scheduleGrid.querySelectorAll('.motion-schedule-slot'));
     }
 
-    const formatLabel = (index) => {
-      const minutes = ((index % slotCount) + slotCount) % slotCount * slotMinutes;
+    slots.forEach((slot) => {
+      if (!slot.querySelector('.motion-schedule-hour')) {
+        const hour = document.createElement('span');
+        hour.className = 'motion-schedule-hour';
+        slot.appendChild(hour);
+      }
+      if (!slot.querySelector('.motion-schedule-label')) {
+        const label = document.createElement('span');
+        label.className = 'motion-schedule-label';
+        slot.appendChild(label);
+      }
+    });
+
+    const minutesForIndex = (index) => {
+      const normalized = ((index % slotCount) + slotCount) % slotCount;
+      return normalized * slotMinutes;
+    };
+
+    const formatTime = (minutes) => {
       const hour = Math.floor(minutes / 60) % 24;
       const minute = minutes % 60;
       const suffix = hour >= 12 ? 'p' : 'a';
       const displayHour = hour % 12 || 12;
       const minuteText = minute ? `:${String(minute).padStart(2, '0')}` : '';
       return `${displayHour}${minuteText}${suffix}`;
+    };
+
+    const formatRange = (index) => {
+      const start = minutesForIndex(index);
+      const end = minutesForIndex(index + 1);
+      return `${formatTime(start)} – ${formatTime(end)}`;
     };
 
     const pickTextColor = (color) => {
@@ -177,6 +204,7 @@ document.querySelectorAll('.preset').forEach(btn => {
         slot.classList.toggle('motion-schedule-slot--selected', idx === selectedSlot);
       });
     };
+
     const renderSchedule = () => {
       slots.forEach((slot, idx) => {
         const presetId = scheduleData[idx] || '';
@@ -184,12 +212,19 @@ document.querySelectorAll('.preset').forEach(btn => {
         slot.style.setProperty('--slot-color', color);
         slot.style.setProperty('--slot-text', pickTextColor(color));
         slot.dataset.preset = presetId;
+        const rangeLabel = formatRange(idx);
         const hourEl = slot.querySelector('.motion-schedule-hour');
         if (hourEl) {
-          hourEl.textContent = formatLabel(idx);
+          hourEl.textContent = rangeLabel;
         }
+        const labelEl = slot.querySelector('.motion-schedule-label');
         const presetName = presetNames[presetId] || presetId || 'No Motion';
-        slot.setAttribute('title', `${formatLabel(idx)} – ${presetName}`);
+        if (labelEl) {
+          labelEl.textContent = presetName;
+        }
+        slot.setAttribute('title', `${rangeLabel} – ${presetName}`);
+        slot.setAttribute('aria-label', `${rangeLabel} – ${presetName}`);
+        slot.classList.toggle('motion-schedule-slot--empty', !presetId);
       });
       updateSlotHighlight();
     };
@@ -259,7 +294,6 @@ document.querySelectorAll('.preset').forEach(btn => {
       }
       updateSlotHighlight();
     };
-    
     const setStatus = (message, cls) => {
       if (!statusEl) return;
       if (statusTimeout) {

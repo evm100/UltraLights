@@ -82,6 +82,18 @@ def room_page(request: Request, house_id: str, room_id: str):
             if default_preset and default_preset not in preset_colors:
                 preset_colors[default_preset] = palette[len(preset_colors) % len(palette)]
                 preset_names.setdefault(default_preset, default_preset)
+            for preset_id in schedule:
+                if preset_id and preset_id not in preset_colors:
+                    preset_colors[preset_id] = palette[len(preset_colors) % len(palette)]
+                    preset_names.setdefault(preset_id, preset_id)
+            legend = [
+                {
+                    "id": preset_id,
+                    "name": preset_names.get(preset_id, preset_id),
+                    "color": color,
+                }
+                for preset_id, color in preset_colors.items()
+            ]
             motion_config = {
                 "duration": int(cfg.get("duration", 30)),
                 "node_id": node_id,
@@ -89,6 +101,8 @@ def room_page(request: Request, house_id: str, room_id: str):
                 "slot_minutes": motion_schedule.slot_minutes,
                 "preset_colors": preset_colors,
                 "preset_names": preset_names,
+                "legend": legend,
+
                 "no_motion_color": "#1f2937",
             }
     return templates.TemplateResponse(
