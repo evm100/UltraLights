@@ -1,9 +1,19 @@
+from collections import defaultdict
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from .config import settings
 from . import registry
-from .effects import WS_EFFECTS, WHITE_EFFECTS, WS_PARAM_DEFS, WHITE_PARAM_DEFS
+from .effects import (
+    WS_EFFECTS,
+    WHITE_EFFECTS,
+    WS_PARAM_DEFS,
+    WHITE_PARAM_DEFS,
+    WS_EFFECT_TIERS,
+    WS_EFFECT_TIER_LABELS,
+    WS_EFFECT_TIER_ORDER,
+)
 from .presets import get_room_presets
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
@@ -135,6 +145,23 @@ def node_page(request: Request, node_id: str):
         import logging
         logging.warning("WS_PARAM_DEFS missing entries for: %s", ", ".join(sorted(missing)))
 
+    tier_groups: dict[str, list[str]] = defaultdict(list)
+    for eff in sorted(WS_EFFECTS):
+        tier = WS_EFFECT_TIERS.get(eff, "standard")
+        tier_groups[tier].append(eff)
+
+    ws_effect_groups = [
+        {
+            "key": tier,
+            "label": WS_EFFECT_TIER_LABELS.get(tier, tier.replace("_", " ").title()),
+            "effects": names,
+        }
+        for tier, names in sorted(
+            tier_groups.items(),
+            key=lambda item: (WS_EFFECT_TIER_ORDER.get(item[0], 99), item[0]),
+        )
+    ]
+
     return templates.TemplateResponse(
         "node.html",
         {
@@ -143,6 +170,8 @@ def node_page(request: Request, node_id: str):
             "title": title,
             "subtitle": subtitle,
             "ws_effects": WS_EFFECTS,
+            "ws_effect_groups": ws_effect_groups,
+            "ws_effect_tiers": WS_EFFECT_TIERS,
             "white_effects": WHITE_EFFECTS,
             "ws_param_defs": WS_PARAM_DEFS,
             "white_param_defs": WHITE_PARAM_DEFS,
