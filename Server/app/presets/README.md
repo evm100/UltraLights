@@ -67,8 +67,20 @@ falls back to copying the original action unchanged.
 Reversers receive a deep copy of the action dictionary and must return a new
 payload. They may inspect custom metadata to decide how to reverse. For example
 ``actions/color.py`` stores ``_reverse_meta`` with the target color so that
-calling ``reverse_preset`` swaps between the active color and the fallback (by
-default, full black).
+ calling ``reverse_preset`` swaps between the active color and the fallback (by
+ default, full black).
+
+### Color swell helpers
+
+In addition to solid colors, ``actions.color`` provides
+:func:`~presets.actions.color.ws_swell_action` and
+:func:`~presets.actions.color.rgb_swell_action`.  Both helpers drive the
+``color_swell`` effect introduced for the WS and RGB engines.  Callers provide
+the node identifier, strip index, RGB color components and the swell parameters
+(starting brightness, ending brightness and duration in milliseconds).  The
+shared reverser swaps the start and end brightness values so that
+:func:`~presets.reverse_preset` can automatically dim a swell that originally
+brightened a strip—and vice versa.
 
 When a reverser changes fields that future reversals depend on, it should also
 update any metadata accordingly so the operation remains symmetric. The existing
@@ -102,7 +114,9 @@ freely mix existing action builders or new ones that you register.
 ## Quick reference
 
 * ``presets.actions`` – reusable action builders such as
-  :func:`~presets.actions.white.white_swell_action` and
+  :func:`~presets.actions.white.white_swell_action`,
+  :func:`~presets.actions.color.ws_swell_action`,
+  :func:`~presets.actions.color.rgb_swell_action` and
   :func:`~presets.actions.color.solid_color_action`.
 * ``presets.action_registry`` – the registry instance plus helper functions
   (:func:`~presets.register_action`, :func:`~presets.reverse_action`,

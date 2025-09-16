@@ -67,4 +67,63 @@ def solid_color_action(
     return action
 
 
-__all__ = ["solid_color_action"]
+def _reverse_color_swell(action: Dict[str, Any]) -> Dict[str, Any]:
+    params = action.get("params")
+    if isinstance(params, list) and len(params) >= 6:
+        params[3], params[4] = params[4], params[3]
+
+    if "start" in action and "end" in action:
+        action["start"], action["end"] = action["end"], action["start"]
+
+    return action
+
+
+@register_action("ws.color_swell", reverser=_reverse_color_swell)
+def ws_swell_action(
+    node: str,
+    strip: int,
+    r: float,
+    g: float,
+    b: float,
+    start: int,
+    end: int,
+    ms: int,
+) -> Dict[str, Any]:
+    """Return a swell action for WS strips that fades a solid color."""
+
+    color = _normalize_color([r, g, b])
+    return {
+        "node": node,
+        "module": "ws",
+        "strip": strip,
+        "effect": "color_swell",
+        "brightness": 255,
+        "params": [*color, int(start), int(end), int(ms)],
+    }
+
+
+@register_action("rgb.color_swell", reverser=_reverse_color_swell)
+def rgb_swell_action(
+    node: str,
+    strip: int,
+    r: float,
+    g: float,
+    b: float,
+    start: int,
+    end: int,
+    ms: int,
+) -> Dict[str, Any]:
+    """Return a swell action for RGB strips that fades a solid color."""
+
+    color = _normalize_color([r, g, b])
+    return {
+        "node": node,
+        "module": "rgb",
+        "strip": strip,
+        "effect": "color_swell",
+        "brightness": 255,
+        "params": [*color, int(start), int(end), int(ms)],
+    }
+
+
+__all__ = ["solid_color_action", "ws_swell_action", "rgb_swell_action"]

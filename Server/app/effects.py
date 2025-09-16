@@ -125,6 +125,12 @@ WS_PARAM_DEFS = {
         {"type": "color", "label": "Wave 2 Color"},
         {"type": "color", "label": "Wave 3 Color"},
     ],
+    "color_swell": [
+        {"type": "color", "label": "Base Color"},
+        {"type": "slider", "label": "Start Brightness", "min": 0, "max": 255, "value": 0},
+        {"type": "slider", "label": "End Brightness", "min": 0, "max": 255, "value": 255},
+        {"type": "slider", "label": "Time (ms)", "min": 0, "max": 10000, "value": 1000},
+    ],
 }
 
 WHITE_PARAM_DEFS = {
@@ -145,6 +151,12 @@ WS_PARAM_DEFS.setdefault("solid", [{"type": "color", "label": "Color"}])
 RGB_PARAM_DEFS = {
     "solid": [
         {"type": "color", "label": "Color"},
+    ],
+    "color_swell": [
+        {"type": "color", "label": "Base Color"},
+        {"type": "slider", "label": "Start Brightness", "min": 0, "max": 255, "value": 0},
+        {"type": "slider", "label": "End Brightness", "min": 0, "max": 255, "value": 255},
+        {"type": "slider", "label": "Time (ms)", "min": 0, "max": 10000, "value": 1000},
     ],
 }
 
