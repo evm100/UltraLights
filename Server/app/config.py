@@ -57,7 +57,15 @@ class Settings:
             ],
         }
     ]
-    REGISTRY_FILE = Path(os.getenv("REGISTRY_FILE", str(Path(__file__).with_name("device_registry.json"))))
+    REGISTRY_FILE = Path(
+        os.getenv("REGISTRY_FILE", str(Path(__file__).with_name("device_registry.json")))
+    )
+    MOTION_SCHEDULE_FILE = Path(
+        os.getenv(
+            "MOTION_SCHEDULE_FILE",
+            str(Path(__file__).with_name("motion_schedule.json")),
+        )
+    )
     if REGISTRY_FILE.exists():
         DEVICE_REGISTRY = json.loads(REGISTRY_FILE.read_text())
     else:
