@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include "sdkconfig.h"
 #include "effect.h"
 
 void solid_init(void);        void solid_render(uint8_t*,int,int);        void solid_apply_params(int,const cJSON*);
@@ -13,21 +14,25 @@ void gradient_scroll_init(void);void gradient_scroll_render(uint8_t*,int,int);
 void triple_wave_init(void);  void triple_wave_render(uint8_t*,int,int);   void triple_wave_apply_params(int,const cJSON*);
 void flash_init(void);        void flash_render(uint8_t*,int,int);        void flash_apply_params(int,const cJSON*);
 void spacewaves_init(void);   void spacewaves_render(uint8_t*,int,int);   void spacewaves_apply_params(int,const cJSON*);
+#if CONFIG_UL_HAS_PSRAM
 void fire_init(void);         void fire_render(uint8_t*,int,int);         void fire_apply_params(int,const cJSON*);
+#endif
 
 static const ws_effect_t effects[] = {
-    {"solid", solid_init, solid_render, solid_apply_params},
-    {"breathe", breathe_init, breathe_render, NULL},
-    {"rainbow", rainbow_init, rainbow_render, rainbow_apply_params},
-    {"modern_rainbow", modern_rainbow_init, modern_rainbow_render, NULL},
-    {"twinkle", twinkle_init, twinkle_render, NULL},
-    {"theater_chase", theater_chase_init, theater_chase_render, NULL},
-    {"wipe", wipe_init, wipe_render, NULL},
-    {"gradient_scroll", gradient_scroll_init, gradient_scroll_render, NULL},
-    {"triple_wave", triple_wave_init, triple_wave_render, triple_wave_apply_params},
-    {"flash", flash_init, flash_render, flash_apply_params},
-    {"spacewaves", spacewaves_init, spacewaves_render, spacewaves_apply_params},
-    {"fire", fire_init, fire_render, fire_apply_params},
+    {"solid", WS_EFFECT_TIER_STANDARD, solid_init, solid_render, solid_apply_params},
+    {"breathe", WS_EFFECT_TIER_STANDARD, breathe_init, breathe_render, NULL},
+    {"rainbow", WS_EFFECT_TIER_STANDARD, rainbow_init, rainbow_render, rainbow_apply_params},
+    {"modern_rainbow", WS_EFFECT_TIER_STANDARD, modern_rainbow_init, modern_rainbow_render, NULL},
+    {"twinkle", WS_EFFECT_TIER_STANDARD, twinkle_init, twinkle_render, NULL},
+    {"theater_chase", WS_EFFECT_TIER_STANDARD, theater_chase_init, theater_chase_render, NULL},
+    {"wipe", WS_EFFECT_TIER_STANDARD, wipe_init, wipe_render, NULL},
+    {"gradient_scroll", WS_EFFECT_TIER_STANDARD, gradient_scroll_init, gradient_scroll_render, NULL},
+    {"triple_wave", WS_EFFECT_TIER_STANDARD, triple_wave_init, triple_wave_render, triple_wave_apply_params},
+    {"flash", WS_EFFECT_TIER_STANDARD, flash_init, flash_render, flash_apply_params},
+    {"spacewaves", WS_EFFECT_TIER_STANDARD, spacewaves_init, spacewaves_render, spacewaves_apply_params},
+#if CONFIG_UL_HAS_PSRAM
+    {"fire", WS_EFFECT_TIER_PSRAM, fire_init, fire_render, fire_apply_params},
+#endif
 };
 
 const ws_effect_t* ul_ws_get_effects(int* count) {

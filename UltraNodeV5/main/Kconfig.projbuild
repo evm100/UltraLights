@@ -4,6 +4,12 @@ menu "System"
     config UL_IS_ESP32C3
         bool "Target is ESP32-C3"
         default n
+
+    config UL_HAS_PSRAM
+        bool "External PSRAM available"
+        default y if SPIRAM
+        help
+            Enable features that require off-chip PSRAM such as high-memory WS2812 effects.
 endmenu
 
 menu "Node / Network"
