@@ -64,19 +64,19 @@ for house_id, node_id in (
     ROOM_PRESETS[house_id]["kitchen"] = [
         {
             "id": "swell-on",
-            "name": "Swell On",
-            "actions": _white_swell_actions([node_id], 0, 255, 5000, channels=[0, 1, 2]),
+            "name": "On",
+            "actions": _white_swell_actions([node_id], 0, 255, 3000, channels=[0, 1, 2]),
         },
         {
             "id": "swell-off",
-            "name": "Swell Off",
+            "name": "Off",
             "actions": _white_swell_actions([node_id], 255, 0, 3000, channels=[0, 1, 2]),
         },
         {
             "id": "midnight-snack",
             "name": "Midnight Snack",
             "actions": [
-                _white_swell_action(node_id, 0, 0, 10, 2000),
+                _white_swell_action(node_id, 0, 0, 4, 2000),
                 _white_swell_action(node_id, 1, 0, 50, 5000),
                 _white_swell_action(node_id, 2, 0, 0, 5000),
             ],
@@ -85,15 +85,25 @@ for house_id, node_id in (
             "id": "kitchens-closed",
             "name": "Kitchen's Closed",
             "actions": [
-                _white_swell_action(node_id, 2, 150, 255, 5000),
-                _white_swell_action(node_id, 1, 150, 0, 5000),
-                _white_swell_action(node_id, 0, 150, 0, 5000),
+                _white_swell_action(node_id, 2, 100, 255, 3000),
+                _white_swell_action(node_id, 1, 100, 0, 3000),
+                _white_swell_action(node_id, 0, 100, 0, 3000),
             ],
         },
         {
             "id": "normal",
             "name": "Normal",
-            "actions": _white_swell_actions([node_id], 0, 150, 5000, channels=[0, 1, 2]),
+            "actions": _white_swell_actions([node_id], 0, 100, 3000, channels=[0, 1, 2]),
+        },
+        {
+            "id": "normal-to-max",
+            "name": "Normal to Max",
+            "actions": _white_swell_actions([node_id], 100, 255, 3000, channels=[0, 1, 2]),
+        },
+        {
+            "id": "max-to-normal",
+            "name": "Max to Normal",
+            "actions": _white_swell_actions([node_id], 100, 255, 3000, channels=[0, 1, 2]),
         },
     ]
 
