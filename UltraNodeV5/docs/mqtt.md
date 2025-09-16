@@ -41,6 +41,8 @@ The contents of `params` depend on the chosen effect:
 * `solid` – RGB `[r,g,b]` values
 * `triple_wave` – fifteen numbers defining three sine waves `[r1,g1,b1,w1,f1,r2,g2,b2,w2,f2,r3,g3,b3,w3,f3]`
 * `spacewaves` – nine integers specifying three RGB waves `[r1,g1,b1,r2,g2,b2,r3,g3,b3]`
+* `fire` – intensity and colour gradient `[intensity,r1,g1,b1,r2,g2,b2]`. Values above `10` are treated as percentages (the web UI sends `0-200` for convenience). Requires PSRAM-enabled firmware.
+* `black_ice` – shimmer intensity with a three colour ice palette `[shimmer,r1,g1,b1,r2,g2,b2,r3,g3,b3]`. Values above `10` are treated as percentages (the web UI sends `0-200`). Requires PSRAM-enabled firmware.
 * `flash` – six integers `[r1,g1,b1,r2,g2,b2]`
 
 Example – set strip 1 to a green solid color:
@@ -204,4 +206,28 @@ client.publish(f"ul/{NODE}/cmd/ws/set/{solid['strip']}", json.dumps(solid), qos=
 ```
 
 Always include the global fields; tailor the `params` array to the selected effect.
+
+Example – fire with a hot red core and yellow embers:
+
+```json
+{
+  "strip": 0,
+  "effect": "fire",
+  "brightness": 220,
+  "speed": 1.0,
+  "params": [1.0, 255, 64, 0, 255, 217, 102]
+}
+```
+
+Example – Black Ice with a dark blue base, icy cracks, and bright white sparkles:
+
+```json
+{
+  "strip": 0,
+  "effect": "black_ice",
+  "brightness": 210,
+  "speed": 1.0,
+  "params": [1.2, 4, 18, 42, 102, 199, 250, 255, 255, 255]
+}
+```
 

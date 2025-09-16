@@ -12,8 +12,12 @@
     <label class="text-xs opacity-70">Effect</label>
     <select id="wsEffect" class="w-full p-1 bg-slate-900 rounded border border-slate-700">
       <option value="" selected disabled>Select effect</option>
-      {% for eff in ws_effects %}
-      <option value="{{ eff }}">{{ eff }}</option>
+      {% for group in ws_effect_groups %}
+      <optgroup label="{{ group.label }}">
+        {% for eff in group.effects %}
+        <option value="{{ eff }}" data-tier="{{ group.key }}">{{ eff }}</option>
+        {% endfor %}
+      </optgroup>
       {% endfor %}
     </select>
     <div id="wsParams" class="mt-2 space-y-2"></div>

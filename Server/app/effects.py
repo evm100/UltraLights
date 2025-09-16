@@ -3,15 +3,54 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-def _load_effects(rel: str) -> list[str]:
+_WS_EFFECT_PATTERN = re.compile(
+    r'\{\s*"(?P<name>[a-zA-Z0-9_]+)"\s*,\s*(?P<tier>WS_EFFECT_TIER_[A-Z_]+)'
+)
+
+_WS_TIER_NAME_MAP = {
+    "WS_EFFECT_TIER_STANDARD": "standard",
+    "WS_EFFECT_TIER_PSRAM": "psram",
+}
+
+
+def _load_ws_effect_tiers(rel: str) -> dict[str, str]:
+    path = ROOT / rel
+    if not path.exists():
+        return {}
+    effects: dict[str, str] = {}
+    text = path.read_text()
+    for match in _WS_EFFECT_PATTERN.finditer(text):
+        name = match.group("name")
+        tier_const = match.group("tier")
+        tier = _WS_TIER_NAME_MAP.get(tier_const, "standard")
+        effects[name] = tier
+    return effects
+
+
+def _load_effect_names(rel: str) -> list[str]:
     path = ROOT / rel
     if not path.exists():
         return []
     text = path.read_text()
     return re.findall(r'\{"([a-zA-Z0-9_]+)"', text)
 
-WS_EFFECTS = set(_load_effects("UltraNodeV5/components/ul_ws_engine/effects_ws/registry.c"))
-WHITE_EFFECTS = set(_load_effects("UltraNodeV5/components/ul_white_engine/effects_white/registry.c"))
+
+WS_EFFECT_TIERS = _load_ws_effect_tiers(
+    "UltraNodeV5/components/ul_ws_engine/effects_ws/registry.c"
+)
+WS_EFFECTS = set(WS_EFFECT_TIERS)
+WHITE_EFFECTS = set(
+    _load_effect_names("UltraNodeV5/components/ul_white_engine/effects_white/registry.c")
+)
+
+WS_EFFECT_TIER_LABELS = {
+    "standard": "Standard",
+    "psram": "PSRAM required",
+}
+
+WS_EFFECT_TIER_ORDER = {
+    tier: idx for idx, tier in enumerate(["standard", "psram"])
+}
 
 # Effect parameter metadata used by the web UI to render effect-specific
 # controls.  Each entry maps an effect name to a list describing the
@@ -60,6 +99,21 @@ WS_PARAM_DEFS = {
     "flash": [
         {"type": "color", "label": "Color 1"},
         {"type": "color", "label": "Color 2"},
+    ],
+
+    # Fire – intensity slider plus two-colour gradient
+    "fire": [
+        {"type": "slider", "label": "Intensity", "min": 0, "max": 200, "value": 120},
+        {"type": "color", "label": "Primary Color", "value": "#ff4000"},
+        {"type": "color", "label": "Secondary Color", "value": "#ffd966"},
+    ],
+
+    # Black Ice – shimmering cracked ice palette
+    "black_ice": [
+        {"type": "slider", "label": "Shimmer", "min": 0, "max": 200, "value": 120},
+        {"type": "color", "label": "Base Ice Color", "value": "#04122a"},
+        {"type": "color", "label": "Crack Color", "value": "#66c7fa"},
+        {"type": "color", "label": "Sparkle Color", "value": "#fbfeff"},
     ],
 
     # Spacewaves – three RGB colors for interfering waves
