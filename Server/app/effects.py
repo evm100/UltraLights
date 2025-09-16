@@ -108,6 +108,14 @@ WS_PARAM_DEFS = {
         {"type": "color", "label": "Secondary Color", "value": "#ffd966"},
     ],
 
+    # Black Ice – shimmering cracked ice palette
+    "black_ice": [
+        {"type": "slider", "label": "Shimmer", "min": 0, "max": 200, "value": 120},
+        {"type": "color", "label": "Base Ice Color", "value": "#04122a"},
+        {"type": "color", "label": "Crack Color", "value": "#66c7fa"},
+        {"type": "color", "label": "Sparkle Color", "value": "#fbfeff"},
+    ],
+
     # Spacewaves – three RGB colors for interfering waves
     "spacewaves": [
         {"type": "color", "label": "Wave 1 Color"},

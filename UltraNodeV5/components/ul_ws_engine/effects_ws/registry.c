@@ -16,6 +16,7 @@ void flash_init(void);        void flash_render(uint8_t*,int,int);        void f
 void spacewaves_init(void);   void spacewaves_render(uint8_t*,int,int);   void spacewaves_apply_params(int,const cJSON*);
 #if CONFIG_UL_HAS_PSRAM
 void fire_init(void);         void fire_render(uint8_t*,int,int);         void fire_apply_params(int,const cJSON*);
+void black_ice_init(void);    void black_ice_render(uint8_t*,int,int);    void black_ice_apply_params(int,const cJSON*);
 #endif
 
 static const ws_effect_t effects[] = {
@@ -32,6 +33,7 @@ static const ws_effect_t effects[] = {
     {"spacewaves", WS_EFFECT_TIER_STANDARD, spacewaves_init, spacewaves_render, spacewaves_apply_params},
 #if CONFIG_UL_HAS_PSRAM
     {"fire", WS_EFFECT_TIER_PSRAM, fire_init, fire_render, fire_apply_params},
+    {"black_ice", WS_EFFECT_TIER_PSRAM, black_ice_init, black_ice_render, black_ice_apply_params},
 #endif
 };
 

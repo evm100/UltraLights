@@ -16,6 +16,7 @@ set(srcs
 
 if(CONFIG_UL_HAS_PSRAM)
     list(APPEND srcs "effects_ws/fire.c")
+    list(APPEND srcs "effects_ws/black_ice.c")
 endif()
 
 idf_component_register(
