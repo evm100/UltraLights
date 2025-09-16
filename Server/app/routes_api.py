@@ -3,8 +3,9 @@ from fastapi import APIRouter, HTTPException
 from .mqtt_bus import MqttBus
 from . import registry
 from .effects import WS_EFFECTS, WHITE_EFFECTS
-from .presets import get_preset, apply_preset
-from .motion import motion_manager
+from .presets import get_preset, apply_preset, get_room_presets
+from .motion import motion_manager, SPECIAL_ROOM_PRESETS
+from .motion_schedule import motion_schedule
 
 router = APIRouter()
 BUS: Optional[MqttBus] = None
@@ -58,6 +59,33 @@ def api_apply_preset(house_id: str, room_id: str, preset_id: str):
         raise HTTPException(404, "Unknown preset")
     apply_preset(get_bus(), preset)
     return {"ok": True}
+
+
+@router.post("/api/house/{house_id}/room/{room_id}/motion-schedule")
+def api_set_motion_schedule(house_id: str, room_id: str, payload: Dict[str, Any]):
+    if (house_id, room_id) not in SPECIAL_ROOM_PRESETS:
+        raise HTTPException(404, "Motion schedule not supported for this room")
+    schedule = payload.get("schedule")
+    if not isinstance(schedule, list):
+        raise HTTPException(400, "invalid schedule")
+    if len(schedule) != motion_schedule.slot_count:
+        raise HTTPException(400, "invalid schedule length")
+    valid_presets = {p["id"] for p in get_room_presets(house_id, room_id)}
+    default_preset = SPECIAL_ROOM_PRESETS[(house_id, room_id)].get("on")
+    if default_preset:
+        valid_presets.add(default_preset)
+    clean: List[Optional[str]] = []
+    for value in schedule:
+        if value in (None, "", "none"):
+            clean.append(None)
+            continue
+        if not isinstance(value, str):
+            raise HTTPException(400, "invalid preset value")
+        if value not in valid_presets:
+            raise HTTPException(400, f"unknown preset: {value}")
+        clean.append(value)
+    stored = motion_schedule.set_schedule(house_id, room_id, clean)
+    return {"ok": True, "schedule": stored}
 
 # ---- Node command APIs -------------------------------------------------
 
