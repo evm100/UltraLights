@@ -12,7 +12,12 @@ def build_kitchen_presets(node_id: str) -> List[Dict[str, Any]]:
         {
             "id": "swell-on",
             "name": "On",
-            "actions": white_swell_actions([node_id], 0, 255, 3000, channels=[0, 1, 2]),
+            "actions": [
+                white_swell_action(node_id, 0, 0, 255, 3000),
+                white_swell_action(node_id, 1, 0, 255, 3000),
+                white_swell_action(node_id, 2, 0, 255, 3000),
+                white_swell_action("sala", 0, 0, 255, 3000),
+            ],
         },
         {
             "id": "midnight-snack",
@@ -30,12 +35,18 @@ def build_kitchen_presets(node_id: str) -> List[Dict[str, Any]]:
                 white_swell_action(node_id, 2, 100, 255, 3000),
                 white_swell_action(node_id, 1, 100, 0, 3000),
                 white_swell_action(node_id, 0, 100, 0, 3000),
+                white_swell_action("sala", 0, 100, 255, 3000),
             ],
         },
         {
             "id": "normal",
             "name": "Normal",
-            "actions": white_swell_actions([node_id], 0, 100, 3000, channels=[0, 1, 2]),
+            "actions": [
+                white_swell_action(node_id, 0, 0, 100, 3000),
+                white_swell_action(node_id, 1, 0, 100, 3000),
+                white_swell_action(node_id, 2, 0, 100, 3000),
+                white_swell_action("sala", 0, 0, 100, 3000),
+            ],
         },
         {
             "id": "normal-to-max",

@@ -15,6 +15,15 @@
               "white",
               "ota"
             ]
+          },
+          {
+            "id": "sala",
+            "name": "Sala",
+            "kind": "ultranode",
+            "modules": [
+              "white",
+              "ota"
+            ]
           }
         ]
       },
@@ -39,11 +48,10 @@
         "nodes": [
           {
             "id": "amp-lights",
-            "name": "amp-lights",
+            "name": "Amp Lights",
             "kind": "ultranode",
             "modules": [
               "ws",
-              "rgb",
               "white",
               "ota"
             ]

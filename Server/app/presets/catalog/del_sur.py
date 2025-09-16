@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from ..actions import solid_color_action, white_swell_action, white_swell_actions
+from ..actions import solid_color_action, white_swell_action, white_swell_actions, ws_swell_action
 from .shared import build_kitchen_presets
 
 PRESETS: Dict[str, List[Dict[str, Any]]] = {
@@ -48,9 +48,7 @@ PRESETS: Dict[str, List[Dict[str, Any]]] = {
             "id": "blue",
             "name": "Blue",
             "actions": [
-                solid_color_action("amp-lights", 0, 20, 0, 55),
-                white_swell_action("amp-lights", 0, 0, 0, 3000),
-                white_swell_action("amp-lights", 1, 0, 0, 3000),
+                ws_swell_action("amp-lights", 0, 20, 0, 255, 0, 255, 3000),
             ],
         },
         {
