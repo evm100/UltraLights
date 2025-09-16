@@ -68,7 +68,6 @@ def apply_preset(bus: MqttBus, preset: Dict[str, Any]) -> None:
                 int(action.get("strip", 0)),
                 action.get("effect", ""),
                 int(action.get("brightness", 0)),
-                float(action.get("speed", 1.0)),
                 action.get("params"),
             )
         elif module == "rgb":
