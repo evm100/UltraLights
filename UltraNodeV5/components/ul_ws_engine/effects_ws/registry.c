@@ -3,6 +3,7 @@
 #include "effect.h"
 
 void solid_init(void);        void solid_render(uint8_t*,int,int);        void solid_apply_params(int,const cJSON*);
+void color_swell_init(void);  void color_swell_render(uint8_t*,int,int);  void color_swell_apply_params(int,const cJSON*);
 void breathe_init(void);      void breathe_render(uint8_t*,int,int);
 void rainbow_init(void);      void rainbow_render(uint8_t*,int,int);      void rainbow_apply_params(int,const cJSON*);
 void modern_rainbow_init(void); void modern_rainbow_render(uint8_t*,int,int);
@@ -21,6 +22,7 @@ void black_ice_init(void);    void black_ice_render(uint8_t*,int,int);    void b
 
 static const ws_effect_t effects[] = {
     {"solid", WS_EFFECT_TIER_STANDARD, solid_init, solid_render, solid_apply_params},
+    {"color_swell", WS_EFFECT_TIER_STANDARD, color_swell_init, color_swell_render, color_swell_apply_params},
     {"breathe", WS_EFFECT_TIER_STANDARD, breathe_init, breathe_render, NULL},
     {"rainbow", WS_EFFECT_TIER_STANDARD, rainbow_init, rainbow_render, rainbow_apply_params},
     {"modern_rainbow", WS_EFFECT_TIER_STANDARD, modern_rainbow_init, modern_rainbow_render, NULL},
