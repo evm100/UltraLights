@@ -23,8 +23,6 @@
     <div id="wsParams" class="mt-2 space-y-2"></div>
     <label class="text-xs opacity-70 block mt-2">Brightness</label>
     <input id="wsBri" type="range" min="0" max="255" value="255" class="w-full">
-    <label class="text-xs opacity-70 block mt-2">Speed</label>
-    <input id="wsSpeed" type="range" min="10" max="400" value="100" class="w-full">
   </div>
   <div class="flex gap-2">
     <button id="wsSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
@@ -44,7 +42,6 @@ async function post(path,body){const res=await fetch(path,{method:'POST',headers
 const stripEl=document.getElementById('wsStrip');
 const effectEl=document.getElementById('wsEffect');
 const briEl=document.getElementById('wsBri');
-const speedEl=document.getElementById('wsSpeed');
 const paramsEl=document.getElementById('wsParams');
 
 // Throttled sender for real-time updates (max ~10 Hz)
@@ -70,7 +67,6 @@ function updateParams(){
 effectEl.onchange=()=>{updateParams();scheduleSend();};
 stripEl.onchange=scheduleSend;
 briEl.addEventListener('input',scheduleSend);
-speedEl.addEventListener('input',scheduleSend);
 if(effectEl.value)updateParams();
 
 function sendCmd(){
@@ -80,9 +76,8 @@ function sendCmd(){
   if(!eff)return;
   const bri=parseInt(briEl.value,10);
   if(Number.isNaN(bri))return;
-  const speed=parseInt(speedEl.value,10)/100;
   const params=collectParams(getParamDefs(eff),paramsEl);
-  const msg={strip,effect:eff,brightness:bri,speed,params};
+  const msg={strip,effect:eff,brightness:bri,params};
   post(`/api/node/{{ node.id }}/ws/set`,msg);
 }
 
@@ -92,7 +87,7 @@ document.getElementById('wsOn').onclick=sendCmd;
 document.getElementById('wsOff').onclick=async()=>{
   const s=parseInt(stripEl.value,10);
   if(Number.isNaN(s)){alert('Invalid strip');return;}
-  await post(`/api/node/{{ node.id }}/ws/set`,{strip:s,effect:'solid',brightness:255,speed:1.0,params:[0,0,0]});
+  await post(`/api/node/{{ node.id }}/ws/set`,{strip:s,effect:'solid',brightness:255,params:[0,0,0]});
 };
 </script>
 

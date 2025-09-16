@@ -33,14 +33,12 @@ class MqttBus:
         strip: int,
         effect: str,
         brightness: int,
-        speed: float,
         params: Optional[List[Union[float, str]]] = None,
     ):
         msg: Dict[str, object] = {
             "strip": int(strip),
             "effect": effect,
             "brightness": int(brightness),
-            "speed": float(speed),
             "params": params if params is not None else [],
         }
         # Retain state per-strip by publishing to a unique sub-topic.  The
@@ -103,7 +101,7 @@ class MqttBus:
         for _, _, n in registry.iter_nodes():
             nid = n["id"]
             for i in range(4):
-                self.ws_set(nid, i, "solid", 255, 1.0, [0, 0, 0])
+                self.ws_set(nid, i, "solid", 255, [0, 0, 0])
                 self.rgb_set(nid, i, "solid", 0, [0, 0, 0])
                 self.white_set(nid, i, "solid", 0)
 

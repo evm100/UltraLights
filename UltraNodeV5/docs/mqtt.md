@@ -30,8 +30,11 @@ Fields:
 | `strip` | int | Strip index (0‑3). Optional when encoded in the topic path |
 | `effect` | string | One of the registered effect names |
 | `brightness` | int 0‑255 | Overall brightness |
-| `speed` | number | Multiplier for frame advance (1.0 = normal) |
 | `params` | array | Effect‑specific parameters |
+
+Animations advance at the firmware's fixed frame rate. Individual effects may
+expose timing controls via their parameter arrays when a different pace is
+required.
 
 On success, the node replies on `ul/<node-id>/evt/status` with the chosen effect and echoed parameters.
 
@@ -52,7 +55,6 @@ Example – set strip 1 to a green solid color:
   "strip": 1,
   "effect": "solid",
   "brightness": 255,
-  "speed": 1.0,
   "params": [0, 255, 0]
 }
 ```
@@ -69,7 +71,6 @@ Example – triple wave combining red, green, and blue waves:
   "strip": 0,
   "effect": "triple_wave",
   "brightness": 200,
-  "speed": 0.5,
   "params": [
     255, 0, 0, 30, 0.20,
     0, 255, 0, 45, 0.15,
@@ -81,7 +82,7 @@ Example – triple wave combining red, green, and blue waves:
 Shell command using `mosquitto_pub`:
 
 ```sh
-mosquitto_pub -t "ul/<node-id>/cmd/ws/set/0" -m '{"strip":0,"effect":"triple_wave","brightness":200,"speed":0.5,"params":[255,0,0,30,0.20,0,255,0,45,0.15,0,0,255,60,0.10]}'
+mosquitto_pub -t "ul/<node-id>/cmd/ws/set/0" -m '{"strip":0,"effect":"triple_wave","brightness":200,"params":[255,0,0,30,0.20,0,255,0,45,0.15,0,0,255,60,0.10]}'
 ```
 
 Example – spacewaves with three calm colors:
@@ -91,7 +92,6 @@ Example – spacewaves with three calm colors:
   "strip": 0,
   "effect": "spacewaves",
   "brightness": 200,
-  "speed": 0.5,
   "params": [128, 0, 255, 0, 255, 255, 255, 255, 255]
 }
 ```
@@ -103,7 +103,6 @@ Example – flash between red and blue:
   "strip": 0,
   "effect": "flash",
   "brightness": 255,
-  "speed": 1.0,
   "params": [255, 0, 0, 0, 0, 255]
 }
 ```
@@ -208,7 +207,6 @@ payload = {
     "strip": 0,
     "effect": "rainbow",
     "brightness": 180,
-    "speed": 1.0,
     "params": [32]
 }
 client.publish(f"ul/{NODE}/cmd/ws/set/{payload['strip']}", json.dumps(payload), qos=1)
@@ -217,7 +215,6 @@ solid = {
     "strip": 1,
     "effect": "solid",
     "brightness": 255,
-    "speed": 1.0,
     "params": [255, 0, 0]
 }
 client.publish(f"ul/{NODE}/cmd/ws/set/{solid['strip']}", json.dumps(solid), qos=1)
@@ -232,7 +229,6 @@ Example – fire with a hot red core and yellow embers:
   "strip": 0,
   "effect": "fire",
   "brightness": 220,
-  "speed": 1.0,
   "params": [1.0, 255, 64, 0, 255, 217, 102]
 }
 ```
@@ -244,7 +240,6 @@ Example – Black Ice with a dark blue base, icy cracks, and bright white sparkl
   "strip": 0,
   "effect": "black_ice",
   "brightness": 210,
-  "speed": 1.0,
   "params": [1.2, 4, 18, 42, 102, 199, 250, 255, 255, 255]
 }
 ```

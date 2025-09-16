@@ -2,6 +2,7 @@ set(srcs
     "ul_ws_engine.c"
     "effects_ws/registry.c"
     "effects_ws/solid.c"
+    "effects_ws/color_swell.c"
     "effects_ws/breathe.c"
     "effects_ws/rainbow.c"
     "effects_ws/modern_rainbow.c"

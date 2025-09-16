@@ -23,7 +23,6 @@ typedef struct {
     const ws_effect_t* eff;
     uint8_t solid_r, solid_g, solid_b;
     uint8_t brightness; // 0..255
-    float speed;
     float frame_pos;
     int pixels;
     led_strip_handle_t handle;
@@ -52,12 +51,6 @@ void ul_ws_apply_json(cJSON* root) {
         if (bri < 0) bri = 0;
         if (bri > 255) bri = 255;
         ul_ws_set_brightness(strip, (uint8_t)bri);
-    }
-
-    cJSON* jspeed = cJSON_GetObjectItem(root, "speed");
-    if (jspeed && cJSON_IsNumber(jspeed)) {
-        ws_strip_t* s = get_strip(strip);
-        if (s) s->speed = (float)jspeed->valuedouble;
     }
 
     const char* effect = NULL;
@@ -121,7 +114,6 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
     s_strips[idx].eff = &tbl[0]; // solid
     s_strips[idx].solid_r = s_strips[idx].solid_g = s_strips[idx].solid_b = 0;
     s_strips[idx].brightness = 255;
-    s_strips[idx].speed = 1.0f;
     s_strips[idx].frame_pos = 0.0f;
 }
 
@@ -139,7 +131,7 @@ static void render_one(ws_strip_t* s, int idx) {
     // Produce frame
     memset(s->frame, 0, s->pixels*3);
     if (s->eff && s->eff->render) {
-        s->frame_pos += s->speed;
+        s->frame_pos += 1.0f;
         int frame_idx = (int)s->frame_pos;
         s->eff->render(s->frame, s->pixels, frame_idx);
     }

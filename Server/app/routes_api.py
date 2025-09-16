@@ -107,10 +107,6 @@ def api_ws_set(node_id: str, payload: Dict[str, Any]):
         raise HTTPException(400, "invalid brightness")
     if not 0 <= brightness <= 255:
         raise HTTPException(400, "invalid brightness")
-    try:
-        speed = float(payload.get("speed", 1.0))
-    except Exception:
-        raise HTTPException(400, "invalid speed")
     params = payload.get("params")
     if params is not None:
         if not isinstance(params, list):
@@ -124,7 +120,7 @@ def api_ws_set(node_id: str, payload: Dict[str, Any]):
             else:
                 raise HTTPException(400, "invalid params")
         params = clean
-    get_bus().ws_set(node_id, strip, effect, brightness, speed, params)
+    get_bus().ws_set(node_id, strip, effect, brightness, params)
     return {"ok": True}
 
 @router.post("/api/node/{node_id}/white/set")
