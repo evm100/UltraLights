@@ -102,7 +102,6 @@ def room_page(request: Request, house_id: str, room_id: str):
                 "preset_colors": preset_colors,
                 "preset_names": preset_names,
                 "legend": legend,
-
                 "no_motion_color": "#1f2937",
             }
     return templates.TemplateResponse(

@@ -178,6 +178,11 @@ document.querySelectorAll('.preset').forEach(btn => {
       return `${displayHour}${minuteText}${suffix}`;
     };
 
+    const formatLabel = (index) => {
+      const minutes = minutesForIndex(index);
+      return formatTime(minutes);
+    };
+
     const formatRange = (index) => {
       const start = minutesForIndex(index);
       const end = minutesForIndex(index + 1);
@@ -294,6 +299,7 @@ document.querySelectorAll('.preset').forEach(btn => {
       }
       updateSlotHighlight();
     };
+
     const setStatus = (message, cls) => {
       if (!statusEl) return;
       if (statusTimeout) {
