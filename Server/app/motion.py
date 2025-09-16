@@ -5,6 +5,7 @@ import paho.mqtt.client as mqtt
 from .config import settings
 from .mqtt_bus import MqttBus
 from .presets import get_preset, apply_preset
+from .motion_schedule import motion_schedule
 from . import registry
 
 SPECIAL_ROOM_PRESETS = {
@@ -70,6 +71,11 @@ class MotionManager:
         room_id = room["id"]
         special = SPECIAL_ROOM_PRESETS.get((house["id"], room_id))
         if special:
+            preset_on = motion_schedule.active_preset(
+                house["id"], room_id, default=special.get("on")
+            )
+            if not preset_on:
+                return
             entry = self.active.get(room_id)
             duration = int(cfg.get("duration", 30))
             if entry and entry.get("timer"):
@@ -79,17 +85,17 @@ class MotionManager:
                     "house_id": house["id"],
                     "timer": None,
                     "on": False,
-                    "preset_on": special["on"],
-                    "preset_off": special["off"],
+                    "preset_on": preset_on,
+                    "preset_off": special.get("off", "swell-off"),
                 }
                 self.active[room_id] = entry
-            entry["preset_on"] = special["on"]
-            entry["preset_off"] = special["off"]
+            entry["preset_on"] = preset_on
+            entry["preset_off"] = special.get("off", entry.get("preset_off", "swell-off"))
             timer = threading.Timer(duration, self._turn_off_special, args=(room_id,))
             timer.start()
             entry["timer"] = timer
             if not entry.get("on"):
-                preset = get_preset(house["id"], room_id, special["on"])
+                preset = get_preset(house["id"], room_id, preset_on)
                 if preset:
                     apply_preset(self.bus, preset)
                 entry["on"] = True
