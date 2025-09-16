@@ -77,7 +77,7 @@ WHITE_PARAM_DEFS = {
     "swell": [
         {"type": "slider", "label": "Start Brightness", "min": 0, "max": 255, "value": 0},
         {"type": "slider", "label": "End Brightness", "min": 0, "max": 255, "value": 255},
-        {"type": "slider", "label": "Time (ms)", "min": 0, "max": 5000, "value": 1000},
+        {"type": "slider", "label": "Time (ms)", "min": 0, "max": 10000, "value": 1000},
     ],
 }
 

@@ -5,27 +5,14 @@
     "rooms": [
       {
         "id": "kitchen",
-        "name": "Kitchen",
+        "name": "Cocina",
         "nodes": [
           {
-            "id": "del-sur-kitchen-node1",
-            "name": "Kitchen Node",
-            "kind": "ultranode",
-            "modules": [
-              "ws",
-              "white",
-              "sensor",
-              "ota"
-            ]
-          },
-          {
             "id": "kitchen",
-            "name": "kitchen",
+            "name": "Cocina",
             "kind": "ultranode",
             "modules": [
-              "ws",
               "white",
-              "sensor",
               "ota"
             ]
           }
@@ -40,37 +27,23 @@
             "name": "Master Closet",
             "kind": "ultranode",
             "modules": [
-              "ws",
               "white",
-              "sensor",
               "ota"
             ]
           }
         ]
       },
       {
-        "id": "room-1",
-        "name": "Room 1",
+        "id": "edgar",
+        "name": "Edgar",
         "nodes": [
           {
-            "id": "del-sur-room-1-node1",
-            "name": "Room 1 Node",
+            "id": "edgar",
+            "name": "Edgar",
             "kind": "ultranode",
             "modules": [
               "ws",
               "white",
-              "sensor",
-              "ota"
-            ]
-          },
-          {
-            "id": "node",
-            "name": "node",
-            "kind": "ultranode",
-            "modules": [
-              "ws",
-              "white",
-              "sensor",
               "ota"
             ]
           }
@@ -82,40 +55,7 @@
     "id": "sdsu",
     "name": "SDSU",
     "rooms": [
-      {
-        "id": "kitchen",
-        "name": "Kitchen",
-        "nodes": [
-          {
-            "id": "sdsu-kitchen-node1",
-            "name": "Kitchen Node",
-            "kind": "ultranode",
-            "modules": [
-              "ws",
-              "white",
-              "sensor",
-              "ota"
-            ]
-          }
-        ]
-      },
-      {
-        "id": "room-1",
-        "name": "Room 1",
-        "nodes": [
-          {
-            "id": "sdsu-room-1-node1",
-            "name": "Room 1 Node",
-            "kind": "ultranode",
-            "modules": [
-              "ws",
-              "white",
-              "sensor",
-              "ota"
-            ]
-          }
-        ]
-      }
+      
     ]
   }
 ]

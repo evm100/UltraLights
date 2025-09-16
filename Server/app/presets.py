@@ -70,7 +70,7 @@ for house_id, node_id in (
         {
             "id": "swell-off",
             "name": "Swell Off",
-            "actions": _white_swell_actions([node_id], 255, 0, 5000, channels=[0, 1, 2]),
+            "actions": _white_swell_actions([node_id], 255, 0, 3000, channels=[0, 1, 2]),
         },
         {
             "id": "midnight-snack",
@@ -101,13 +101,34 @@ for house_id, node_id in (
 ROOM_PRESETS["del-sur"]["master"] = [
     {
         "id": "swell-on",
-        "name": "Swell On",
-        "actions": _white_swell_actions(["master-closet"], 0, 255, 5000, channels=[0, 1]),
+        "name": "On",
+        "actions": _white_swell_actions(["master-closet"], 0, 255, 3000, channels=[0, 1]),
     },
     {
         "id": "swell-off",
-        "name": "Swell Off",
-        "actions": _white_swell_actions(["master-closet"], 255, 0, 5000, channels=[0, 1]),
+        "name": "Off",
+        "actions": _white_swell_actions(["master-closet"], 255, 0, 3000, channels=[0, 1]),
+    },
+    {
+        "id": "floor-on",
+        "name": "Floor On",
+        "actions": _white_swell_actions(["master-closet"], 0, 255, 3000, channels=[0]),
+    },
+    {
+        "id": "floor-off",
+        "name": "Floor Off",
+        "actions": _white_swell_actions(["master-closet"], 255, 0, 3000, channels=[0]),
+    },
+    {
+        "id": "nightlight",
+        "name": "Night Light",
+        "actions": _white_swell_actions(["master-closet"], 0, 4, 2000, channels=[0]),
+        
+    },
+    {
+        "id": "nightlight-off",
+        "name": "Night Light Off",
+        "actions": _white_swell_actions(["master-closet"], 4, 0, 2000, channels=[0]),
     },
 ]
 

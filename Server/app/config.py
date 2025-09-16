@@ -32,13 +32,13 @@ class Settings:
             "rooms": [
                 {
                     "id": "kitchen",
-                    "name": "Kitchen",
+                    "name": "Cocina",
                     "nodes": [
                         {
-                            "id": "del-sur-kitchen-node1",
-                            "name": "Kitchen Node",
+                            "id": "kitchen",
+                            "name": "Cocina",
                             "kind": "ultranode",
-                            "modules": ["ws", "white", "sensor", "ota"],
+                            "modules": ["white", "ota"],
                         }
                     ],
                 },
@@ -50,54 +50,12 @@ class Settings:
                             "id": "master-closet",
                             "name": "Master Closet",
                             "kind": "ultranode",
-                            "modules": ["ws", "white", "sensor", "ota"],
-                        }
-                    ],
-                },
-                {
-                    "id": "room-1",
-                    "name": "Room 1",
-                    "nodes": [
-                        {
-                            "id": "del-sur-room-1-node1",
-                            "name": "Room 1 Node",
-                            "kind": "ultranode",
-                            "modules": ["ws", "white", "sensor", "ota"],
+                            "modules": ["white", "ota"],
                         }
                     ],
                 },
             ],
-        },
-        {
-            "id": "sdsu",
-            "name": "SDSU",
-            "rooms": [
-                {
-                    "id": "kitchen",
-                    "name": "Kitchen",
-                    "nodes": [
-                        {
-                            "id": "sdsu-kitchen-node1",
-                            "name": "Kitchen Node",
-                            "kind": "ultranode",
-                            "modules": ["ws", "white", "sensor", "ota"],
-                        }
-                    ],
-                },
-                {
-                    "id": "room-1",
-                    "name": "Room 1",
-                    "nodes": [
-                        {
-                            "id": "sdsu-room-1-node1",
-                            "name": "Room 1 Node",
-                            "kind": "ultranode",
-                            "modules": ["ws", "white", "sensor", "ota"],
-                        }
-                    ],
-                },
-            ],
-        },
+        }
     ]
     REGISTRY_FILE = Path(os.getenv("REGISTRY_FILE", str(Path(__file__).with_name("device_registry.json"))))
     if REGISTRY_FILE.exists():
