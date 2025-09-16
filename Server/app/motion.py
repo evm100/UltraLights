@@ -4,7 +4,7 @@ from typing import Dict, Any
 import paho.mqtt.client as mqtt
 from .config import settings
 from .mqtt_bus import MqttBus
-from .presets import get_preset, apply_preset
+from .presets import get_preset, apply_preset, reverse_preset
 from .motion_schedule import motion_schedule
 from . import registry
 
@@ -29,7 +29,7 @@ class MotionManager:
         self.client.on_message = self._on_message
         # room_id -> {"house_id": str, "current": str|None, "timers": {sensor: Timer}}
         # Special-case entries may also include keys like "timer", "on",
-        # "preset_on" and "preset_off".
+        # "preset_on".
         self.active: Dict[str, Dict[str, Any]] = {}
         self.config: Dict[str, Dict[str, Any]] = {}
 
@@ -86,11 +86,9 @@ class MotionManager:
                     "timer": None,
                     "on": False,
                     "preset_on": preset_on,
-                    "preset_off": special.get("off", "swell-off"),
                 }
                 self.active[room_id] = entry
             entry["preset_on"] = preset_on
-            entry["preset_off"] = special.get("off", entry.get("preset_off", "swell-off"))
             timer = threading.Timer(duration, self._turn_off_special, args=(room_id,))
             timer.start()
             entry["timer"] = timer
@@ -123,10 +121,10 @@ class MotionManager:
         if not entry:
             return
         house_id = entry["house_id"]
-        preset_id = entry.get("preset_off", "swell-off")
-        preset = get_preset(house_id, room_id, preset_id)
-        if preset:
-            apply_preset(self.bus, preset)
+        preset_on_id = entry.get("preset_on")
+        preset_on = get_preset(house_id, room_id, preset_on_id) if preset_on_id else None
+        if preset_on:
+            apply_preset(self.bus, reverse_preset(preset_on))
         self.active.pop(room_id, None)
 
     def _clear_sensor(self, room_id: str, sensor: str) -> None:

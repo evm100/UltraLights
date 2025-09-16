@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
 from .mqtt_bus import MqttBus
@@ -154,6 +155,39 @@ def get_preset(house_id: str, room_id: str, preset_id: str) -> Optional[Dict[str
         if preset.get("id") == preset_id:
             return preset
     return None
+
+
+def reverse_preset(preset: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a deep-copied ``preset`` with each action reversed."""
+
+    reversed_preset = deepcopy(preset)
+    reversed_actions: List[Dict[str, Any]] = []
+
+    for action in preset.get("actions", []):
+        new_action = deepcopy(action)
+
+        if "start" in new_action and "end" in new_action:
+            new_action["start"], new_action["end"] = new_action["end"], new_action["start"]
+
+        module = new_action.get("module")
+        effect = new_action.get("effect")
+        params = new_action.get("params")
+
+        if isinstance(params, list):
+            params = list(params)
+            swapped = False
+
+            if module == "white" and effect == "swell" and len(params) >= 2:
+                params[0], params[1] = params[1], params[0]
+                swapped = True
+
+            if swapped:
+                new_action["params"] = params
+
+        reversed_actions.append(new_action)
+
+    reversed_preset["actions"] = reversed_actions
+    return reversed_preset
 
 
 def apply_preset(bus: MqttBus, preset: Dict[str, Any]) -> None:
