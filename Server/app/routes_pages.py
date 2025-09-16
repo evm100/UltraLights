@@ -8,8 +8,10 @@ from . import registry
 from .effects import (
     WS_EFFECTS,
     WHITE_EFFECTS,
+    RGB_EFFECTS,
     WS_PARAM_DEFS,
     WHITE_PARAM_DEFS,
+    RGB_PARAM_DEFS,
     WS_EFFECT_TIERS,
     WS_EFFECT_TIER_LABELS,
     WS_EFFECT_TIER_ORDER,
@@ -173,7 +175,9 @@ def node_page(request: Request, node_id: str):
             "ws_effect_groups": ws_effect_groups,
             "ws_effect_tiers": WS_EFFECT_TIERS,
             "white_effects": WHITE_EFFECTS,
+            "rgb_effects": sorted(RGB_EFFECTS),
             "ws_param_defs": WS_PARAM_DEFS,
             "white_param_defs": WHITE_PARAM_DEFS,
+            "rgb_param_defs": RGB_PARAM_DEFS,
         },
     )

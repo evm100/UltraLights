@@ -8,6 +8,7 @@
 #include "ul_ota.h"
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
+#include "ul_rgb_engine.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
@@ -82,6 +83,33 @@ static void publish_status_snapshot(void) {
   }
   cJSON_AddItemToObject(root, "ws", jws);
 
+  // RGB strips
+  cJSON *jrgb = cJSON_CreateArray();
+  for (int i = 0; i < 4; i++) {
+    ul_rgb_strip_status_t st;
+    if (ul_rgb_get_status(i, &st)) {
+      cJSON *o = cJSON_CreateObject();
+      cJSON_AddNumberToObject(o, "strip", i);
+      cJSON_AddBoolToObject(o, "enabled", st.enabled);
+      cJSON_AddStringToObject(o, "effect", st.effect);
+      cJSON_AddNumberToObject(o, "brightness", st.brightness);
+      cJSON_AddNumberToObject(o, "pwm_hz", st.pwm_hz);
+      cJSON *channels = cJSON_CreateArray();
+      for (int c = 0; c < 3; ++c) {
+        cJSON *ch = cJSON_CreateObject();
+        cJSON_AddNumberToObject(ch, "gpio", st.channel[c].gpio);
+        cJSON_AddNumberToObject(ch, "ledc_ch", st.channel[c].ledc_ch);
+        cJSON_AddNumberToObject(ch, "mode", st.channel[c].ledc_mode);
+        cJSON_AddItemToArray(channels, ch);
+      }
+      cJSON_AddItemToObject(o, "channels", channels);
+      int color[3] = {st.color[0], st.color[1], st.color[2]};
+      cJSON_AddItemToObject(o, "color", cJSON_CreateIntArray(color, 3));
+      cJSON_AddItemToArray(jrgb, o);
+    }
+  }
+  cJSON_AddItemToObject(root, "rgb", jrgb);
+
   // White channels
   cJSON *jw = cJSON_CreateArray();
   for (int i = 0; i < 4; i++) {
@@ -125,6 +153,32 @@ static void publish_ws_ack(int strip, const char *effect, cJSON *params,
   if (ok) {
     cJSON_AddStringToObject(root, "status", "ok");
     cJSON_AddNumberToObject(root, "strip", strip);
+    if (effect)
+      cJSON_AddStringToObject(root, "effect", effect);
+    if (params && cJSON_IsArray(params)) {
+      cJSON_AddItemToObject(root, "params", cJSON_Duplicate(params, true));
+    } else {
+      cJSON_AddItemToObject(root, "params", cJSON_CreateArray());
+    }
+  } else {
+    cJSON_AddStringToObject(root, "status", "error");
+    cJSON_AddStringToObject(root, "error", "invalid effect");
+  }
+  char *json = cJSON_PrintUnformatted(root);
+  publish_json(topic, json);
+  cJSON_free(json);
+  cJSON_Delete(root);
+}
+
+static void publish_rgb_ack(int strip, const char *effect, cJSON *params,
+                            int brightness, bool ok) {
+  char topic[128];
+  snprintf(topic, sizeof(topic), "ul/%s/evt/status", ul_core_get_node_id());
+  cJSON *root = cJSON_CreateObject();
+  if (ok) {
+    cJSON_AddStringToObject(root, "status", "ok");
+    cJSON_AddNumberToObject(root, "strip", strip);
+    cJSON_AddNumberToObject(root, "brightness", brightness);
     if (effect)
       cJSON_AddStringToObject(root, "effect", effect);
     if (params && cJSON_IsArray(params)) {
@@ -189,6 +243,37 @@ static void handle_cmd_ws_set(cJSON *root) {
   publish_ws_ack(strip, effect, params, ok);
 }
 
+static void handle_cmd_rgb_set(cJSON *root) {
+  int strip = 0;
+  cJSON *jstrip = cJSON_GetObjectItem(root, "strip");
+  if (jstrip && cJSON_IsNumber(jstrip))
+    strip = jstrip->valueint;
+
+  int brightness = 255;
+  cJSON *jbri = cJSON_GetObjectItem(root, "brightness");
+  if (jbri && cJSON_IsNumber(jbri))
+    brightness = jbri->valueint;
+
+  const char *effect = NULL;
+  cJSON *jeffect = cJSON_GetObjectItem(root, "effect");
+  if (jeffect && cJSON_IsString(jeffect))
+    effect = jeffect->valuestring;
+
+  cJSON *params = cJSON_GetObjectItem(root, "params");
+
+  ul_rgb_apply_json(root);
+
+  bool ok = false;
+  if (effect) {
+    ul_rgb_strip_status_t st;
+    if (ul_rgb_get_status(strip, &st)) {
+      ok = strcmp(st.effect, effect) == 0;
+    }
+  }
+
+  publish_rgb_ack(strip, effect, params, brightness, ok);
+}
+
 static void handle_cmd_white_set(cJSON *root) { ul_white_apply_json(root); }
 static void on_message(esp_mqtt_event_handle_t event) {
   // topic expected: ul/<node>/cmd/...
@@ -234,6 +319,10 @@ static void on_message(esp_mqtt_event_handle_t event) {
     if (starts_with(sub, "ws/set")) {
       override_index_from_path(root, sub, "ws/set", "strip");
       handle_cmd_ws_set(root);
+    } else if (starts_with(sub, "rgb/set")) {
+      override_index_from_path(root, sub, "rgb/set", "strip");
+      handle_cmd_rgb_set(root);
+      ul_mqtt_publish_status();
     } else if (starts_with(sub, "ota/check")) {
       ul_mqtt_publish_status();
       ul_ota_check_now(true);
@@ -324,6 +413,10 @@ void ul_mqtt_run_local(const char *path, const char *json) {
   if (starts_with(path, "ws/set")) {
     override_index_from_path(root, path, "ws/set", "strip");
     handle_cmd_ws_set(root);
+  } else if (starts_with(path, "rgb/set")) {
+    override_index_from_path(root, path, "rgb/set", "strip");
+    handle_cmd_rgb_set(root);
+    ul_mqtt_publish_status();
   } else if (starts_with(path, "white/set")) {
     override_index_from_path(root, path, "white/set", "channel");
     handle_cmd_white_set(root);

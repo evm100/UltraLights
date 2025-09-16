@@ -13,6 +13,7 @@
 #include "ul_task.h"
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
+#include "ul_rgb_engine.h"
 #include "ul_task.h"
 #if CONFIG_UL_PIR_ENABLED
 #include "ul_pir.h"
@@ -32,6 +33,7 @@ static void service_manager_task(void *ctx) {
         if (!s_services_running) {
           ul_mqtt_start();
           ul_ws_engine_start();    // 60 FPS LED engine
+          ul_rgb_engine_start();   // RGB PWM engine
           ul_white_engine_start(); // 200 Hz smoothing
 #if CONFIG_UL_PIR_ENABLED
           ul_pir_start();
@@ -42,6 +44,7 @@ static void service_manager_task(void *ctx) {
         if (s_services_running) {
           ul_mqtt_stop();
           ul_ws_engine_stop();
+          ul_rgb_engine_stop();
           ul_white_engine_stop();
 #if CONFIG_UL_PIR_ENABLED
           ul_pir_stop();

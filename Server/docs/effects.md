@@ -38,7 +38,7 @@ Effect descriptors support these `type` values:
 ## Adding a new effect
 
 1. **Implement the effect in firmware** and register it in the appropriate `registry.c` so that `effects.py` detects its name.
-2. **Describe its parameters** in `Server/app/effects.py` by adding an entry to `WS_PARAM_DEFS` or `WHITE_PARAM_DEFS`. Each descriptor corresponds to one positional argument sent over MQTT.
+2. **Describe its parameters** in `Server/app/effects.py` by adding an entry to `WS_PARAM_DEFS`, `RGB_PARAM_DEFS`, or `WHITE_PARAM_DEFS`. Each descriptor corresponds to one positional argument sent over MQTT.
 3. The web UI will automatically list the new effect and render the controls using `renderParams`. Use `collectParams` when constructing the message body to obtain the values.
 
 Example descriptor:

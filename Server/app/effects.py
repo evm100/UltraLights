@@ -42,6 +42,9 @@ WS_EFFECTS = set(WS_EFFECT_TIERS)
 WHITE_EFFECTS = set(
     _load_effect_names("UltraNodeV5/components/ul_white_engine/effects_white/registry.c")
 )
+RGB_EFFECTS = set(
+    _load_effect_names("UltraNodeV5/components/ul_rgb_engine/effects_rgb/registry.c")
+)
 
 WS_EFFECT_TIER_LABELS = {
     "standard": "Standard",
@@ -138,4 +141,12 @@ WHITE_PARAM_DEFS = {
 # ``solid`` is fundamental and must always exist for the web interface. Ensure
 # a default parameter definition is present even if trimmed elsewhere.
 WS_PARAM_DEFS.setdefault("solid", [{"type": "color", "label": "Color"}])
+
+RGB_PARAM_DEFS = {
+    "solid": [
+        {"type": "color", "label": "Color"},
+    ],
+}
+
+RGB_PARAM_DEFS.setdefault("solid", [{"type": "color", "label": "Color"}])
 
