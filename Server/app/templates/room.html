@@ -126,6 +126,11 @@ document.querySelectorAll('.preset').forEach(btn => {
     const slotCount = scheduleData.length;
     let statusTimeout = null;
     let dirty = false;
+    let selectedSlot = 0;
+    const beforeUnloadHandler = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
 
     presetNames[''] = 'No Motion';
 
@@ -167,12 +172,18 @@ document.querySelectorAll('.preset').forEach(btn => {
       return brightness > 155 ? '#0f172a' : '#f8fafc';
     };
 
+    const updateSlotHighlight = () => {
+      slots.forEach((slot, idx) => {
+        slot.classList.toggle('motion-schedule-slot--selected', idx === selectedSlot);
+      });
+    };
     const renderSchedule = () => {
       slots.forEach((slot, idx) => {
         const presetId = scheduleData[idx] || '';
         const color = presetColors[presetId] || noMotionColor;
         slot.style.setProperty('--slot-color', color);
         slot.style.setProperty('--slot-text', pickTextColor(color));
+        slot.dataset.preset = presetId;
         const hourEl = slot.querySelector('.motion-schedule-hour');
         if (hourEl) {
           hourEl.textContent = formatLabel(idx);
@@ -180,6 +191,18 @@ document.querySelectorAll('.preset').forEach(btn => {
         const presetName = presetNames[presetId] || presetId || 'No Motion';
         slot.setAttribute('title', `${formatLabel(idx)} – ${presetName}`);
       });
+      updateSlotHighlight();
+    };
+
+    const updateSaveState = () => {
+      if (!saveButton) return;
+      saveButton.disabled = !dirty;
+      saveButton.classList.toggle('motion-button--dirty', dirty);
+      if (dirty) {
+        window.addEventListener('beforeunload', beforeUnloadHandler);
+      } else {
+        window.removeEventListener('beforeunload', beforeUnloadHandler);
+      }
     };
 
     const populateSelects = () => {
@@ -203,7 +226,7 @@ document.querySelectorAll('.preset').forEach(btn => {
     };
 
     const updateEndOptions = () => {
-      if (!endSelect) return;
+      if (!endSelect || !startSelect) return;
       const start = parseInt(startSelect.value, 10);
       Array.from(endSelect.options).forEach((opt) => {
         const val = parseInt(opt.value, 10);
@@ -214,6 +237,29 @@ document.querySelectorAll('.preset').forEach(btn => {
       }
     };
 
+    const updateSelection = (index) => {
+      if (!Number.isInteger(index)) {
+        index = 0;
+      }
+      selectedSlot = ((index % slotCount) + slotCount) % slotCount;
+      if (startSelect) {
+        startSelect.value = String(selectedSlot);
+      }
+      updateEndOptions();
+      if (endSelect) {
+        const currentEnd = parseInt(endSelect.value, 10);
+        if (!Number.isInteger(currentEnd) || currentEnd <= selectedSlot) {
+          endSelect.value = String(Math.min(slotCount, selectedSlot + 1));
+        }
+      }
+      if (presetSelect) {
+        const presetId = scheduleData[selectedSlot] || '';
+        const hasOption = Array.from(presetSelect.options).some((opt) => opt.value === presetId);
+        presetSelect.value = hasOption ? presetId : '';
+      }
+      updateSlotHighlight();
+    };
+    
     const setStatus = (message, cls) => {
       if (!statusEl) return;
       if (statusTimeout) {
@@ -232,12 +278,14 @@ document.querySelectorAll('.preset').forEach(btn => {
     const markDirty = () => {
       if (!dirty) {
         dirty = true;
+        updateSaveState();
       }
       setStatus('Unsaved changes – click save to persist.', 'text-amber-300');
     };
 
     const clearStatus = () => {
       dirty = false;
+      updateSaveState();
       setStatus('Schedule saved ✓', 'text-emerald-300');
       statusTimeout = setTimeout(() => setStatus('', ''), 2200);
     };
@@ -249,15 +297,33 @@ document.querySelectorAll('.preset').forEach(btn => {
     populateSelects();
     updateEndOptions();
     renderSchedule();
+    updateSelection(0);
+    updateSaveState();
     setStatus('', '');
 
     if (startSelect) {
-      startSelect.addEventListener('change', updateEndOptions);
+      startSelect.addEventListener('change', () => {
+        const startIdx = parseInt(startSelect.value, 10);
+        updateSelection(Number.isInteger(startIdx) ? startIdx : 0);
+      });
     }
+    if (endSelect) {
+      endSelect.addEventListener('change', () => {
+        updateEndOptions();
+      });
+    }
+    slots.forEach((slot) => {
+      slot.addEventListener('click', () => {
+        const idx = parseInt(slot.dataset.slot || '', 10);
+        if (Number.isInteger(idx)) {
+          updateSelection(idx);
+        }
+      });
+    });
     if (applyButton) {
       applyButton.addEventListener('click', () => {
-        const start = parseInt(startSelect.value, 10);
-        const end = parseInt(endSelect.value, 10);
+        const start = parseInt(startSelect ? startSelect.value : '0', 10);
+        const end = parseInt(endSelect ? endSelect.value : '0', 10);
         if (!Number.isInteger(start) || !Number.isInteger(end)) {
           showError('Select a valid time range.');
           return;
@@ -271,12 +337,19 @@ document.querySelectorAll('.preset').forEach(btn => {
           scheduleData[idx] = presetId || null;
         }
         renderSchedule();
+        updateSelection(start);
         markDirty();
       });
     }
     if (saveButton) {
       saveButton.addEventListener('click', async () => {
+        if (!dirty) {
+          setStatus('No changes to save.', 'text-slate-200 opacity-80');
+          statusTimeout = setTimeout(() => setStatus('', ''), 1800);
+          return;
+        }
         setStatus('Saving schedule...', 'text-slate-200 opacity-80');
+        saveButton.disabled = true;
         try {
           const response = await fetch(saveUrl, {
             method: 'POST',
@@ -299,9 +372,13 @@ document.querySelectorAll('.preset').forEach(btn => {
             }
           }
           renderSchedule();
+          updateSelection(selectedSlot);
           clearStatus();
         } catch (err) {
-          showError(err instanceof Error ? err.message : 'Failed to save schedule.');
+          const message = err instanceof Error ? err.message : 'Failed to save schedule.';
+          showError(message);
+          dirty = true;
+          updateSaveState();
         }
       });
     }

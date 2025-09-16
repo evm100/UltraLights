@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -14,6 +15,7 @@ class MotionScheduleStore:
     def __init__(self, path: Path, slot_minutes: int = 60) -> None:
         self.path = path
         self.slot_minutes = max(1, int(slot_minutes))
+        self._lock = threading.RLock()
         self._data = self._load()
 
     @property
@@ -64,19 +66,24 @@ class MotionScheduleStore:
 
     def save(self) -> None:
         payload = {"slot_minutes": self.slot_minutes, "schedules": self._data}
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, indent=2))
+        serialized = json.dumps(payload, indent=2)
+        tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
+        with self._lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path.write_text(serialized)
+            tmp_path.replace(self.path)
 
     def get_schedule(
         self, house_id: str, room_id: str
     ) -> Optional[List[Optional[str]]]:
-        house = self._data.get(str(house_id))
-        if not house:
-            return None
-        schedule = house.get(str(room_id))
-        if schedule is None:
-            return None
-        return list(schedule)
+        with self._lock:
+            house = self._data.get(str(house_id))
+            if not house:
+                return None
+            schedule = house.get(str(room_id))
+            if schedule is None:
+                return None
+            return list(schedule)
 
     def get_schedule_or_default(
         self, house_id: str, room_id: str, default: Optional[str] = None
@@ -94,10 +101,11 @@ class MotionScheduleStore:
         clean = self._normalize(schedule)
         if clean is None:
             raise ValueError("schedule must be a list")
-        house = self._data.setdefault(str(house_id), {})
-        house[str(room_id)] = clean
-        self.save()
-        return list(clean)
+        with self._lock:
+            house = self._data.setdefault(str(house_id), {})
+            house[str(room_id)] = clean
+            self.save()
+            return list(clean)
 
     def active_preset(
         self,
