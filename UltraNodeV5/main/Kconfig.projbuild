@@ -3,12 +3,7 @@ menu "UltraLights Configuration"
 menu "System"
     config UL_IS_ESP32C3
         bool "Target is ESP32-C3"
-        default y if IDF_TARGET_ESP32C3
         default n
-        help
-            Enable this option when building the firmware for ESP32-C3 based
-            hardware. It is automatically selected when the ESP-IDF target is
-            set to esp32c3 via `idf.py set-target esp32c3`.
 endmenu
 
 menu "Node / Network"
@@ -98,33 +93,6 @@ menu "Sensors"
 endmenu
 
 menu "WS2812 Strips"
-    choice UL_WS_BACKEND
-        prompt "WS2812 driver backend"
-        default UL_WS_BACKEND_SPI if !UL_IS_ESP32C3
-        default UL_WS_BACKEND_RMT
-        help
-            Select the peripheral used to refresh WS2812 LED strips. The SPI
-            backend provides the highest throughput on multi-bus targets such
-            as ESP32-S3. The RMT backend is broadly compatible, including with
-            ESP32-C3, and should be selected if the target lacks a spare SPI
-            host.
-        config UL_WS_BACKEND_SPI
-            bool "SPI"
-        config UL_WS_BACKEND_RMT
-            bool "RMT"
-    endchoice
-
-    config UL_WS_SPI_USE_DMA
-        bool "Use SPI DMA for WS2812 refresh"
-        depends on UL_WS_BACKEND_SPI
-        default y if !UL_IS_ESP32C3
-        default n
-        help
-            Enable DMA when driving WS2812 strips via the SPI backend. This
-            improves refresh throughput on targets that offer dedicated DMA
-            channels (e.g. ESP32-S3). Disable on targets where SPI DMA is not
-            available.
-
     menu "Strip 0"
         config UL_WS0_ENABLED
             bool "Enabled"
@@ -139,7 +107,6 @@ menu "WS2812 Strips"
     menu "Strip 1"
         config UL_WS1_ENABLED
             bool "Enabled"
-            depends on !(UL_IS_ESP32C3 && UL_WS_BACKEND_SPI)
             default n
         config UL_WS1_GPIO
             int "GPIO"

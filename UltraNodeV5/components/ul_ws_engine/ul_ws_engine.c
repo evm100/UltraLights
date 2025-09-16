@@ -6,12 +6,10 @@
 #include "ul_task.h"
 #include "ul_core.h"
 #include "esp_log.h"
-#include "esp_heap_caps.h"
 #include "led_strip.h"
+#include "led_strip_spi.h"
 #include "led_strip_types.h"
-#if CONFIG_UL_WS_BACKEND_SPI
 #include "driver/spi_master.h"
-#endif
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -94,61 +92,30 @@ static const ws_effect_t* find_effect_by_name(const char* name) {
 }
 
 static void init_strip(int idx, int gpio, int pixels, bool enabled) {
-    if (!enabled) {
-        s_strips[idx].pixels = 0;
-        s_strips[idx].handle = NULL;
-        s_strips[idx].frame = NULL;
-        return;
-    }
-
+    if (!enabled) { s_strips[idx].pixels = 0; return; }
     led_strip_config_t strip_config = {
         .strip_gpio_num = gpio,
         .max_leds = pixels,
         .led_model = LED_MODEL_WS2812,
-        .flags.invert_out = false,
+        .flags.invert_out = false
     };
-
-#if CONFIG_UL_WS_BACKEND_SPI
-    led_strip_spi_config_t backend_config = {
+    led_strip_spi_config_t spi_config = {
         .clk_src = SPI_CLK_SRC_DEFAULT,
-        .spi_bus =
+        .spi_bus = 
 #if CONFIG_UL_IS_ESP32C3
             SPI2_HOST,
 #else
             (idx == 0 ? SPI2_HOST : SPI3_HOST),
 #endif
         .flags = {
-            .with_dma = CONFIG_UL_WS_SPI_USE_DMA,
+            .with_dma = true,
         },
     };
-    ESP_ERROR_CHECK(led_strip_new_spi_device(&strip_config, &backend_config,
-                                             &s_strips[idx].handle));
-#elif CONFIG_UL_WS_BACKEND_RMT
-    led_strip_rmt_config_t backend_config = {
-        .clk_src = RMT_CLK_SRC_DEFAULT,
-        .resolution_hz = 10 * 1000 * 1000,
-        .mem_block_symbols = 0,
-        .flags = {
-            .with_dma = 0,
-        },
-    };
-    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &backend_config,
-                                             &s_strips[idx].handle));
-#else
-#error "Unsupported WS backend configuration"
-#endif
-
+    ESP_ERROR_CHECK(led_strip_new_spi_device(&strip_config, &spi_config, &s_strips[idx].handle));
     led_strip_clear(s_strips[idx].handle);
     s_strips[idx].pixels = pixels;
-    s_strips[idx].frame = (uint8_t *)heap_caps_calloc(pixels * 3, sizeof(uint8_t),
-                                                      MALLOC_CAP_8BIT);
-    if (!s_strips[idx].frame) {
-        ESP_LOGE(TAG, "Failed to allocate frame buffer for strip %d", idx);
-        led_strip_del(s_strips[idx].handle);
-        s_strips[idx].handle = NULL;
-        s_strips[idx].pixels = 0;
-        return;
-    }
+    s_strips[idx].frame = (uint8_t*)heap_caps_malloc(pixels*3, MALLOC_CAP_8BIT);
+    memset(s_strips[idx].frame, 0, pixels*3);
     // defaults
     int n=0; const ws_effect_t* tbl = ul_ws_get_effects(&n);
     s_strips[idx].eff = &tbl[0]; // solid
@@ -230,8 +197,12 @@ void ul_ws_engine_start(void)
 #else
     init_strip(0, 0, 0, false);
 #endif
+#if !CONFIG_UL_IS_ESP32C3
 #if CONFIG_UL_WS1_ENABLED
     init_strip(1, CONFIG_UL_WS1_GPIO, CONFIG_UL_WS1_PIXELS, true);
+#else
+    init_strip(1, 0, 0, false);
+#endif
 #else
     init_strip(1, 0, 0, false);
 #endif
