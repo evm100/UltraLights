@@ -73,15 +73,8 @@ menu "Engine"
         int "White smoothing (Hz)"
         range 10 1000
         default 200
-    config UL_TRANSITION_MS
-        int "Default transition (ms)"
-        range 0 5000
-        default 250
     config UL_GAMMA_ENABLE
         bool "Enable gamma correction"
-        default y
-    config UL_DITHER_ENABLE
-        bool "Enable dithering (white engine)"
         default y
 endmenu
 
