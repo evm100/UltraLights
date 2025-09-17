@@ -18,25 +18,34 @@ PRESETS: Dict[str, List[Dict[str, Any]]] = {
     "kitchen": build_kitchen_presets("kitchen"),
     "master": [
         {
-            "id": "swell-on",
-            "name": "On",
+            "id": "on",
+            "name": "On 🟢",
             "actions": white_swell_actions(["master-closet"], 0, 255, 3000, channels=[0, 1]),
         },
         {
+            "id": "off",
+            "name": "Off 🔴",
+            "actions": white_swell_actions(["master-closet"], 0, 0, 1000, channels=[0,1]),
+        },
+        {
             "id": "half-bright",
-            "name": "Half Bright",
+            "name": "Half Bright 🌗",
             "actions": white_swell_actions(["master-closet"], 0, 50, 2000, channels=[0, 1]),
         },
         {
-            "id": "floor-on",
-            "name": "Floor On",
-            "actions": white_swell_actions(["master-closet"], 0, 255, 3000, channels=[0]),
+            "id": "floor",
+            "name": "Floor ◻️",
+            "actions": [
+                white_swell_action("master-closet", 0, 0, 100, 2000),
+                white_swell_action("master-closet", 1, 0, 5, 1000),
+            ],
         },
         {
             "id": "nightlight",
-            "name": "Night Light",
+            "name": "Night Light 🌙",
             "actions": white_swell_actions(["master-closet"], 0, 4, 2000, channels=[0]),
         },
+        
     ],
     "edgar": [
         {
