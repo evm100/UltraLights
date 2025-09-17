@@ -66,6 +66,12 @@ class Settings:
             str(Path(__file__).with_name("motion_schedule.json")),
         )
     )
+    BRIGHTNESS_LIMITS_FILE = Path(
+        os.getenv(
+            "BRIGHTNESS_LIMITS_FILE",
+            str(Path(__file__).with_name("brightness_limits.json")),
+        )
+    )
     if REGISTRY_FILE.exists():
         DEVICE_REGISTRY = json.loads(REGISTRY_FILE.read_text())
     else:
