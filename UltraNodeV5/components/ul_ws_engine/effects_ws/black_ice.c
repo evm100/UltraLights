@@ -11,22 +11,26 @@
 #include <stdbool.h>
 
 #define BLACK_ICE_MAX_STRIPS 2
-#define BLACK_ICE_LAYERS 256
+#define BLACK_ICE_DEFAULT_LAYERS 256
+#define BLACK_ICE_MIN_LAYERS 64
+#define BLACK_ICE_LAYER_STEP 32
 #define BLACK_ICE_DEFAULT_SHIMMER 1.0f
 
 // Black Ice – shimmering crystalline frost with bright crackle highlights.
 // This effect keeps multiple high-resolution layers of fracture intensity and
-// sparkle energy in PSRAM to create a deep, animated texture. The large
-// buffers allow rich detail while keeping the ESP32's internal RAM free.
+// sparkle energy in PSRAM to create a deep, animated texture. The engine will
+// gracefully reduce the number of layers if memory is scarce so the effect can
+// still render instead of failing and producing a black frame.
 
 typedef struct {
     float shimmer;            // how active the crystalline shimmer is
     float base[3];            // base ice colour
     float fracture_colour[3]; // crack highlight colour
     float sparkle_colour[3];  // diamond sparkle colour
-    float* fracture;          // BLACK_ICE_LAYERS * capacity fracture energy field
+    float* fracture;          // layers * capacity fracture energy field
     float* scratch;           // scratch buffer for fracture simulation
     float* sparkle;           // sparkle persistence per cell
+    int layers;               // active simulation layers
     int capacity;             // allocated columns in the buffers
     bool params_set;          // whether custom params were supplied
     bool seeded;              // whether the fields have been initialised
@@ -63,32 +67,70 @@ static float* black_ice_alloc_cells(size_t cells) {
     return ptr;
 }
 
+static void free_fields(black_ice_state_t* st) {
+    if (st->fracture) {
+        heap_caps_free(st->fracture);
+        st->fracture = NULL;
+    }
+    if (st->scratch) {
+        heap_caps_free(st->scratch);
+        st->scratch = NULL;
+    }
+    if (st->sparkle) {
+        heap_caps_free(st->sparkle);
+        st->sparkle = NULL;
+    }
+    st->capacity = 0;
+    st->seeded = false;
+}
+
 static bool ensure_capacity(black_ice_state_t* st, int width) {
     if (width <= 0) {
         return false;
     }
+    if (st->layers <= 0) {
+        st->layers = BLACK_ICE_DEFAULT_LAYERS;
+    }
     if (width <= st->capacity && st->fracture && st->scratch && st->sparkle) {
         return true;
     }
-    size_t cells = (size_t)width * BLACK_ICE_LAYERS;
-    float* fracture = black_ice_alloc_cells(cells);
-    float* scratch = black_ice_alloc_cells(cells);
-    float* sparkle = black_ice_alloc_cells(cells);
-    if (!fracture || !scratch || !sparkle) {
+
+    free_fields(st);
+
+    int attempt_layers = st->layers;
+    if (attempt_layers <= 0 || attempt_layers > BLACK_ICE_DEFAULT_LAYERS) {
+        attempt_layers = BLACK_ICE_DEFAULT_LAYERS;
+    }
+
+    while (attempt_layers >= BLACK_ICE_MIN_LAYERS) {
+        size_t cells = (size_t)width * (size_t)attempt_layers;
+        float* fracture = black_ice_alloc_cells(cells);
+        float* scratch = black_ice_alloc_cells(cells);
+        float* sparkle = black_ice_alloc_cells(cells);
+        if (fracture && scratch && sparkle) {
+            st->fracture = fracture;
+            st->scratch = scratch;
+            st->sparkle = sparkle;
+            st->capacity = width;
+            st->layers = attempt_layers;
+            st->seeded = false;
+            return true;
+        }
         if (fracture) heap_caps_free(fracture);
         if (scratch) heap_caps_free(scratch);
         if (sparkle) heap_caps_free(sparkle);
-        return false;
+
+        if (attempt_layers == BLACK_ICE_MIN_LAYERS) {
+            break;
+        }
+        attempt_layers -= BLACK_ICE_LAYER_STEP;
+        if (attempt_layers < BLACK_ICE_MIN_LAYERS) {
+            attempt_layers = BLACK_ICE_MIN_LAYERS;
+        }
     }
-    if (st->fracture) heap_caps_free(st->fracture);
-    if (st->scratch) heap_caps_free(st->scratch);
-    if (st->sparkle) heap_caps_free(st->sparkle);
-    st->fracture = fracture;
-    st->scratch = scratch;
-    st->sparkle = sparkle;
-    st->capacity = width;
-    st->seeded = false;
-    return true;
+
+    st->layers = 0;
+    return false;
 }
 
 static void set_default_palette(black_ice_state_t* st) {
@@ -101,11 +143,12 @@ static void set_default_palette(black_ice_state_t* st) {
 }
 
 static void seed_fields(black_ice_state_t* st) {
-    if (!st->fracture || !st->scratch || !st->sparkle || st->capacity <= 0) {
+    if (!st->fracture || !st->scratch || !st->sparkle || st->capacity <= 0 || st->layers <= 0) {
         return;
     }
     size_t stride = (size_t)st->capacity;
-    size_t cells = stride * BLACK_ICE_LAYERS;
+    int layers = st->layers;
+    size_t cells = stride * (size_t)layers;
     for (size_t i = 0; i < cells; ++i) {
         float n = frand(&st->rng);
         st->fracture[i] = n * n * 0.45f;
@@ -113,10 +156,10 @@ static void seed_fields(black_ice_state_t* st) {
     }
     // Relax the initial field a little to form softly connected fracture veins.
     for (int iter = 0; iter < 12; ++iter) {
-        for (int y = 0; y < BLACK_ICE_LAYERS; ++y) {
+        for (int y = 0; y < layers; ++y) {
             int row = y * (int)stride;
-            int above = (y == 0 ? (BLACK_ICE_LAYERS - 1) : y - 1) * (int)stride;
-            int below = (y == BLACK_ICE_LAYERS - 1 ? 0 : y + 1) * (int)stride;
+            int above = (y == 0 ? (layers - 1) : y - 1) * (int)stride;
+            int below = (y == layers - 1 ? 0 : y + 1) * (int)stride;
             for (int x = 0; x < (int)stride; ++x) {
                 int left = (x == 0) ? (int)stride - 1 : x - 1;
                 int right = (x == (int)stride - 1) ? 0 : x + 1;
@@ -141,14 +184,18 @@ void black_ice_init(void) {
         if (st->rng == 0) {
             st->rng = 0xB5297A4Du ^ (uint32_t)(i + 1) * 0x9E3779B9u;
         }
-        if (st->fracture && st->capacity > 0) {
-            memset(st->fracture, 0, (size_t)st->capacity * BLACK_ICE_LAYERS * sizeof(float));
+        if (st->layers <= 0) {
+            st->layers = BLACK_ICE_DEFAULT_LAYERS;
         }
-        if (st->scratch && st->capacity > 0) {
-            memset(st->scratch, 0, (size_t)st->capacity * BLACK_ICE_LAYERS * sizeof(float));
+        size_t cells = (size_t)st->capacity * (size_t)st->layers;
+        if (st->fracture && cells > 0) {
+            memset(st->fracture, 0, cells * sizeof(float));
         }
-        if (st->sparkle && st->capacity > 0) {
-            memset(st->sparkle, 0, (size_t)st->capacity * BLACK_ICE_LAYERS * sizeof(float));
+        if (st->scratch && cells > 0) {
+            memset(st->scratch, 0, cells * sizeof(float));
+        }
+        if (st->sparkle && cells > 0) {
+            memset(st->sparkle, 0, cells * sizeof(float));
         }
         st->seeded = false;
     }
@@ -193,6 +240,9 @@ void black_ice_render(uint8_t* frame_rgb, int pixels, int frame_idx) {
     black_ice_state_t* st = &s_black_ice[strip];
     if (!ensure_capacity(st, pixels)) return;
 
+    int layers = st->layers;
+    if (layers <= 0) return;
+
     if (!st->params_set) {
         set_default_palette(st);
     }
@@ -209,11 +259,11 @@ void black_ice_render(uint8_t* frame_rgb, int pixels, int frame_idx) {
 
     const float decay_base = 0.0032f + 0.0008f * shimmer;
 
-    for (int y = 0; y < BLACK_ICE_LAYERS; ++y) {
+    for (int y = 0; y < layers; ++y) {
         int row = y * stride;
-        int above = (y == 0 ? (BLACK_ICE_LAYERS - 1) : y - 1) * stride;
-        int below = (y == BLACK_ICE_LAYERS - 1 ? 0 : y + 1) * stride;
-        float depth_factor = 1.0f - (float)y / (float)BLACK_ICE_LAYERS;
+        int above = (y == 0 ? (layers - 1) : y - 1) * stride;
+        int below = (y == layers - 1 ? 0 : y + 1) * stride;
+        float depth_factor = 1.0f - (float)y / (float)layers;
         float swirl = sinf((float)frame_idx * 0.0065f + (float)y * 0.19f);
         int shift = (int)lroundf(swirl * 4.0f);
         if (shift > pixels - 1) shift = pixels - 1;
@@ -265,12 +315,12 @@ void black_ice_render(uint8_t* frame_rgb, int pixels, int frame_idx) {
     st->fracture = next;
     current = st->fracture;
 
-    const float weight_norm = 2.0f / (float)(BLACK_ICE_LAYERS * (BLACK_ICE_LAYERS + 1));
+    const float weight_norm = 2.0f / (float)(layers * (layers + 1));
 
     for (int x = 0; x < pixels; ++x) {
         float fracture_sum = 0.0f;
         float sparkle_sum = 0.0f;
-        for (int y = 0; y < BLACK_ICE_LAYERS; ++y) {
+        for (int y = 0; y < layers; ++y) {
             float weight = (float)(y + 1);
             fracture_sum += current[y * stride + x] * weight;
             sparkle_sum += st->sparkle[y * stride + x] * weight;
