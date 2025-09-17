@@ -1,3 +1,7 @@
+#include "sdkconfig.h"
+
+#if CONFIG_UL_RGB0_ENABLED || CONFIG_UL_RGB1_ENABLED || CONFIG_UL_RGB2_ENABLED || CONFIG_UL_RGB3_ENABLED
+
 #include "effect.h"
 #include "ul_rgb_engine.h"
 #include "cJSON.h"
@@ -28,3 +32,5 @@ void rgb_solid_render(int strip, uint8_t out_rgb[3], int frame_idx) {
     out_rgb[1] = g;
     out_rgb[2] = b;
 }
+
+#endif

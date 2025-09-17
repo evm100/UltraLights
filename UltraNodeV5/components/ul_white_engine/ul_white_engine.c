@@ -1,5 +1,40 @@
 #include "ul_white_engine.h"
 #include "sdkconfig.h"
+
+#if !(CONFIG_UL_WHT0_ENABLED || CONFIG_UL_WHT1_ENABLED || CONFIG_UL_WHT2_ENABLED || CONFIG_UL_WHT3_ENABLED)
+
+#include <string.h>
+
+int ul_white_effect_current_channel(void) { return -1; }
+
+void ul_white_engine_start(void) {}
+
+void ul_white_engine_stop(void) {}
+
+void ul_white_apply_json(cJSON* root) { (void)root; }
+
+bool ul_white_set_effect(int ch, const char* name) {
+    (void)ch;
+    (void)name;
+    return false;
+}
+
+bool ul_white_set_brightness(int ch, uint8_t bri) {
+    (void)ch;
+    (void)bri;
+    return false;
+}
+
+int ul_white_get_channel_count(void) { return 0; }
+
+bool ul_white_get_status(int ch, ul_white_ch_status_t* out) {
+    (void)ch;
+    if (out) memset(out, 0, sizeof(*out));
+    return false;
+}
+
+#else
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/ledc.h"
@@ -208,3 +243,5 @@ bool ul_white_get_status(int ch, ul_white_ch_status_t* out) {
     out->effect[sizeof(out->effect)-1] = 0;
     return true;
 }
+
+#endif  // any white channels enabled

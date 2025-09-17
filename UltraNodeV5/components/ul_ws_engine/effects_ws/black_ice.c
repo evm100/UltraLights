@@ -1,3 +1,7 @@
+#include "sdkconfig.h"
+
+#if CONFIG_UL_WS0_ENABLED || CONFIG_UL_WS1_ENABLED
+
 #include "effect.h"
 #include "ul_ws_engine.h"
 #include "cJSON.h"
@@ -296,4 +300,6 @@ void black_ice_render(uint8_t* frame_rgb, int pixels, int frame_idx) {
         frame_rgb[3 * x + 2] = (uint8_t)(clampf(b * brightness, 0.0f, 1.0f) * 255.0f + 0.5f);
     }
 }
+
+#endif
 

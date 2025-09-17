@@ -1,5 +1,8 @@
+#include "sdkconfig.h"
 #include "effect.h"
 #include <stddef.h>
+
+#if CONFIG_UL_RGB0_ENABLED || CONFIG_UL_RGB1_ENABLED || CONFIG_UL_RGB2_ENABLED || CONFIG_UL_RGB3_ENABLED
 
 void rgb_solid_init(void);
 void rgb_solid_render(int strip, uint8_t out_rgb[3], int frame_idx);
@@ -17,3 +20,12 @@ const rgb_effect_t* ul_rgb_get_effects(int* count) {
     if (count) *count = sizeof(effects) / sizeof(effects[0]);
     return effects;
 }
+
+#else
+
+const rgb_effect_t* ul_rgb_get_effects(int* count) {
+    if (count) *count = 0;
+    return NULL;
+}
+
+#endif

@@ -1,6 +1,8 @@
-#include <stddef.h>
 #include "sdkconfig.h"
+#include <stddef.h>
 #include "effect.h"
+
+#if CONFIG_UL_WS0_ENABLED || CONFIG_UL_WS1_ENABLED
 
 void solid_init(void);        void solid_render(uint8_t*,int,int);        void solid_apply_params(int,const cJSON*);
 void color_swell_init(void);  void color_swell_render(uint8_t*,int,int);  void color_swell_apply_params(int,const cJSON*);
@@ -43,3 +45,12 @@ const ws_effect_t* ul_ws_get_effects(int* count) {
     if (count) *count = sizeof(effects)/sizeof(effects[0]);
     return effects;
 }
+
+#else
+
+const ws_effect_t* ul_ws_get_effects(int* count) {
+    if (count) *count = 0;
+    return NULL;
+}
+
+#endif

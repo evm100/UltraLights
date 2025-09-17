@@ -1,5 +1,8 @@
-#include "effect.h"
 #include "sdkconfig.h"
+
+#if CONFIG_UL_WHT0_ENABLED || CONFIG_UL_WHT1_ENABLED || CONFIG_UL_WHT2_ENABLED || CONFIG_UL_WHT3_ENABLED
+
+#include "effect.h"
 #include <math.h>
 #include "cJSON.h"
 
@@ -34,4 +37,6 @@ void white_breathe_apply_params(int ch, const cJSON* params) {
         s_period_ms = ms;
     }
 }
+
+#endif
 
