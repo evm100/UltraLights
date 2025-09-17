@@ -28,7 +28,6 @@
     <input id="wsBri" type="range" min="0" max="255" value="255" class="w-full">
   </div>
   <div class="flex gap-2">
-    <button id="wsSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
     <button id="wsOn" class="px-4 py-2 pill bg-green-600 hover:bg-green-500 text-white">On</button>
     <button id="wsOff" class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white">Off</button>
   </div>
@@ -217,8 +216,6 @@ lockBtn.addEventListener('click',()=>{
   if(brightness===null){alert('Invalid brightness');return;}
   persistLimit(strip,brightness);
 });
-
-document.getElementById('wsSet').onclick=()=>sendCmd();
 
 document.getElementById('wsOn').onclick=()=>{
   const strip=activeStrip();
