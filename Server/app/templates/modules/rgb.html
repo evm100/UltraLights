@@ -11,7 +11,10 @@
   <div class="mb-3">
     <label class="text-xs opacity-70">Color</label>
     <div id="rgbParams" class="mt-2 space-y-2"></div>
-    <label class="text-xs opacity-70 block mt-2">Brightness</label>
+    <div class="flex items-center justify-between mt-2">
+      <label for="rgbBri" class="text-xs opacity-70">Brightness</label>
+      <button id="rgbBriLock" type="button" class="text-xl leading-none" title="Lock brightness" aria-pressed="false">🔓</button>
+    </div>
     <input id="rgbBri" type="range" min="0" max="255" value="255" class="w-full">
   </div>
   <div class="flex gap-2">
@@ -24,12 +27,89 @@
 <script type="module">
 import {renderParams,collectParams} from '/static/params.js';
 const RGB_PARAM_DEFS={{ rgb_param_defs|tojson }};
+const MODULE_KEY='rgb';
 const stripEl=document.getElementById('rgbStrip');
 const briEl=document.getElementById('rgbBri');
+const lockBtn=document.getElementById('rgbBriLock');
 const paramsEl=document.getElementById('rgbParams');
 const solidParams=RGB_PARAM_DEFS['solid']||[{"type":"color","label":"Color"}];
 
-async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
+async function post(path,body){
+  const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!res.ok){throw new Error('Request failed');}
+  return res;
+}
+
+function activeStrip(){
+  const value=parseInt(stripEl.value,10);
+  return Number.isNaN(value)?null:value;
+}
+
+function getLimit(channel){
+  const data=window.nodeBrightnessLimits;
+  if(!data)return null;
+  const moduleData=data[MODULE_KEY];
+  if(!moduleData)return null;
+  const value=moduleData[String(channel)];
+  return typeof value==='number'?value:null;
+}
+
+function cacheLimit(channel,limit){
+  const data=window.nodeBrightnessLimits||(window.nodeBrightnessLimits={});
+  const key=String(channel);
+  if(limit===null||limit===undefined){
+    const moduleData=data[MODULE_KEY];
+    if(moduleData){
+      delete moduleData[key];
+      if(Object.keys(moduleData).length===0){
+        delete data[MODULE_KEY];
+      }
+    }
+    return;
+  }
+  const moduleData=data[MODULE_KEY]||(data[MODULE_KEY]={});
+  moduleData[key]=limit;
+}
+
+function clampBrightness(value){
+  if(typeof value!=='number'){
+    value=parseInt(value,10);
+  }
+  if(Number.isNaN(value))return null;
+  const strip=activeStrip();
+  if(strip!==null){
+    const limit=getLimit(strip);
+    if(limit!==null){
+      value=Math.min(value,limit);
+    }
+  }
+  if(value<0)value=0;
+  if(value>255)value=255;
+  return value;
+}
+
+function applyBrightnessLimit(){
+  const strip=activeStrip();
+  const limit=strip===null?null:getLimit(strip);
+  const maxValue=limit!==null?limit:255;
+  briEl.max=maxValue;
+  const current=parseInt(briEl.value,10);
+  let adjusted=current;
+  if(Number.isNaN(adjusted)){
+    adjusted=maxValue;
+  }
+  adjusted=Math.max(0,Math.min(adjusted,maxValue));
+  const changed=Number.isNaN(current)||adjusted!==current;
+  if(changed){
+    briEl.value=String(adjusted);
+  }
+  lockBtn.textContent=limit!==null?'🔒':'🔓';
+  lockBtn.setAttribute('aria-pressed',limit!==null?'true':'false');
+  lockBtn.title=limit!==null?`Unlock brightness limit (${maxValue})`:'Lock brightness to current value';
+  if(changed){
+    scheduleSend();
+  }
+}
 
 let lastSend=0;
 let pending=null;
@@ -56,21 +136,84 @@ function collectColorParams(){
 }
 
 function sendCmd(brightOverride){
-  const strip=parseInt(stripEl.value,10);
-  if(Number.isNaN(strip))return;
-  const brightness=brightOverride!==undefined?brightOverride:parseInt(briEl.value,10);
+  const strip=activeStrip();
+  if(strip===null)return;
+  let brightness=brightOverride!==undefined?brightOverride:parseInt(briEl.value,10);
   if(Number.isNaN(brightness))return;
+  const clamped=clampBrightness(brightness);
+  if(clamped===null)return;
+  brightness=clamped;
+  briEl.value=String(brightness);
   const params=collectColorParams();
   const msg={strip,effect:'solid',brightness,params};
-  post(`/api/node/{{ node.id }}/rgb/set`,msg);
+  post(`/api/node/{{ node.id }}/rgb/set`,msg).catch(()=>{alert('Request failed');});
 }
 
-stripEl.onchange=scheduleSend;
-briEl.addEventListener('input',scheduleSend);
+async function persistLimit(channel,limit){
+  try{
+    const res=await post(`/api/node/{{ node.id }}/rgb/brightness-limit`,{channel,limit});
+    let payload=null;
+    try{
+      payload=await res.json();
+    }catch(err){payload=null;}
+    if(payload&&payload.limit!==undefined){
+      const value=payload.limit;
+      if(typeof value==='number'){
+        cacheLimit(channel,Math.max(0,Math.min(255,value)));
+      }else{
+        cacheLimit(channel,null);
+      }
+    }else{
+      if(typeof limit==='number'){
+        cacheLimit(channel,limit);
+      }else{
+        cacheLimit(channel,null);
+      }
+    }
+    applyBrightnessLimit();
+  }catch(err){
+    console.error(err);
+    alert('Request failed');
+    applyBrightnessLimit();
+  }
+}
+
+stripEl.onchange=()=>{applyBrightnessLimit();scheduleSend();};
+briEl.addEventListener('input',()=>{
+  const clamped=clampBrightness(briEl.value);
+  if(clamped===null)return;
+  if(clamped!==parseInt(briEl.value,10)){
+    briEl.value=String(clamped);
+  }
+  scheduleSend();
+});
 updateParams();
+applyBrightnessLimit();
 
 const setBtn=document.getElementById('rgbSet');
 setBtn.onclick=()=>sendCmd();
-document.getElementById('rgbOn').onclick=()=>{briEl.value=255;sendCmd(255);};
-document.getElementById('rgbOff').onclick=()=>{briEl.value=0;sendCmd(0);};
+document.getElementById('rgbOn').onclick=()=>{
+  const strip=activeStrip();
+  const limit=strip===null?null:getLimit(strip);
+  const target=limit!==null?limit:255;
+  briEl.value=String(target);
+  sendCmd(target);
+};
+document.getElementById('rgbOff').onclick=()=>{
+  briEl.value='0';
+  sendCmd(0);
+};
+
+lockBtn.addEventListener('click',()=>{
+  const strip=activeStrip();
+  if(strip===null){alert('Invalid strip');return;}
+  const currentLimit=getLimit(strip);
+  if(currentLimit!==null){
+    persistLimit(strip,null);
+    return;
+  }
+  const brightness=clampBrightness(briEl.value);
+  if(brightness===null){alert('Invalid brightness');return;}
+  persistLimit(strip,brightness);
+});
 </script>
