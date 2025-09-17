@@ -1,5 +1,70 @@
 #include "ul_ws_engine.h"
 #include "sdkconfig.h"
+
+#if !(CONFIG_UL_WS0_ENABLED || CONFIG_UL_WS1_ENABLED)
+
+#include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
+
+int ul_ws_effect_current_strip(void) { return -1; }
+
+void ul_ws_engine_start(void) {}
+
+void ul_ws_engine_stop(void) {}
+
+void ul_ws_apply_json(cJSON* root) { (void)root; }
+
+bool ul_ws_set_effect(int strip, const char* name) {
+    (void)strip;
+    (void)name;
+    return false;
+}
+
+void ul_ws_set_solid_rgb(int strip, uint8_t r, uint8_t g, uint8_t b) {
+    (void)strip;
+    (void)r;
+    (void)g;
+    (void)b;
+}
+
+void ul_ws_get_solid_rgb(int strip, uint8_t* r, uint8_t* g, uint8_t* b) {
+    (void)strip;
+    if (r) *r = 0;
+    if (g) *g = 0;
+    if (b) *b = 0;
+}
+
+void ul_ws_set_brightness(int strip, uint8_t bri) {
+    (void)strip;
+    (void)bri;
+}
+
+bool ul_ws_hex_to_rgb(const char* hex, uint8_t* r, uint8_t* g, uint8_t* b) {
+    if (!hex || !r || !g || !b) return false;
+    if (hex[0] == '#') hex++;
+    if (strlen(hex) != 6) return false;
+    for (int i = 0; i < 6; ++i) {
+        if (!isxdigit((unsigned char)hex[i])) return false;
+    }
+    char buf[3] = {0};
+    buf[2] = 0;
+    buf[0] = hex[0]; buf[1] = hex[1]; *r = (uint8_t)strtol(buf, NULL, 16);
+    buf[0] = hex[2]; buf[1] = hex[3]; *g = (uint8_t)strtol(buf, NULL, 16);
+    buf[0] = hex[4]; buf[1] = hex[5]; *b = (uint8_t)strtol(buf, NULL, 16);
+    return true;
+}
+
+int ul_ws_get_strip_count(void) { return 0; }
+
+bool ul_ws_get_status(int strip, ul_ws_strip_status_t* out) {
+    (void)strip;
+    if (out) memset(out, 0, sizeof(*out));
+    return false;
+}
+
+#else
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -94,7 +159,7 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
     };
     led_strip_spi_config_t spi_config = {
         .clk_src = SPI_CLK_SRC_DEFAULT,
-        .spi_bus = 
+        .spi_bus =
 #if CONFIG_UL_IS_ESP32C3
             SPI2_HOST,
 #else
@@ -309,3 +374,5 @@ bool ul_ws_get_status(int idx, ul_ws_strip_status_t* out) {
     out->color[0]=s->solid_r; out->color[1]=s->solid_g; out->color[2]=s->solid_b;
     return true;
 }
+
+#endif  // any WS strips enabled

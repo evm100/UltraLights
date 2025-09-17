@@ -1,5 +1,8 @@
-#include "effect.h"
 #include "sdkconfig.h"
+
+#if CONFIG_UL_WS0_ENABLED || CONFIG_UL_WS1_ENABLED
+
+#include "effect.h"
 #include "cJSON.h"
 #include <stdbool.h>
 
@@ -100,3 +103,5 @@ void color_swell_render(uint8_t* frame_rgb, int pixels, int frame_idx) {
         frame_rgb[3 * i + 2] = (uint8_t)((s_color[strip][2] * value) / 255);
     }
 }
+
+#endif

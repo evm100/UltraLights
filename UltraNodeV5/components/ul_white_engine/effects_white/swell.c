@@ -1,5 +1,8 @@
-#include "effect.h"
 #include "sdkconfig.h"
+
+#if CONFIG_UL_WHT0_ENABLED || CONFIG_UL_WHT1_ENABLED || CONFIG_UL_WHT2_ENABLED || CONFIG_UL_WHT3_ENABLED
+
+#include "effect.h"
 #include "cJSON.h"
 #include <stdbool.h>
 
@@ -63,4 +66,6 @@ void white_swell_apply_params(int ch, const cJSON* params) {
     }
     s_progress[ch] = 0;
 }
+
+#endif
 

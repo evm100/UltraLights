@@ -1,5 +1,8 @@
+#include "sdkconfig.h"
 #include "effect.h"
 #include <stddef.h>
+
+#if CONFIG_UL_WHT0_ENABLED || CONFIG_UL_WHT1_ENABLED || CONFIG_UL_WHT2_ENABLED || CONFIG_UL_WHT3_ENABLED
 
 void white_breathe_init(void);
 uint8_t white_breathe_render(int frame_idx);
@@ -22,4 +25,13 @@ const white_effect_t* ul_white_get_effects(int* count) {
     if (count) *count = sizeof(effects)/sizeof(effects[0]);
     return effects;
 }
+
+#else
+
+const white_effect_t* ul_white_get_effects(int* count) {
+    if (count) *count = 0;
+    return NULL;
+}
+
+#endif
 

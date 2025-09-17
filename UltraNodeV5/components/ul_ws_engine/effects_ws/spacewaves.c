@@ -3,6 +3,10 @@
 // across the LED strip at different wavelengths and speeds. Parameters are
 // passed as an array of RGB triplets – one per wave.
 
+#include "sdkconfig.h"
+
+#if CONFIG_UL_WS0_ENABLED || CONFIG_UL_WS1_ENABLED
+
 #include "effect.h"
 #include "cJSON.h"
 #include <math.h>
@@ -72,3 +76,5 @@ void spacewaves_render(uint8_t* frame_rgb, int pixels, int frame_idx) {
         frame_rgb[3*i + 2] = (uint8_t)b;
     }
 }
+
+#endif
