@@ -19,6 +19,7 @@ from .effects import (
 from .presets import get_room_presets
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
+from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
 
 router = APIRouter()
@@ -31,6 +32,41 @@ def home(request: Request):
     return templates.TemplateResponse(
         "index.html",
         {"request": request, "houses": houses, "title": "UltraLights"},
+    )
+
+
+@router.get("/admin", response_class=HTMLResponse)
+def admin_panel(request: Request):
+    nodes = []
+    for house, room, node in registry.iter_nodes():
+        house_name = ""
+        room_name = ""
+        node_name = ""
+        if house:
+            house_name = (house.get("name") or house.get("id") or "")
+        if room:
+            room_name = (room.get("name") or room.get("id") or "")
+        node_name = node.get("name") or node.get("id") or ""
+        node_id = node.get("id") or node_name
+        nodes.append(
+            {
+                "id": node_id,
+                "name": node_name,
+                "house": house_name,
+                "room": room_name,
+                "has_ota": "ota" in (node.get("modules") or []),
+            }
+        )
+    nodes.sort(key=lambda item: (item["house"].lower(), item["room"].lower(), item["name"].lower()))
+    return templates.TemplateResponse(
+        "admin.html",
+        {
+            "request": request,
+            "nodes": nodes,
+            "title": "Admin Panel",
+            "subtitle": "System status",
+            "status_timeout": status_monitor.timeout,
+        },
     )
 
 

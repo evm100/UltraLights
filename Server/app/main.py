@@ -6,6 +6,7 @@ from .routes_api import router as api_router
 from .routes_pages import router as pages_router
 from .ota import router as ota_router
 from .motion import motion_manager
+from .status_monitor import status_monitor
 from fastapi.responses import FileResponse, Response
 from pathlib import Path
 
@@ -41,12 +42,14 @@ async def on_start():
         asyncio.create_task(BROKER.start())
         await asyncio.sleep(0.6)
     motion_manager.start()
+    status_monitor.start()
 
 @app.on_event("shutdown")
 async def on_stop():
     if BROKER:
         await BROKER.shutdown()
     motion_manager.stop()
+    status_monitor.stop()
 
 
 @app.get("/favicon.ico", include_in_schema=False)

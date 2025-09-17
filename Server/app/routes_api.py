@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException
 from .mqtt_bus import MqttBus
@@ -6,6 +7,7 @@ from .effects import WS_EFFECTS, WHITE_EFFECTS, RGB_EFFECTS
 from .presets import get_preset, apply_preset, get_room_presets
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
+from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
 
 router = APIRouter()
@@ -248,3 +250,26 @@ def api_ota_check(node_id: str):
     _valid_node(node_id)
     get_bus().ota_check(node_id)
     return {"ok": True}
+
+
+@router.get("/api/admin/status")
+def api_admin_status():
+    snapshot = status_monitor.snapshot()
+
+    def _iso(ts: Optional[float]) -> Optional[str]:
+        if ts is None:
+            return None
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+    nodes: Dict[str, Dict[str, Any]] = {}
+    for _, _, node in registry.iter_nodes():
+        node_id = node["id"]
+        info = snapshot.get(node_id, {})
+        nodes[node_id] = {
+            "online": bool(info.get("online")),
+            "last_ok": _iso(info.get("last_ok")),
+            "last_seen": _iso(info.get("last_seen")),
+            "status": info.get("status"),
+        }
+    now = datetime.now(timezone.utc).isoformat()
+    return {"now": now, "timeout": status_monitor.timeout, "nodes": nodes}
