@@ -24,7 +24,8 @@
     <input id="wBri" type="range" min="0" max="255" value="255" class="w-full">
   </div>
   <div class="flex gap-2">
-    <button id="wSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
+    <button id="wOn" class="px-4 py-2 pill bg-green-600 hover:bg-green-500 text-white">On</button>
+    <button id="wOff" class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white">Off</button>
   </div>
 </section>
 <script type="module">
@@ -148,20 +149,37 @@ wBriEl.addEventListener('input',()=>{
 if(effEl.value)updateParams();
 applyBrightnessLimit();
 
-function sendWhite(){
+function sendWhite(options={}){
   const channel=activeChannel();
   if(channel===null)return;
-  const effect=effEl.value.trim();
+  let effect=null;
+  if(options.effect!==undefined){
+    effect=String(options.effect).trim();
+  }
+  if(!effect){
+    effect=effEl.value.trim();
+  }
   if(!effect)return;
-  let brightness=parseInt(wBriEl.value,10);
+  let brightness=options.brightness!==undefined?options.brightness:parseInt(wBriEl.value,10);
+  if(typeof brightness!=='number'){
+    brightness=parseInt(brightness,10);
+  }
   if(Number.isNaN(brightness))return;
   const clamped=clampBrightness(brightness);
   if(clamped===null)return;
   brightness=clamped;
-  wBriEl.value=String(brightness);
-  const params=collectParams(WHITE_PARAM_DEFS[effEl.value]||[],wParamsEl);
+  if(options.updateSlider!==false){
+    wBriEl.value=String(brightness);
+  }
+  let params;
+  if(options.params!==undefined){
+    params=options.params;
+  }else{
+    const defs=WHITE_PARAM_DEFS[effect]||[];
+    params=collectParams(defs,wParamsEl);
+  }
   const msg={channel,effect,brightness};
-  if(params.length)msg.params=params;
+  if(Array.isArray(params)&&params.length)msg.params=params;
   post(`/api/node/{{ node.id }}/white/set`,msg).catch(()=>{alert('Request failed');});
 }
 
@@ -206,6 +224,17 @@ lockBtn.addEventListener('click',()=>{
   if(brightness===null){alert('Invalid brightness');return;}
   persistLimit(channel,brightness);
 });
-
-document.getElementById('wSet').onclick=()=>sendWhite();
+document.getElementById('wOn').onclick=()=>{
+  const channel=activeChannel();
+  const limit=channel===null?null:getLimit(channel);
+  const target=limit!==null?limit:255;
+  wBriEl.value=String(target);
+  sendWhite({brightness:target});
+};
+document.getElementById('wOff').onclick=()=>{
+  const channel=activeChannel();
+  if(channel===null){alert('Invalid channel');return;}
+  wBriEl.value='0';
+  sendWhite({effect:'solid',brightness:0,params:[]});
+};
 </script>
