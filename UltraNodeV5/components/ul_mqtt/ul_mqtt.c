@@ -18,6 +18,111 @@ static const char *TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
 
+#define UL_WS_MAX_STRIPS 2
+#define UL_RGB_MAX_STRIPS 4
+#define UL_WHITE_MAX_CHANNELS 4
+
+static uint8_t s_ws_saved_bri[UL_WS_MAX_STRIPS];
+static bool s_ws_saved_valid[UL_WS_MAX_STRIPS];
+static uint8_t s_rgb_saved_bri[UL_RGB_MAX_STRIPS];
+static bool s_rgb_saved_valid[UL_RGB_MAX_STRIPS];
+static uint8_t s_white_saved_bri[UL_WHITE_MAX_CHANNELS];
+static bool s_white_saved_valid[UL_WHITE_MAX_CHANNELS];
+static bool s_lights_dimmed = false;
+
+static void remember_ws_brightness(void) {
+  for (int i = 0; i < UL_WS_MAX_STRIPS; ++i) {
+    ul_ws_strip_status_t st;
+    if (ul_ws_get_status(i, &st) && st.enabled) {
+      s_ws_saved_bri[i] = st.brightness;
+      s_ws_saved_valid[i] = true;
+    } else {
+      s_ws_saved_valid[i] = false;
+    }
+  }
+}
+
+static void remember_rgb_brightness(void) {
+  for (int i = 0; i < UL_RGB_MAX_STRIPS; ++i) {
+    ul_rgb_strip_status_t st;
+    if (ul_rgb_get_status(i, &st) && st.enabled) {
+      s_rgb_saved_bri[i] = st.brightness;
+      s_rgb_saved_valid[i] = true;
+    } else {
+      s_rgb_saved_valid[i] = false;
+    }
+  }
+}
+
+static void remember_white_brightness(void) {
+  for (int i = 0; i < UL_WHITE_MAX_CHANNELS; ++i) {
+    ul_white_ch_status_t st;
+    if (ul_white_get_status(i, &st) && st.enabled) {
+      s_white_saved_bri[i] = st.brightness;
+      s_white_saved_valid[i] = true;
+    } else {
+      s_white_saved_valid[i] = false;
+    }
+  }
+}
+
+static void dim_all_lights(void) {
+  if (s_lights_dimmed)
+    return;
+
+  remember_ws_brightness();
+  remember_rgb_brightness();
+  remember_white_brightness();
+
+  for (int i = 0; i < UL_WS_MAX_STRIPS; ++i) {
+    if (s_ws_saved_valid[i]) {
+      ul_ws_set_brightness(i, 0);
+    }
+  }
+
+  for (int i = 0; i < UL_RGB_MAX_STRIPS; ++i) {
+    if (s_rgb_saved_valid[i]) {
+      ul_rgb_set_brightness(i, 0);
+    }
+  }
+
+  for (int i = 0; i < UL_WHITE_MAX_CHANNELS; ++i) {
+    if (s_white_saved_valid[i]) {
+      ul_white_set_brightness(i, 0);
+    }
+  }
+
+  s_lights_dimmed = true;
+}
+
+static void restore_all_lights(void) {
+  if (!s_lights_dimmed)
+    return;
+
+  for (int i = 0; i < UL_WS_MAX_STRIPS; ++i) {
+    if (s_ws_saved_valid[i]) {
+      ul_ws_set_brightness(i, s_ws_saved_bri[i]);
+      s_ws_saved_valid[i] = false;
+    }
+  }
+
+  for (int i = 0; i < UL_RGB_MAX_STRIPS; ++i) {
+    if (s_rgb_saved_valid[i]) {
+      ul_rgb_set_brightness(i, s_rgb_saved_bri[i]);
+      s_rgb_saved_valid[i] = false;
+    }
+  }
+
+  for (int i = 0; i < UL_WHITE_MAX_CHANNELS; ++i) {
+    if (s_white_saved_valid[i]) {
+      ul_white_set_brightness(i, s_white_saved_bri[i]);
+      s_white_saved_valid[i] = false;
+    }
+  }
+
+  s_lights_dimmed = false;
+}
+
 // JSON helpers (defined later)
 
 static int starts_with(const char *s, const char *pfx) {
@@ -348,6 +453,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_CONNECTED: {
     ESP_LOGI(TAG, "MQTT connected");
     s_ready = true;
+    restore_all_lights();
     if (ul_core_is_connected()) {
       char topic[128];
       snprintf(topic, sizeof(topic), "ul/%s/cmd/#", ul_core_get_node_id());
@@ -360,6 +466,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGW(TAG, "MQTT disconnected");
     s_ready = false;
+    dim_all_lights();
     break;
   case MQTT_EVENT_DATA:
     on_message(event);
