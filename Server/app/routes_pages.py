@@ -1,8 +1,11 @@
 from collections import defaultdict
 
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+
 from .config import settings
 from . import registry
 from .effects import (
@@ -35,10 +38,11 @@ def home(request: Request):
     )
 
 
-@router.get("/admin", response_class=HTMLResponse)
-def admin_panel(request: Request):
-    nodes = []
+  def _collect_admin_nodes(house_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    nodes: List[Dict[str, Any]] = []
     for house, room, node in registry.iter_nodes():
+        if house_id and house and house.get("id") != house_id:
+            continue
         house_name = ""
         room_name = ""
         node_name = ""
@@ -58,15 +62,69 @@ def admin_panel(request: Request):
             }
         )
     nodes.sort(key=lambda item: (item["house"].lower(), item["room"].lower(), item["name"].lower()))
+    return nodes
+
+
+def _admin_template_context(
+    request: Request,
+    *,
+    nodes: List[Dict[str, Any]],
+    title: str,
+    subtitle: str,
+    heading: Optional[str] = None,
+    description: Optional[str] = None,
+    status_house_id: Optional[str] = None,
+):
+    return {
+        "request": request,
+        "nodes": nodes,
+        "title": title,
+        "subtitle": subtitle,
+        "heading": heading or title,
+        "description": description
+        or "Monitor node heartbeats and trigger OTA checks.",
+        "status_timeout": status_monitor.timeout,
+        "status_house_id": status_house_id,
+    }
+
+
+@router.get("/admin", response_class=HTMLResponse)
+def admin_panel(request: Request):
+    nodes = _collect_admin_nodes()
     return templates.TemplateResponse(
         "admin.html",
-        {
-            "request": request,
-            "nodes": nodes,
-            "title": "Admin Panel",
-            "subtitle": "System status",
-            "status_timeout": status_monitor.timeout,
-        },
+        _admin_template_context(
+            request,
+            nodes=nodes,
+            title="Admin Panel",
+            subtitle="System status",
+            heading="Admin Panel",
+        ),
+    )
+
+
+@router.get("/admin/house/{house_id}", response_class=HTMLResponse)
+def admin_house_panel(request: Request, house_id: str):
+    house = registry.find_house(house_id)
+    if not house:
+        return templates.TemplateResponse(
+            "base.html",
+            {"request": request, "content": "Unknown house"},
+            status_code=404,
+        )
+    house_name = house.get("name") or house.get("id") or house_id
+    nodes = _collect_admin_nodes(house_id)
+    return templates.TemplateResponse(
+        "admin.html",
+        _admin_template_context(
+            request,
+            nodes=nodes,
+            title=f"{house_name} Admin",
+            subtitle=f"{house_name} status",
+            heading=f"{house_name} Admin",
+            description=f"Monitor node heartbeats for {house_name}.",
+            status_house_id=house_id,
+        ),
     )
 
 
