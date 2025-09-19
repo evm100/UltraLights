@@ -5,6 +5,7 @@
 #include "mqtt_client.h"
 #include "sdkconfig.h"
 #include "ul_core.h"
+#include "ul_state.h"
 #include "ul_ota.h"
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
@@ -322,11 +323,14 @@ void ul_mqtt_publish_ota_event(const char *status, const char *detail) {
   cJSON_Delete(root);
 }
 
-static void handle_cmd_ws_set(cJSON *root) {
+static bool handle_cmd_ws_set(cJSON *root, int *out_strip) {
   int strip = 0;
   cJSON *jstrip = cJSON_GetObjectItem(root, "strip");
   if (jstrip && cJSON_IsNumber(jstrip))
     strip = jstrip->valueint;
+
+  if (out_strip)
+    *out_strip = strip;
 
   const char *effect = NULL;
   cJSON *jeffect = cJSON_GetObjectItem(root, "effect");
@@ -346,13 +350,17 @@ static void handle_cmd_ws_set(cJSON *root) {
   }
 
   publish_ws_ack(strip, effect, params, ok);
+  return (!effect || ok);
 }
 
-static void handle_cmd_rgb_set(cJSON *root) {
+static bool handle_cmd_rgb_set(cJSON *root, int *out_strip) {
   int strip = 0;
   cJSON *jstrip = cJSON_GetObjectItem(root, "strip");
   if (jstrip && cJSON_IsNumber(jstrip))
     strip = jstrip->valueint;
+
+  if (out_strip)
+    *out_strip = strip;
 
   int brightness = 255;
   cJSON *jbri = cJSON_GetObjectItem(root, "brightness");
@@ -377,9 +385,21 @@ static void handle_cmd_rgb_set(cJSON *root) {
   }
 
   publish_rgb_ack(strip, effect, params, brightness, ok);
+  return (!effect || ok);
 }
 
-static void handle_cmd_white_set(cJSON *root) { ul_white_apply_json(root); }
+static bool handle_cmd_white_set(cJSON *root, int *out_channel) {
+  int channel = 0;
+  cJSON *jch = cJSON_GetObjectItem(root, "channel");
+  if (jch && cJSON_IsNumber(jch))
+    channel = jch->valueint;
+
+  if (out_channel)
+    *out_channel = channel;
+
+  ul_white_apply_json(root);
+  return true;
+}
 static void on_message(esp_mqtt_event_handle_t event) {
   // topic expected: ul/<node>/cmd/...
   char node[64] = {0};
@@ -423,10 +443,18 @@ static void on_message(esp_mqtt_event_handle_t event) {
     const char *sub = cmdroot + 4; // skip "cmd/"
     if (starts_with(sub, "ws/set")) {
       override_index_from_path(root, sub, "ws/set", "strip");
-      handle_cmd_ws_set(root);
+      int strip = 0;
+      bool applied = handle_cmd_ws_set(root, &strip);
+      if (applied && event->data && event->data_len > 0) {
+        ul_state_record_ws(strip, event->data, event->data_len);
+      }
     } else if (starts_with(sub, "rgb/set")) {
       override_index_from_path(root, sub, "rgb/set", "strip");
-      handle_cmd_rgb_set(root);
+      int strip = 0;
+      bool applied = handle_cmd_rgb_set(root, &strip);
+      if (applied && event->data && event->data_len > 0) {
+        ul_state_record_rgb(strip, event->data, event->data_len);
+      }
       ul_mqtt_publish_status();
     } else if (starts_with(sub, "ota/check")) {
       ul_mqtt_publish_status();
@@ -435,7 +463,11 @@ static void on_message(esp_mqtt_event_handle_t event) {
     }
     else if (starts_with(sub, "white/set")) {
       override_index_from_path(root, sub, "white/set", "channel");
-      handle_cmd_white_set(root);
+      int channel = 0;
+      bool applied = handle_cmd_white_set(root, &channel);
+      if (applied && event->data && event->data_len > 0) {
+        ul_state_record_white(channel, event->data, event->data_len);
+      }
       ul_mqtt_publish_status();
     } else if (starts_with(sub, "status")) {
       ul_mqtt_publish_status_now();
@@ -517,16 +549,26 @@ void ul_mqtt_run_local(const char *path, const char *json) {
   cJSON *root = cJSON_Parse(json);
   if (!root)
     return;
+  size_t payload_len = strlen(json);
   if (starts_with(path, "ws/set")) {
     override_index_from_path(root, path, "ws/set", "strip");
-    handle_cmd_ws_set(root);
+    int strip = 0;
+    if (handle_cmd_ws_set(root, &strip) && payload_len > 0) {
+      ul_state_record_ws(strip, json, payload_len);
+    }
   } else if (starts_with(path, "rgb/set")) {
     override_index_from_path(root, path, "rgb/set", "strip");
-    handle_cmd_rgb_set(root);
+    int strip = 0;
+    if (handle_cmd_rgb_set(root, &strip) && payload_len > 0) {
+      ul_state_record_rgb(strip, json, payload_len);
+    }
     ul_mqtt_publish_status();
   } else if (starts_with(path, "white/set")) {
     override_index_from_path(root, path, "white/set", "channel");
-    handle_cmd_white_set(root);
+    int channel = 0;
+    if (handle_cmd_white_set(root, &channel) && payload_len > 0) {
+      ul_state_record_white(channel, json, payload_len);
+    }
   }
   cJSON_Delete(root);
 }
