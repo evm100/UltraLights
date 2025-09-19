@@ -14,6 +14,7 @@ from .presets import (
 )
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
+from .motion_prefs import motion_preferences
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
 from .channel_names import channel_names
@@ -425,6 +426,51 @@ def api_apply_preset(house_id: str, room_id: str, preset_id: str):
         raise HTTPException(404, "Unknown preset")
     apply_preset(get_bus(), preset)
     return {"ok": True}
+
+
+@router.get("/api/house/{house_id}/room/{room_id}/motion-immune")
+def api_get_motion_immune(house_id: str, room_id: str):
+    house, room = registry.find_room(house_id, room_id)
+    if not house or not room:
+        raise HTTPException(404, "Unknown room")
+    immune = sorted(motion_preferences.get_room_immune_nodes(house_id, room_id))
+    return {"house_id": house_id, "room_id": room_id, "immune": immune}
+
+
+@router.post("/api/house/{house_id}/room/{room_id}/motion-immune")
+def api_set_motion_immune(house_id: str, room_id: str, payload: Dict[str, Any]):
+    house, room = registry.find_room(house_id, room_id)
+    if not house or not room:
+        raise HTTPException(404, "Unknown room")
+
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "invalid payload")
+
+    raw_list = payload.get("immune", [])
+    if raw_list is None:
+        raw_list = []
+    if not isinstance(raw_list, list):
+        raise HTTPException(400, "invalid immune list")
+
+    available_nodes = {
+        str(node.get("id"))
+        for node in room.get("nodes", [])
+        if node.get("id") is not None
+    }
+
+    clean_list: list[str] = []
+    for value in raw_list:
+        node_id = str(value).strip()
+        if not node_id:
+            continue
+        if node_id not in available_nodes:
+            raise HTTPException(400, f"unknown node: {node_id}")
+        if node_id not in clean_list:
+            clean_list.append(node_id)
+
+    stored = motion_preferences.set_room_immune_nodes(house_id, room_id, clean_list)
+    immune = sorted(stored)
+    return {"ok": True, "immune": immune}
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/motion-schedule")

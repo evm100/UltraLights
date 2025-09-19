@@ -8,6 +8,7 @@ from .config import settings
 from .mqtt_bus import MqttBus, topic_cmd
 from .presets import get_preset, apply_preset
 from .motion_schedule import motion_schedule
+from .motion_prefs import motion_preferences
 from . import registry
 
 SPECIAL_ROOM_PRESETS = {
@@ -42,6 +43,7 @@ class MotionManager:
         self.room_sensors: Dict[Tuple[str, str], Dict[str, Any]] = {}
         self._status_request_lock = threading.Lock()
         self._status_request_times: Dict[str, float] = {}
+        self.motion_preferences = motion_preferences
 
     def start(self) -> None:
         self._seed_room_sensors_from_config()
@@ -77,6 +79,7 @@ class MotionManager:
                     self.room_sensors.pop(key, None)
         with self._status_request_lock:
             self._status_request_times.pop(node_id, None)
+        self.motion_preferences.remove_node(node_id)
 
     def ensure_room_loaded(self, house_id: str, room_id: str) -> None:
         house, room = registry.find_room(house_id, room_id)
@@ -154,8 +157,11 @@ class MotionManager:
             if not entry.get("on"):
                 preset = get_preset(house["id"], room_id, preset_on)
                 if preset:
-                    apply_preset(self.bus, preset)
-                entry["on"] = True
+                    applied = self._apply_motion_preset(
+                        house["id"], room_id, preset
+                    )
+                    if applied:
+                        entry["on"] = True
             return
 
         entry = self.active.setdefault(
@@ -173,7 +179,7 @@ class MotionManager:
         preset_id = "motion-far" + ("-repeat" if repeat else "")
         preset = get_preset(entry["house_id"], room_id, preset_id)
         if preset:
-            apply_preset(self.bus, preset)
+            self._apply_motion_preset(entry["house_id"], room_id, preset)
 
     def _turn_off_special(self, room_id: str) -> None:
         entry = self.active.get(room_id)
@@ -189,9 +195,18 @@ class MotionManager:
             off_hint = special.get("off")
             if off_hint:
                 preset_off = get_preset(house_id, room_id, off_hint)
+        applied = False
         if preset_off:
-            apply_preset(self.bus, preset_off)
-        elif node_id and off_hint:
+            applied = self._apply_motion_preset(house_id, room_id, preset_off)
+        immune_nodes = self.motion_preferences.get_room_immune_nodes(
+            house_id, room_id
+        )
+        if (
+            not applied
+            and node_id
+            and off_hint
+            and node_id not in immune_nodes
+        ):
             self.bus.pub(topic_cmd(node_id, "motion/hint"), {"hint": off_hint})
         self.active.pop(room_id, None)
 
@@ -207,7 +222,7 @@ class MotionManager:
             preset_id = "motion-far-off"
             preset = get_preset(house_id, room_id, preset_id)
             if preset:
-                apply_preset(self.bus, preset)
+                self._apply_motion_preset(house_id, room_id, preset)
         if not timers:
             self.active.pop(room_id, None)
 
@@ -395,6 +410,45 @@ class MotionManager:
             return json.loads(text)
         except Exception:
             return None
+
+    def _apply_motion_preset(
+        self, house_id: str, room_id: str, preset: Optional[Dict[str, Any]]
+    ) -> bool:
+        if not preset or not isinstance(preset, dict):
+            return False
+
+        immune = self.motion_preferences.get_room_immune_nodes(house_id, room_id)
+        if not immune:
+            apply_preset(self.bus, preset)
+            return True
+
+        actions = preset.get("actions")
+        if not isinstance(actions, list):
+            apply_preset(self.bus, preset)
+            return True
+
+        filtered_actions = []
+        removed = False
+        for action in actions:
+            if isinstance(action, dict):
+                node_raw = action.get("node")
+                node_id = str(node_raw).strip() if node_raw is not None else ""
+                if node_id and node_id in immune:
+                    removed = True
+                    continue
+            filtered_actions.append(action)
+
+        if not filtered_actions:
+            return False
+
+        if not removed:
+            apply_preset(self.bus, preset)
+            return True
+
+        filtered_preset = dict(preset)
+        filtered_preset["actions"] = filtered_actions
+        apply_preset(self.bus, filtered_preset)
+        return True
 
     def _ensure_room_sensor_entry(
         self,

@@ -72,6 +72,12 @@ class Settings:
             str(Path(__file__).with_name("custom_presets.json")),
         )
     )
+    MOTION_PREFS_FILE = Path(
+        os.getenv(
+            "MOTION_PREFS_FILE",
+            str(Path(__file__).with_name("motion_prefs.json")),
+        )
+    )
     BRIGHTNESS_LIMITS_FILE = Path(
         os.getenv(
             "BRIGHTNESS_LIMITS_FILE",
