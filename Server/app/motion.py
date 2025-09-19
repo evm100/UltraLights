@@ -23,7 +23,7 @@ SPECIAL_ROOM_PRESETS = {
 
 class MotionManager:
     def __init__(self) -> None:
-        self.bus = MqttBus()
+        self.bus = MqttBus(client_id="ultralights-motion")
         self.client = mqtt.Client()
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
