@@ -34,7 +34,13 @@ class MqttBus:
         self._rate_thread.start()
         self.thread.start()
 
-    def pub(self, topic: str, payload: Dict[str, object], retain: bool = False):
+    def pub(
+        self,
+        topic: str,
+        payload: Dict[str, object],
+        retain: bool = False,
+        rate_limited: bool = True,
+    ):
         """Publish a command payload to the given topic.
 
         Most commands should *not* be retained to prevent them from being
@@ -42,10 +48,20 @@ class MqttBus:
         those commands, such as ``ws/set`` and ``white/set``, where remembering
         the last value is desirable so lights resume their previous state after
         reconnecting.
+
+        When ``rate_limited`` is ``True`` (the default), commands destined for a
+        specific node are throttled so firmware is not flooded.  Setting
+        ``rate_limited`` to ``False`` bypasses the queue entirely so commands
+        publish immediately.
         """
         node_id = self._node_from_topic(topic)
         payload_json = json.dumps(payload)
         if not node_id:
+            self.client.publish(topic, payload=payload_json, qos=1, retain=retain)
+            return
+        if not rate_limited:
+            with self._rate_condition:
+                self._pending_commands.pop(node_id, None)
             self.client.publish(topic, payload=payload_json, qos=1, retain=retain)
             return
         with self._rate_condition:
@@ -111,6 +127,7 @@ class MqttBus:
         effect: str,
         brightness: int,
         params: Optional[List[Union[float, str]]] = None,
+        rate_limited: bool = True,
     ):
         msg: Dict[str, object] = {
             "strip": int(strip),
@@ -121,7 +138,12 @@ class MqttBus:
         # Retain state per-strip by publishing to a unique sub-topic.  The
         # ``strip`` field is kept in the payload for compatibility with older
         # firmware that still expects it.
-        self.pub(topic_cmd(node_id, f"ws/set/{strip}"), msg, retain=True)
+        self.pub(
+            topic_cmd(node_id, f"ws/set/{strip}"),
+            msg,
+            retain=True,
+            rate_limited=rate_limited,
+        )
 
     # ---- RGB strip commands ----
     def rgb_set(
@@ -131,6 +153,7 @@ class MqttBus:
         effect: str,
         brightness: int,
         params: Optional[List[int]] = None,
+        rate_limited: bool = True,
     ):
         msg: Dict[str, object] = {
             "strip": int(strip),
@@ -138,7 +161,12 @@ class MqttBus:
             "brightness": int(brightness),
             "params": params if params is not None else [],
         }
-        self.pub(topic_cmd(node_id, f"rgb/set/{strip}"), msg, retain=True)
+        self.pub(
+            topic_cmd(node_id, f"rgb/set/{strip}"),
+            msg,
+            retain=True,
+            rate_limited=rate_limited,
+        )
 
     # ---- White channel commands ----
     def white_set(
@@ -148,6 +176,7 @@ class MqttBus:
         effect: str,
         brightness: int,
         params: Optional[List[float]] = None,
+        rate_limited: bool = True,
     ):
         msg: Dict[str, object] = {
             "channel": int(channel),
@@ -157,7 +186,12 @@ class MqttBus:
         }
         # Publish to a channel-specific topic so each retained message stores
         # the last state for that channel independently.
-        self.pub(topic_cmd(node_id, f"white/set/{channel}"), msg, retain=True)
+        self.pub(
+            topic_cmd(node_id, f"white/set/{channel}"),
+            msg,
+            retain=True,
+            rate_limited=rate_limited,
+        )
 
     # ---- Sensor commands ----
     def sensor_motion_program(self, node_id: str, states: Dict[str, object]):

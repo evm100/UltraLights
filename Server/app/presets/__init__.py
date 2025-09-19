@@ -182,15 +182,22 @@ def apply_preset(bus: MqttBus, preset: Dict[str, Any]) -> None:
         if module == "ws":
             strip = _coerce_int(raw_action.get("strip"), default=0)
             params = _normalize_sequence(raw_action.get("params"))
-            bus.ws_set(node, strip, effect, brightness, params)
+            bus.ws_set(node, strip, effect, brightness, params, rate_limited=False)
         elif module == "rgb":
             strip = _coerce_int(raw_action.get("strip"), default=0)
             params = _normalize_rgb_params(raw_action.get("params"))
-            bus.rgb_set(node, strip, effect, brightness, params)
+            bus.rgb_set(node, strip, effect, brightness, params, rate_limited=False)
         elif module == "white":
             channel = _coerce_int(raw_action.get("channel"), default=0)
             params = _normalize_sequence(raw_action.get("params"))
-            bus.white_set(node, channel, effect, brightness, params)
+            bus.white_set(
+                node,
+                channel,
+                effect,
+                brightness,
+                params,
+                rate_limited=False,
+            )
         else:
             # Unknown action type; ignore for now.
             continue
