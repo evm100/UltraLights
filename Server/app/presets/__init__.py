@@ -62,8 +62,10 @@ def list_custom_presets(house_id: str, room_id: str) -> List[Dict[str, Any]]:
 def save_custom_preset(house_id: str, room_id: str, preset: Dict[str, Any]) -> Dict[str, Any]:
     """Persist ``preset`` for ``house_id``/``room_id``.
 
-    The preset definition is normalized so each action carries the metadata
-    required for :func:`reverse_preset`.
+    The preset definition is normalized so identifiers are sanitized and each
+    action is deep-copied before persisting.  Metadata such as
+    ``_action_type`` remains optional so user-supplied actions pass through as
+    provided.
     """
 
     normalized = _normalize_custom_preset(preset)
@@ -175,7 +177,7 @@ def _normalize_custom_preset(preset: Dict[str, Any]) -> Dict[str, Any]:
     for action in actions:
         if not isinstance(action, dict):
             raise TypeError("preset actions must be dictionaries")
-        clean_actions.append(_ensure_action_metadata(action))
+        clean_actions.append(deepcopy(action))
 
     clean: Dict[str, Any] = {
         key: deepcopy(value)
@@ -186,19 +188,6 @@ def _normalize_custom_preset(preset: Dict[str, Any]) -> Dict[str, Any]:
     clean["name"] = name
     clean["actions"] = clean_actions
     return clean
-
-
-def _ensure_action_metadata(action: Dict[str, Any]) -> ActionDict:
-    action_type = action.get("_action_type")
-    if not isinstance(action_type, str) or not action_type:
-        action_type = action.get("action_type")
-    if not isinstance(action_type, str) or not action_type:
-        raise ValueError("action is missing 'action_type' metadata")
-
-    payload = deepcopy(action)
-    payload.pop("_action_type", None)
-    payload.pop("action_type", None)
-    return with_action_type(action_type, payload)
 
 
 def _as_list(value: Any) -> List[Any]:
