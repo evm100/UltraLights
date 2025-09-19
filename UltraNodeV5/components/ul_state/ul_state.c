@@ -22,6 +22,7 @@
 #define UL_STATE_MAX_PAYLOAD 1024
 #define UL_STATE_FLUSH_DELAY_US (3ULL * 1000000ULL)
 
+
 static const char *TAG = "ul_state";
 
 typedef enum {
