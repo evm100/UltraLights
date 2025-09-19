@@ -11,9 +11,9 @@
   <div class="mb-3">
     <label class="text-xs opacity-70">Effect</label>
     <select id="wEffect" class="w-full p-1 bg-slate-900 rounded border border-slate-700">
-      <option value="" selected disabled>Select effect</option>
+      <option value="" disabled>Select effect</option>
       {% for eff in w_effects %}
-      <option value="{{ eff }}">{{ eff }}</option>
+      <option value="{{ eff }}"{% if eff == 'solid' %} selected{% endif %}>{{ eff }}</option>
       {% endfor %}
     </select>
     <div id="wParams" class="mt-2 space-y-2"></div>

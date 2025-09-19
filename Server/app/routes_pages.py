@@ -1,4 +1,7 @@
 from collections import defaultdict
+from typing import Any
+
+from typing import Any, Dict, List, Optional
 
 from typing import Any, Dict, List, Optional
 
@@ -23,9 +26,95 @@ from .presets import get_room_presets
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
+from .brightness_limits import brightness_limits
+
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+
+_FALSEY_STRINGS = {"", "0", "false", "no", "off", "disabled", "inactive"}
+
+
+def _coerce_enabled(value: Any) -> bool:
+    """Return ``True`` when ``value`` represents an enabled module."""
+
+    if isinstance(value, str):
+        return value.strip().lower() not in _FALSEY_STRINGS
+    return bool(value)
+
+
+def _module_entry_enabled(config: Any) -> bool:
+    """Determine whether a module configuration marks the module as enabled."""
+
+    if isinstance(config, dict):
+        if "enabled" in config:
+            return _coerce_enabled(config.get("enabled"))
+        return True
+    return _coerce_enabled(config)
+
+
+def _enabled_module_keys(node: dict[str, Any]) -> list[str]:
+    """Extract enabled module keys from ``node`` preserving declaration order."""
+
+    modules = node.get("modules")
+    if not modules:
+        return []
+
+    result: list[str] = []
+
+    if isinstance(modules, dict):
+        for key, cfg in modules.items():
+            key_str = str(key).strip()
+            if not key_str:
+                continue
+            if _module_entry_enabled(cfg):
+                result.append(key_str)
+        return result
+
+    if isinstance(modules, (list, tuple)):
+        for entry in modules:
+            if isinstance(entry, str):
+                key_str = entry.strip()
+                if key_str:
+                    result.append(key_str)
+                continue
+            if isinstance(entry, dict):
+                name = (
+                    entry.get("key")
+                    or entry.get("module")
+                    or entry.get("id")
+                    or entry.get("name")
+                )
+                if not name:
+                    continue
+                key_str = str(name).strip()
+                if not key_str:
+                    continue
+                if _module_entry_enabled(entry):
+                    result.append(key_str)
+                continue
+            if entry is None:
+                continue
+            key_str = str(entry).strip()
+            if key_str:
+                result.append(key_str)
+        return result
+
+    if isinstance(modules, set):
+        for entry in modules:
+            if entry is None:
+                continue
+            key_str = str(entry).strip()
+            if key_str:
+                result.append(key_str)
+        return result
+
+    if isinstance(modules, str):
+        key_str = modules.strip()
+        return [key_str] if key_str else []
+
+    return []
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -239,6 +328,8 @@ def node_page(request: Request, node_id: str):
     else:
         subtitle = None
 
+    enabled_modules = _enabled_module_keys(node)
+
     missing = [eff for eff in WS_EFFECTS if eff not in WS_PARAM_DEFS]
     if missing:
         import logging
@@ -281,5 +372,7 @@ def node_page(request: Request, node_id: str):
             "rgb_param_defs": RGB_PARAM_DEFS,
             "status_timeout": status_monitor.timeout,
             "status_initial_online": status_initial_online,
+            "brightness_limits": brightness_limits.get_limits_for_node(node["id"]),
+            "node_modules": enabled_modules,
         },
     )
