@@ -72,6 +72,12 @@ class Settings:
             str(Path(__file__).with_name("brightness_limits.json")),
         )
     )
+    CHANNEL_NAMES_FILE = Path(
+        os.getenv(
+            "CHANNEL_NAMES_FILE",
+            str(Path(__file__).with_name("channel_names.json")),
+        )
+    )
     if REGISTRY_FILE.exists():
         DEVICE_REGISTRY = json.loads(REGISTRY_FILE.read_text())
     else:

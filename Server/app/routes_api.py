@@ -9,6 +9,7 @@ from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
+from .channel_names import channel_names
 
 
 router = APIRouter()
@@ -52,6 +53,7 @@ def _normalize_light_entries(
     limits: Dict[str, int],
     *,
     include_color: bool = False,
+    names: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     result: Dict[str, Dict[str, Any]] = {}
     if not isinstance(items, list):
@@ -94,6 +96,21 @@ def _normalize_light_entries(
                     while len(clean_color) < 3:
                         clean_color.append(0)
                     entry["color"] = clean_color[:3]
+        name_value: Optional[str] = None
+        raw_name = item.get("name")
+        if isinstance(raw_name, str):
+            clean_name = raw_name.strip()
+            if clean_name:
+                name_value = clean_name
+        if isinstance(names, dict):
+            stored = names.get(str(index))
+            if isinstance(stored, str):
+                clean_stored = stored.strip()
+                if clean_stored:
+                    name_value = clean_stored
+        if name_value:
+            entry["name"] = name_value
+
         limit = limits.get(str(index))
         if limit is not None:
             entry["limit"] = int(limit)
@@ -113,26 +130,38 @@ def _format_node_state(
         uptime_value = max(0, int(uptime))
 
     limits = _normalize_limits(brightness_limits.get_limits_for_node(node_id))
+    name_map = channel_names.get_names_for_node(node_id)
 
     modules: Dict[str, Any] = {}
     available: set[str] = set()
 
     ws_state = _normalize_light_entries(
-        payload.get("ws"), "strip", limits.get("ws", {}), include_color=True
+        payload.get("ws"),
+        "strip",
+        limits.get("ws", {}),
+        include_color=True,
+        names=name_map.get("ws", {}),
     )
     if ws_state:
         modules["ws"] = ws_state
         available.add("ws")
 
     rgb_state = _normalize_light_entries(
-        payload.get("rgb"), "strip", limits.get("rgb", {}), include_color=True
+        payload.get("rgb"),
+        "strip",
+        limits.get("rgb", {}),
+        include_color=True,
+        names=name_map.get("rgb", {}),
     )
     if rgb_state:
         modules["rgb"] = rgb_state
         available.add("rgb")
 
     white_state = _normalize_light_entries(
-        payload.get("white"), "channel", limits.get("white", {})
+        payload.get("white"),
+        "channel",
+        limits.get("white", {}),
+        names=name_map.get("white", {}),
     )
     if white_state:
         modules["white"] = white_state
@@ -378,6 +407,28 @@ def api_set_brightness_limit(node_id: str, module: str, payload: Dict[str, Any])
         raise HTTPException(400, "invalid limit")
     stored = brightness_limits.set_limit(node_id, module_key, channel, value)
     return {"ok": True, "limit": stored}
+
+
+@router.post("/api/node/{node_id}/{module}/channel-name")
+def api_set_channel_name(node_id: str, module: str, payload: Dict[str, Any]):
+    node = _valid_node(node_id)
+    module_key = str(module).lower()
+    if module_key not in {"ws", "white", "rgb"}:
+        raise HTTPException(404, "unsupported module")
+    if module_key not in node.get("modules", []):
+        raise HTTPException(404, "module not available")
+    try:
+        channel = int(payload.get("channel"))
+    except Exception:
+        raise HTTPException(400, "invalid channel")
+    if not 0 <= channel < 4:
+        raise HTTPException(400, "invalid channel")
+    name = payload.get("name")
+    if name is not None and not isinstance(name, str):
+        raise HTTPException(400, "invalid name")
+    stored = channel_names.set_name(node_id, module_key, channel, name)
+    return {"ok": True, "name": stored}
+
 
 @router.post("/api/node/{node_id}/motion")
 def api_node_motion(node_id: str, payload: Dict[str, Any]):
