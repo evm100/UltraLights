@@ -2,8 +2,8 @@
 {% block content %}
 <div class="mb-6 flex flex-col md:flex-row md:items-end md:justify-between gap-2">
   <div>
-    <h2 class="text-3xl font-semibold">Admin Panel</h2>
-    <p class="text-sm opacity-70">Monitor node heartbeats and trigger OTA checks.</p>
+    <h2 class="text-3xl font-semibold">{{ heading }}</h2>
+    <p class="text-sm opacity-70">{{ description }}</p>
   </div>
   <div class="text-xs opacity-70">
     <div>Healthy if last <code>{"status": "ok"}</code> within {{ status_timeout }}s.</div>
@@ -47,6 +47,8 @@
 
 <script>
 const STATUS_TIMEOUT = {{ status_timeout }};
+const STATUS_HOUSE_ID = {{ status_house_id|tojson }};
+const STATUS_URL = STATUS_HOUSE_ID ? `/api/admin/status?house_id=${encodeURIComponent(STATUS_HOUSE_ID)}` : '/api/admin/status';
 const refreshLabel = document.getElementById('statusRefresh');
 const errorEl = document.getElementById('statusError');
 const dots = Array.from(document.querySelectorAll('[data-node-status]'));
@@ -78,7 +80,7 @@ dots.forEach((dot) => setDot(dot, false));
 
 async function refreshStatuses() {
   try {
-    const res = await fetch('/api/admin/status');
+    const res = await fetch(STATUS_URL);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     errorEl.classList.add('hidden');
