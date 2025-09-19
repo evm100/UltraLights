@@ -279,7 +279,7 @@ def node_page(request: Request, node_id: str):
             "ws_effects": WS_EFFECTS,
             "ws_effect_groups": ws_effect_groups,
             "ws_effect_tiers": WS_EFFECT_TIERS,
-            "white_effects": WHITE_EFFECTS,
+            "white_effects": sorted(WHITE_EFFECTS),
             "rgb_effects": sorted(RGB_EFFECTS),
             "ws_param_defs": WS_PARAM_DEFS,
             "white_param_defs": WHITE_PARAM_DEFS,
