@@ -27,6 +27,143 @@ def _valid_node(node_id: str) -> Dict[str, Any]:
     raise HTTPException(404, "Unknown node id")
 
 
+def _normalize_limits(raw_limits: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:
+    cleaned: Dict[str, Dict[str, int]] = {}
+    for module, channels in raw_limits.items():
+        if not isinstance(channels, dict):
+            continue
+        module_key = str(module)
+        module_limits: Dict[str, int] = {}
+        for channel, value in channels.items():
+            channel_key = str(channel)
+            try:
+                limit_value = int(value)
+            except (TypeError, ValueError):
+                continue
+            module_limits[channel_key] = max(0, min(255, limit_value))
+        if module_limits:
+            cleaned[module_key] = module_limits
+    return cleaned
+
+
+def _normalize_light_entries(
+    items: Any,
+    index_key: str,
+    limits: Dict[str, int],
+    *,
+    include_color: bool = False,
+) -> Dict[str, Dict[str, Any]]:
+    result: Dict[str, Dict[str, Any]] = {}
+    if not isinstance(items, list):
+        return result
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        raw_index = item.get(index_key)
+        try:
+            index = int(raw_index)
+        except (TypeError, ValueError):
+            continue
+        entry: Dict[str, Any] = {}
+        entry["enabled"] = bool(item.get("enabled"))
+        effect = item.get("effect")
+        if isinstance(effect, str):
+            entry["effect"] = effect
+        brightness = item.get("brightness")
+        if isinstance(brightness, (int, float)):
+            entry["brightness"] = max(0, min(255, int(brightness)))
+        params = item.get("params")
+        if isinstance(params, list):
+            clean_params: List[Any] = []
+            for value in params:
+                if isinstance(value, (int, float)):
+                    clean_params.append(float(value))
+                elif isinstance(value, str):
+                    clean_params.append(value)
+            entry["params"] = clean_params
+        if include_color:
+            color = item.get("color")
+            if isinstance(color, list):
+                clean_color: List[int] = []
+                for value in color[:3]:
+                    try:
+                        clean_color.append(max(0, min(255, int(value))))
+                    except (TypeError, ValueError):
+                        clean_color.append(0)
+                if clean_color:
+                    while len(clean_color) < 3:
+                        clean_color.append(0)
+                    entry["color"] = clean_color[:3]
+        limit = limits.get(str(index))
+        if limit is not None:
+            entry["limit"] = int(limit)
+        result[str(index)] = entry
+    return result
+
+
+def _format_node_state(
+    node_id: str,
+    node: Dict[str, Any],
+    seq: int,
+    payload: Dict[str, Any],
+) -> Dict[str, Any]:
+    uptime_value: Optional[int] = None
+    uptime = payload.get("uptime_s")
+    if isinstance(uptime, (int, float)):
+        uptime_value = max(0, int(uptime))
+
+    limits = _normalize_limits(brightness_limits.get_limits_for_node(node_id))
+
+    modules: Dict[str, Any] = {}
+    available: set[str] = set()
+
+    ws_state = _normalize_light_entries(
+        payload.get("ws"), "strip", limits.get("ws", {}), include_color=True
+    )
+    if ws_state:
+        modules["ws"] = ws_state
+        available.add("ws")
+
+    rgb_state = _normalize_light_entries(
+        payload.get("rgb"), "strip", limits.get("rgb", {}), include_color=True
+    )
+    if rgb_state:
+        modules["rgb"] = rgb_state
+        available.add("rgb")
+
+    white_state = _normalize_light_entries(
+        payload.get("white"), "channel", limits.get("white", {})
+    )
+    if white_state:
+        modules["white"] = white_state
+        available.add("white")
+
+    ota_payload = payload.get("ota")
+    if isinstance(ota_payload, dict) and ota_payload:
+        modules["ota"] = ota_payload
+        available.add("ota")
+
+    registry_modules = node.get("modules")
+    if isinstance(registry_modules, list):
+        for mod in registry_modules:
+            mod_key = str(mod)
+            if mod_key not in {"ws", "rgb", "white"}:
+                available.add(mod_key)
+
+    available_modules = sorted(available)
+    if not available_modules and isinstance(registry_modules, list):
+        available_modules = [str(mod) for mod in registry_modules]
+
+    return {
+        "node": node_id,
+        "seq": seq,
+        "uptime_s": uptime_value,
+        "modules": modules,
+        "limits": limits,
+        "available_modules": available_modules,
+    }
+
+
 @router.delete("/api/node/{node_id}")
 def api_remove_node(node_id: str):
     house, room, node = registry.find_node(node_id)
@@ -266,6 +403,31 @@ def api_ota_check(node_id: str):
     _valid_node(node_id)
     get_bus().ota_check(node_id)
     return {"ok": True}
+
+
+@router.get("/api/node/{node_id}/state")
+def api_node_state(node_id: str, timeout: float = 3.0):
+    node = _valid_node(node_id)
+    try:
+        timeout_value = float(timeout)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "invalid timeout")
+    if timeout_value != timeout_value or timeout_value <= 0:
+        raise HTTPException(400, "timeout must be positive")
+
+    info = status_monitor.status_for(node_id)
+    since_seq_raw = info.get("seq") if isinstance(info, dict) else 0
+    try:
+        since_seq = int(since_seq_raw)
+    except (TypeError, ValueError):
+        since_seq = 0
+
+    get_bus().status_request(node_id)
+    seq, payload = status_monitor.wait_for_snapshot(node_id, since_seq, timeout_value)
+    if not isinstance(payload, dict) or payload.get("event") != "snapshot":
+        raise HTTPException(504, "Timed out waiting for status snapshot")
+
+    return _format_node_state(node_id, node, seq, payload)
 
 
 @router.get("/api/node/{node_id}/status")

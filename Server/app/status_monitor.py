@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import threading
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
 import paho.mqtt.client as mqtt
 
@@ -20,9 +20,11 @@ class StatusMonitor:
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         self._lock = threading.Lock()
+        self._condition = threading.Condition(self._lock)
         self._last_seen: Dict[str, float] = {}
         self._last_ok: Dict[str, float] = {}
         self._last_payload: Dict[str, Any] = {}
+        self._node_seq: Dict[str, int] = {}
         self._running = False
 
     # ------------------------------------------------------------------
@@ -66,6 +68,9 @@ class StatusMonitor:
             self._last_payload[node_id] = payload
             if status_value == "ok":
                 self._last_ok[node_id] = now
+            seq = self._node_seq.get(node_id, 0) + 1
+            self._node_seq[node_id] = seq
+            self._condition.notify_all()
 
     # ------------------------------------------------------------------
     # Public helpers
@@ -93,6 +98,7 @@ class StatusMonitor:
                     "status": status_value,
                     "signal_dbi": signal_value,
                     "payload": payload,
+                    "seq": self._node_seq.get(node_id, 0),
                 }
         return data
 
@@ -108,6 +114,7 @@ class StatusMonitor:
                 "status": None,
                 "signal_dbi": None,
                 "payload": None,
+                "seq": 0,
             },
         )
 
@@ -117,6 +124,42 @@ class StatusMonitor:
             self._last_seen.pop(node_id, None)
             self._last_ok.pop(node_id, None)
             self._last_payload.pop(node_id, None)
+            self._node_seq.pop(node_id, None)
+
+    def wait_for_snapshot(
+        self, node_id: str, since_seq: int, timeout: float
+    ) -> Tuple[int, Optional[Dict[str, Any]]]:
+        """Block until a newer snapshot event is observed for ``node_id``.
+
+        Returns a tuple of ``(sequence, payload)`` where ``payload`` is the
+        decoded snapshot dictionary, or ``None`` when the wait times out.
+        """
+
+        deadline = time.monotonic() + max(0.0, float(timeout))
+        with self._condition:
+            while True:
+                seq = self._node_seq.get(node_id, 0)
+                payload = self._last_payload.get(node_id)
+                if (
+                    seq > since_seq
+                    and isinstance(payload, dict)
+                    and payload.get("event") == "snapshot"
+                ):
+                    return seq, payload
+
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    seq = self._node_seq.get(node_id, 0)
+                    payload = self._last_payload.get(node_id)
+                    if (
+                        seq > since_seq
+                        and isinstance(payload, dict)
+                        and payload.get("event") == "snapshot"
+                    ):
+                        return seq, payload
+                    return seq, None
+
+                self._condition.wait(timeout=remaining)
 
 
 status_monitor = StatusMonitor()

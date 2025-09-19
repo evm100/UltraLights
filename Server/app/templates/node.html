@@ -14,17 +14,26 @@
 <script>
   window.nodeBrightnessLimits = {{ brightness_limits|default({})|tojson }};
 </script>
+{% set default_modules = node.modules or [] %}
 <div class="grid md:grid-cols-2 gap-6">
-  {% for mod in node.modules %}
-    {% include 'modules/' ~ mod ~ '.html' %}
+  {% for mod in module_templates %}
+    <div
+      data-module="{{ mod }}"
+      class="module-card{% if mod not in default_modules %} hidden{% endif %}"
+    >
+      {% include 'modules/' ~ mod ~ '.html' %}
+    </div>
   {% endfor %}
 </div>
 
 <script>
 const STATUS_NODE_ID = {{ node.id|tojson }};
 const STATUS_TIMEOUT = {{ status_timeout|tojson }};
+const DEFAULT_MODULES = new Set({{ default_modules|tojson }});
 const STATUS_URL = `/api/node/${encodeURIComponent(STATUS_NODE_ID)}/status`;
+const STATE_URL = `/api/node/${encodeURIComponent(STATUS_NODE_ID)}/state`;
 const statusDot = document.getElementById('nodeStatusDot');
+const moduleWrappers = Array.from(document.querySelectorAll('[data-module]'));
 
 function setDot(online) {
   if (!statusDot) return;
@@ -58,5 +67,43 @@ async function refreshStatus() {
 
 refreshStatus();
 setInterval(refreshStatus, 5000);
+
+function applyModuleVisibility(modulesList) {
+  let active;
+  if (Array.isArray(modulesList)) {
+    active = new Set(modulesList.map((value) => String(value)));
+  } else {
+    active = new Set(DEFAULT_MODULES);
+  }
+  moduleWrappers.forEach((wrapper) => {
+    const key = wrapper.dataset.module;
+    if (!key) return;
+    if (active.has(key)) {
+      wrapper.classList.remove('hidden');
+    } else {
+      wrapper.classList.add('hidden');
+    }
+  });
+}
+
+async function refreshState() {
+  try {
+    const res = await fetch(STATE_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data && typeof data === 'object') {
+      if (data.limits && typeof data.limits === 'object') {
+        window.nodeBrightnessLimits = data.limits;
+      }
+      applyModuleVisibility(data.available_modules);
+    }
+  } catch (err) {
+    console.error('Failed to fetch node state', err);
+    applyModuleVisibility(null);
+  }
+}
+
+applyModuleVisibility(null);
+refreshState();
 </script>
 {% endblock %}
