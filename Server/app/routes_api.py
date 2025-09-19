@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException
 from .mqtt_bus import MqttBus
@@ -6,6 +7,7 @@ from .effects import WS_EFFECTS, WHITE_EFFECTS, RGB_EFFECTS
 from .presets import get_preset, apply_preset, get_room_presets
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
+from .status_monitor import status_monitor
 
 router = APIRouter()
 BUS: Optional[MqttBus] = None
@@ -21,6 +23,21 @@ def _valid_node(node_id: str) -> Dict[str, Any]:
     if node:
         return node
     raise HTTPException(404, "Unknown node id")
+
+
+@router.delete("/api/node/{node_id}")
+def api_remove_node(node_id: str):
+    house, room, node = registry.find_node(node_id)
+    if not node or not house or not room:
+        raise HTTPException(404, "Unknown node id")
+    try:
+        removed = registry.remove_node(node_id)
+    except KeyError:
+        raise HTTPException(404, "Unknown node id")
+    motion_manager.config.pop(node_id, None)
+    status_monitor.forget(node_id)
+    return {"ok": True, "node": removed}
+
 
 @router.post("/api/all-off")
 def api_all_off():
@@ -219,3 +236,51 @@ def api_ota_check(node_id: str):
     _valid_node(node_id)
     get_bus().ota_check(node_id)
     return {"ok": True}
+
+
+@router.get("/api/node/{node_id}/status")
+def api_node_status(node_id: str):
+    _valid_node(node_id)
+    info = status_monitor.status_for(node_id)
+
+    def _iso(ts: Optional[float]) -> Optional[str]:
+        if ts is None:
+            return None
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+    return {
+        "node": node_id,
+        "online": bool(info.get("online")),
+        "status": info.get("status"),
+        "last_ok": _iso(info.get("last_ok")),
+        "last_seen": _iso(info.get("last_seen")),
+        "timeout": status_monitor.timeout,
+        "now": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/api/admin/status")
+def api_admin_status(house_id: Optional[str] = None):
+    snapshot = status_monitor.snapshot()
+
+    def _iso(ts: Optional[float]) -> Optional[str]:
+        if ts is None:
+            return None
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+    nodes: Dict[str, Dict[str, Any]] = {}
+    if house_id is not None and not registry.find_house(house_id):
+        raise HTTPException(404, "Unknown house id")
+    for house, _, node in registry.iter_nodes():
+        if house_id and house.get("id") != house_id:
+            continue
+        node_id = node["id"]
+        info = snapshot.get(node_id, {})
+        nodes[node_id] = {
+            "online": bool(info.get("online")),
+            "last_ok": _iso(info.get("last_ok")),
+            "last_seen": _iso(info.get("last_seen")),
+            "status": info.get("status"),
+        }
+    now = datetime.now(timezone.utc).isoformat()
+    return {"now": now, "timeout": status_monitor.timeout, "nodes": nodes}

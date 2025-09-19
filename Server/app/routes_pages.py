@@ -1,8 +1,11 @@
 from collections import defaultdict
 
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+
 from .config import settings
 from . import registry
 from .effects import (
@@ -19,6 +22,7 @@ from .effects import (
 from .presets import get_room_presets
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
+from .status_monitor import status_monitor
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -30,6 +34,99 @@ def home(request: Request):
     return templates.TemplateResponse(
         "index.html",
         {"request": request, "houses": houses, "title": "UltraLights"},
+    )
+
+
+def _collect_admin_nodes(house_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    nodes: List[Dict[str, Any]] = []
+    for house, room, node in registry.iter_nodes():
+        if house_id and house and house.get("id") != house_id:
+            continue
+        house_name = ""
+        room_name = ""
+        node_name = ""
+        if house:
+            house_name = (house.get("name") or house.get("id") or "")
+        if room:
+            room_name = (room.get("name") or room.get("id") or "")
+        node_name = node.get("name") or node.get("id") or ""
+        node_id = node.get("id") or node_name
+        nodes.append(
+            {
+                "id": node_id,
+                "name": node_name,
+                "house": house_name,
+                "room": room_name,
+                "has_ota": "ota" in (node.get("modules") or []),
+            }
+        )
+    nodes.sort(key=lambda item: (item["house"].lower(), item["room"].lower(), item["name"].lower()))
+    return nodes
+
+
+def _admin_template_context(
+    request: Request,
+    *,
+    nodes: List[Dict[str, Any]],
+    title: str,
+    subtitle: str,
+    heading: Optional[str] = None,
+    description: Optional[str] = None,
+    status_house_id: Optional[str] = None,
+    allow_remove: bool = False,
+):
+    return {
+        "request": request,
+        "nodes": nodes,
+        "title": title,
+        "subtitle": subtitle,
+        "heading": heading or title,
+        "description": description
+        or "Monitor node heartbeats and trigger OTA checks.",
+        "status_timeout": status_monitor.timeout,
+        "status_house_id": status_house_id,
+        "allow_remove": allow_remove,
+    }
+
+
+@router.get("/admin", response_class=HTMLResponse)
+def admin_panel(request: Request):
+    nodes = _collect_admin_nodes()
+    return templates.TemplateResponse(
+        "admin.html",
+        _admin_template_context(
+            request,
+            nodes=nodes,
+            title="Admin Panel",
+            subtitle="System status",
+            heading="Admin Panel",
+        ),
+    )
+
+
+@router.get("/admin/house/{house_id}", response_class=HTMLResponse)
+def admin_house_panel(request: Request, house_id: str):
+    house = registry.find_house(house_id)
+    if not house:
+        return templates.TemplateResponse(
+            "base.html",
+            {"request": request, "content": "Unknown house"},
+            status_code=404,
+        )
+    house_name = house.get("name") or house.get("id") or house_id
+    nodes = _collect_admin_nodes(house_id)
+    return templates.TemplateResponse(
+        "admin.html",
+        _admin_template_context(
+            request,
+            nodes=nodes,
+            title=f"{house_name} Admin",
+            subtitle=f"{house_name} status",
+            heading=f"{house_name} Admin",
+            description=f"Monitor node heartbeats for {house_name}.",
+            status_house_id=house_id,
+            allow_remove=True,
+        ),
     )
 
 
@@ -164,6 +261,9 @@ def node_page(request: Request, node_id: str):
         )
     ]
 
+    status_info = status_monitor.status_for(node["id"])
+    status_initial_online = bool(status_info.get("online"))
+
     return templates.TemplateResponse(
         "node.html",
         {
@@ -179,5 +279,7 @@ def node_page(request: Request, node_id: str):
             "ws_param_defs": WS_PARAM_DEFS,
             "white_param_defs": WHITE_PARAM_DEFS,
             "rgb_param_defs": RGB_PARAM_DEFS,
+            "status_timeout": status_monitor.timeout,
+            "status_initial_online": status_initial_online,
         },
     )

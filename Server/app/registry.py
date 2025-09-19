@@ -105,3 +105,16 @@ def add_node(
     room.setdefault("nodes", []).append(node)
     save_registry()
     return node
+
+
+def remove_node(node_id: str) -> Node:
+    """Remove the node identified by ``node_id`` from the registry."""
+    for house in settings.DEVICE_REGISTRY:
+        for room in house.get("rooms", []):
+            nodes = room.get("nodes", [])
+            for idx, node in enumerate(nodes):
+                if node.get("id") == node_id:
+                    removed = nodes.pop(idx)
+                    save_registry()
+                    return removed
+    raise KeyError("node not found")
