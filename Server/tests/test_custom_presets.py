@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import importlib
+import json
 import os
 import sys
 import tempfile
@@ -12,6 +13,7 @@ from copy import deepcopy
 from pathlib import Path
 from types import ModuleType
 from typing import Iterator
+from unittest import mock
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -94,8 +96,11 @@ class CustomPresetRoundTripTests(unittest.TestCase):
                 effect: str,
                 brightness: int,
                 params,
+                rate_limited: bool = True,
             ) -> None:
-                self.white_calls.append((node_id, channel, effect, brightness, params))
+                self.white_calls.append(
+                    (node_id, channel, effect, brightness, params, rate_limited)
+                )
 
             def ws_set(
                 self,
@@ -104,8 +109,11 @@ class CustomPresetRoundTripTests(unittest.TestCase):
                 effect: str,
                 brightness: int,
                 params,
+                rate_limited: bool = True,
             ) -> None:
-                self.ws_calls.append((node_id, strip, effect, brightness, params))
+                self.ws_calls.append(
+                    (node_id, strip, effect, brightness, params, rate_limited)
+                )
 
             def rgb_set(
                 self,
@@ -114,8 +122,11 @@ class CustomPresetRoundTripTests(unittest.TestCase):
                 effect: str,
                 brightness: int,
                 params,
+                rate_limited: bool = True,
             ) -> None:
-                self.rgb_calls.append((node_id, strip, effect, brightness, params))
+                self.rgb_calls.append(
+                    (node_id, strip, effect, brightness, params, rate_limited)
+                )
 
         snapshot = {
             "white": [
@@ -191,21 +202,137 @@ class CustomPresetRoundTripTests(unittest.TestCase):
                 self.assertEqual(
                     bus.white_calls,
                     [
-                        ("node-1", 0, "swell", 200, [10, "200", 1500]),
-                        ("node-1", 1, "solid", 0, []),
+                        ("node-1", 0, "swell", 200, [10, "200", 1500], False),
+                        ("node-1", 1, "solid", 0, [], False),
                     ],
                 )
                 self.assertEqual(
                     bus.ws_calls,
                     [
-                        ("node-1", 0, "solid", 128, ["255", 0, 0]),
-                        ("node-1", 1, "rainbow", 0, None),
+                        ("node-1", 0, "solid", 128, ["255", 0, 0], False),
+                        ("node-1", 1, "rainbow", 0, None, False),
                     ],
                 )
                 self.assertEqual(
                     bus.rgb_calls,
-                    [("node-1", 2, "color_swell", 45, [255, 64, 32])],
+                    [("node-1", 2, "color_swell", 45, [255, 64, 32], False)],
                 )
+
+
+class RecordingClient:
+    """Simple MQTT client stub that records published messages."""
+
+    def __init__(self, *args, **kwargs) -> None:  # pragma: no cover - exercised in tests
+        self.published_messages = []
+
+    def max_inflight_messages_set(self, value: int) -> None:  # pragma: no cover - noop
+        self.max_inflight = value
+
+    def max_queued_messages_set(self, value: int) -> None:  # pragma: no cover - noop
+        self.max_queued = value
+
+    def connect(self, host: str, port: int, keepalive: int) -> None:  # pragma: no cover - noop
+        self.connection = (host, port, keepalive)
+
+    def publish(
+        self,
+        topic: str,
+        payload: str,
+        qos: int = 0,
+        retain: bool = False,
+    ):
+        self.published_messages.append((topic, payload, qos, retain))
+        return type("_Info", (), {"rc": 0})()
+
+    def loop_forever(self) -> None:  # pragma: no cover - return immediately for tests
+        return
+
+    def disconnect(self) -> None:  # pragma: no cover - noop
+        pass
+
+
+class PresetRateLimiterTests(unittest.TestCase):
+    def test_apply_preset_publishes_all_actions_without_rate_limit(self) -> None:
+        from app.mqtt_bus import MqttBus, topic_cmd
+        from app.presets import apply_preset
+
+        preset = {
+            "actions": [
+                {
+                    "module": "ws",
+                    "node": "node-99",
+                    "strip": 0,
+                    "effect": "solid",
+                    "brightness": 128,
+                    "params": [255, 0, 0],
+                },
+                {
+                    "module": "ws",
+                    "node": "node-99",
+                    "strip": 1,
+                    "effect": "rainbow",
+                    "brightness": 64,
+                    "params": [0, 255, 0],
+                },
+                {
+                    "module": "white",
+                    "node": "node-99",
+                    "channel": 0,
+                    "effect": "dim",
+                    "brightness": 12,
+                    "params": [0.5],
+                },
+            ]
+        }
+
+        with mock.patch("app.mqtt_bus.paho.Client", RecordingClient):
+            bus = MqttBus(client_id="test-presets")
+
+        try:
+            apply_preset(bus, preset)
+
+            published = [
+                (topic, json.loads(payload), retain)
+                for topic, payload, _qos, retain in bus.client.published_messages
+            ]
+
+            expected = [
+                (
+                    topic_cmd("node-99", "ws/set/0"),
+                    {
+                        "strip": 0,
+                        "effect": "solid",
+                        "brightness": 128,
+                        "params": [255, 0, 0],
+                    },
+                    True,
+                ),
+                (
+                    topic_cmd("node-99", "ws/set/1"),
+                    {
+                        "strip": 1,
+                        "effect": "rainbow",
+                        "brightness": 64,
+                        "params": [0, 255, 0],
+                    },
+                    True,
+                ),
+                (
+                    topic_cmd("node-99", "white/set/0"),
+                    {
+                        "channel": 0,
+                        "effect": "dim",
+                        "brightness": 12,
+                        "params": [0.5],
+                    },
+                    True,
+                ),
+            ]
+
+            self.assertEqual(published, expected)
+            self.assertEqual(bus._pending_commands, {})
+        finally:
+            bus.shutdown()
 
 
 if __name__ == "__main__":
