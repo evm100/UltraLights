@@ -32,6 +32,14 @@ static uint8_t s_white_saved_bri[UL_WHITE_MAX_CHANNELS];
 static bool s_white_saved_valid[UL_WHITE_MAX_CHANNELS];
 static bool s_lights_dimmed = false;
 
+static bool pir_task_compiled(void) {
+#if defined(CONFIG_UL_PIR_ENABLED) && CONFIG_UL_PIR_ENABLED
+  return true;
+#else
+  return false;
+#endif
+}
+
 static void remember_ws_brightness(void) {
   for (int i = 0; i < UL_WS_MAX_STRIPS; ++i) {
     ul_ws_strip_status_t st;
@@ -190,6 +198,7 @@ static void publish_status_snapshot(void) {
   cJSON *root = cJSON_CreateObject();
   cJSON_AddStringToObject(root, "event", "snapshot");
   cJSON_AddStringToObject(root, "node", ul_core_get_node_id());
+  cJSON_AddBoolToObject(root, "pir_enabled", pir_task_compiled());
 
   // uptime
   cJSON_AddNumberToObject(root, "uptime_s", esp_timer_get_time() / 1000000);
@@ -408,6 +417,18 @@ void ul_mqtt_publish_ota_event(const char *status, const char *detail) {
   cJSON_Delete(root);
 }
 
+static void publish_motion_status(void) {
+  char topic[128];
+  snprintf(topic, sizeof(topic), "ul/%s/evt/motion/status",
+           ul_core_get_node_id());
+  cJSON *root = cJSON_CreateObject();
+  cJSON_AddBoolToObject(root, "pir_enabled", pir_task_compiled());
+  char *json = cJSON_PrintUnformatted(root);
+  publish_json(topic, json);
+  cJSON_free(json);
+  cJSON_Delete(root);
+}
+
 static bool handle_cmd_ws_set(cJSON *root, int *out_strip) {
   int strip = 0;
   cJSON *jstrip = cJSON_GetObjectItem(root, "strip");
@@ -582,6 +603,8 @@ static void on_message(esp_mqtt_event_handle_t event) {
           ul_state_record_white(channel, event->data, event->data_len);
         }
       }
+    } else if (starts_with(sub, "motion/status")) {
+      publish_motion_status();
     } else if (starts_with(sub, "status")) {
       ul_mqtt_publish_status_now();
     } else {

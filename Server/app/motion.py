@@ -23,6 +23,8 @@ SPECIAL_ROOM_PRESETS = {
     },
 }
 
+MOTION_STATUS_REQUEST_INTERVAL = 30.0
+
 class MotionManager:
     def __init__(self) -> None:
         self.bus = MqttBus(client_id="ultralights-motion")
@@ -38,9 +40,12 @@ class MotionManager:
         #   "room_name": str, "nodes": {node_id: {"node_id": str,
         #   "node_name": str, "config": {...}, "sensors": {...}}}}
         self.room_sensors: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        self._status_request_lock = threading.Lock()
+        self._status_request_times: Dict[str, float] = {}
 
     def start(self) -> None:
         self._seed_room_sensors_from_config()
+        self._request_status_for_registry()
         self.client.connect(settings.BROKER_HOST, settings.BROKER_PORT, keepalive=30)
         self.client.loop_start()
 
@@ -60,6 +65,7 @@ class MotionManager:
         config = {"enabled": bool(enabled), "duration": clean_duration}
         self.config[node_id] = config
         self._ensure_room_sensor_entry(node_id, config=config)
+        self._request_motion_status(node_id, force=True)
 
     def forget_node(self, node_id: str) -> None:
         self.config.pop(node_id, None)
@@ -69,11 +75,30 @@ class MotionManager:
                 nodes.pop(node_id, None)
                 if not nodes:
                     self.room_sensors.pop(key, None)
+        with self._status_request_lock:
+            self._status_request_times.pop(node_id, None)
+
+    def ensure_room_loaded(self, house_id: str, room_id: str) -> None:
+        house, room = registry.find_room(house_id, room_id)
+        if not house or not room:
+            return
+        for node in room.get("nodes", []):
+            node_id = node.get("id")
+            if not node_id:
+                continue
+            if str(node_id) in self.config:
+                self._ensure_room_sensor_entry(str(node_id))
+            self._request_motion_status(str(node_id))
+
+    def request_motion_status(self, node_id: str, *, force: bool = False) -> None:
+        self._request_motion_status(node_id, force=force)
 
     # MQTT callbacks -------------------------------------------------
     def _on_connect(self, client, userdata, flags, rc) -> None:
         client.subscribe("ul/+/evt/+/motion")
         client.subscribe("ul/+/evt/status")
+        client.subscribe("ul/+/evt/motion/status")
+        self._request_status_for_registry(force=True)
 
     def _on_message(self, client, userdata, msg: mqtt.MQTTMessage) -> None:
         topic = msg.topic or ""
@@ -81,6 +106,9 @@ class MotionManager:
         if len(parts) < 4 or parts[0] != "ul" or parts[2] != "evt":
             return
         node_id = parts[1]
+        if len(parts) >= 5 and parts[3] == "motion" and parts[4] == "status":
+            self._handle_motion_status_message(node_id, msg)
+            return
         if len(parts) == 4 and parts[3] == "status":
             self._handle_status_message(node_id, msg)
             return
@@ -184,19 +212,56 @@ class MotionManager:
             self.active.pop(room_id, None)
 
     # Internal helpers -----------------------------------------------
+    def _request_motion_status(self, node_id: str, *, force: bool = False) -> None:
+        if not node_id:
+            return
+        should_request = False
+        now = time.monotonic()
+        with self._status_request_lock:
+            last = self._status_request_times.get(node_id)
+            if force or last is None or now - last > MOTION_STATUS_REQUEST_INTERVAL:
+                self._status_request_times[node_id] = now
+                should_request = True
+        if should_request:
+            self.bus.motion_status_request(node_id)
+
+    def _request_status_for_registry(self, *, force: bool = False) -> None:
+        for house, room, node in registry.iter_nodes():
+            node_id = node.get("id")
+            if node_id:
+                self._request_motion_status(str(node_id), force=force)
+
     def _seed_room_sensors_from_config(self) -> None:
         for node_id in list(self.config.keys()):
             self._ensure_room_sensor_entry(node_id)
+            self._request_motion_status(node_id, force=True)
 
     def _handle_status_message(self, node_id: str, msg: mqtt.MQTTMessage) -> None:
         payload = self._decode_json(msg.payload)
         if not isinstance(payload, dict):
             return
+        pir_enabled = payload.get("pir_enabled")
+        if isinstance(pir_enabled, bool):
+            entry = self.config.setdefault(node_id, {"enabled": True, "duration": 30})
+            entry["pir_enabled"] = pir_enabled
+            self._ensure_room_sensor_entry(node_id, config=entry, request_status=False)
         sensors = self._extract_sensor_states(payload)
         if not sensors:
             return
         for sensor_id, sensor_payload in sensors.items():
             self._record_sensor_status(node_id, str(sensor_id), sensor_payload)
+
+    def _handle_motion_status_message(
+        self, node_id: str, msg: mqtt.MQTTMessage
+    ) -> None:
+        payload = self._decode_json(msg.payload)
+        if not isinstance(payload, dict):
+            return
+        pir_enabled = payload.get("pir_enabled")
+        if isinstance(pir_enabled, bool):
+            entry = self.config.setdefault(node_id, {"enabled": True, "duration": 30})
+            entry["pir_enabled"] = pir_enabled
+            self._ensure_room_sensor_entry(node_id, config=entry, request_status=False)
 
     def _record_sensor_status(self, node_id: str, sensor_id: str, payload: Any) -> None:
         node_entry = self._ensure_room_sensor_entry(node_id)
@@ -332,7 +397,11 @@ class MotionManager:
             return None
 
     def _ensure_room_sensor_entry(
-        self, node_id: str, *, config: Optional[Dict[str, Any]] = None
+        self,
+        node_id: str,
+        *,
+        config: Optional[Dict[str, Any]] = None,
+        request_status: bool = True,
     ) -> Optional[Dict[str, Any]]:
         house, room, node = registry.find_node(node_id)
         if not house or not room or not node:
@@ -352,6 +421,7 @@ class MotionManager:
             },
         )
         nodes = entry.setdefault("nodes", {})
+        created = node_id not in nodes
         node_entry = nodes.setdefault(
             node_id,
             {
@@ -363,12 +433,17 @@ class MotionManager:
         node_entry["node_name"] = node.get("name") or node_id
         config_data = config or self.config.get(node_id)
         if config_data:
-            node_entry["config"] = {
+            clean_config = {
                 "enabled": bool(config_data.get("enabled", True)),
                 "duration": int(config_data.get("duration", 30)),
             }
+            if "pir_enabled" in config_data:
+                clean_config["pir_enabled"] = bool(config_data.get("pir_enabled"))
+            node_entry["config"] = clean_config
         else:
             node_entry.setdefault("config", {"enabled": True, "duration": 30})
+        if request_status and created:
+            self._request_motion_status(node_id)
         return node_entry
 
 motion_manager = MotionManager()

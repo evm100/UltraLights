@@ -32,6 +32,9 @@ class _NoopBus:
     def status_request(self, *args, **kwargs):  # pragma: no cover - noop
         pass
 
+    def motion_status_request(self, *args, **kwargs):  # pragma: no cover - noop
+        pass
+
     def ota_check(self, *args, **kwargs):  # pragma: no cover - noop
         pass
 
@@ -99,7 +102,7 @@ def test_room_page_motion_config_respects_room_sensors(app_modules) -> None:
     try:
         settings.DEVICE_REGISTRY = deepcopy(test_registry)
         manager = motion_module.motion_manager
-        manager.config = {"sensor-node": {"enabled": True, "duration": 90}}
+        manager.config = {"sensor-node": {"enabled": True, "duration": 90, "pir_enabled": True}}
         manager.room_sensors = {
             ("test-house", "with-motion"): {
                 "house_id": "test-house",
@@ -109,7 +112,7 @@ def test_room_page_motion_config_respects_room_sensors(app_modules) -> None:
                     "sensor-node": {
                         "node_id": "sensor-node",
                         "node_name": "Sensor Node",
-                        "config": {"enabled": True, "duration": 90},
+                        "config": {"enabled": True, "duration": 90, "pir_enabled": True},
                         "sensors": {"pir": {"active": True}},
                     }
                 },
@@ -121,6 +124,7 @@ def test_room_page_motion_config_respects_room_sensors(app_modules) -> None:
         assert motion_config is not None
         assert motion_config["sensors"][0]["node_id"] == "sensor-node"
         assert motion_config["sensors"][0]["duration"] == 90
+        assert motion_config["sensors"][0]["pir_enabled"] is True
 
         motion_config_none = routes_pages._build_motion_config("test-house", "no-motion", presets)
         assert motion_config_none is None

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib
 import sys
+import threading
+import types
 from typing import Any, Dict, List, Tuple
 
 import pytest
@@ -26,6 +28,9 @@ class _NoopBus:
         pass
 
     def status_request(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - noop
+        pass
+
+    def motion_status_request(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - noop
         pass
 
     def ota_check(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - noop
@@ -53,9 +58,13 @@ def motion_module(monkeypatch: pytest.MonkeyPatch):
 class _RecordingBus:
     def __init__(self) -> None:
         self.published: List[Tuple[str, Dict[str, Any], bool]] = []
+        self.motion_status_requested: List[str] = []
 
     def pub(self, topic: str, payload: Dict[str, Any], retain: bool = False) -> None:
         self.published.append((topic, payload, retain))
+
+    def motion_status_request(self, node_id: str) -> None:
+        self.motion_status_requested.append(node_id)
 
 
 def _build_manager(module):
@@ -64,6 +73,8 @@ def _build_manager(module):
     manager.active = {}
     manager.config = {}
     manager.room_sensors = {}
+    manager._status_request_lock = threading.Lock()
+    manager._status_request_times = {}
     return manager
 
 
@@ -106,3 +117,47 @@ def test_turn_off_special_falls_back_to_hint(monkeypatch: pytest.MonkeyPatch, mo
     assert applied == []
     assert manager.bus.published == [(expected_topic, {"hint": "swell-off"}, False)]
     assert room_id not in manager.active
+
+
+def test_motion_status_updates_config(monkeypatch: pytest.MonkeyPatch, motion_module) -> None:
+    manager = _build_manager(motion_module)
+    house = {"id": "house", "name": "House"}
+    room = {"id": "room", "name": "Room", "nodes": [{"id": "node", "name": "Node"}]}
+    node = room["nodes"][0]
+
+    monkeypatch.setattr(
+        motion_module.registry,
+        "find_node",
+        lambda node_id: (house, room, node) if node_id == "node" else (None, None, None),
+    )
+
+    message = types.SimpleNamespace(payload=b"{\"pir_enabled\": true}")
+    manager._handle_motion_status_message("node", message)
+
+    assert manager.config["node"]["pir_enabled"] is True
+    room_key = (house["id"], room["id"])
+    node_entry = manager.room_sensors[room_key]["nodes"]["node"]
+    assert node_entry["config"]["pir_enabled"] is True
+    assert manager.bus.motion_status_requested == []
+
+
+def test_ensure_room_loaded_requests_status(monkeypatch: pytest.MonkeyPatch, motion_module) -> None:
+    manager = _build_manager(motion_module)
+    house = {"id": "house", "name": "House"}
+    room = {"id": "room", "name": "Room", "nodes": [{"id": "node", "name": "Node"}]}
+    node = room["nodes"][0]
+
+    monkeypatch.setattr(
+        motion_module.registry,
+        "find_room",
+        lambda h, r: (house, room) if (h, r) == ("house", "room") else (None, None),
+    )
+    monkeypatch.setattr(
+        motion_module.registry,
+        "find_node",
+        lambda node_id: (house, room, node) if node_id == "node" else (None, None, None),
+    )
+
+    manager.ensure_room_loaded("house", "room")
+
+    assert manager.bus.motion_status_requested == ["node"]
