@@ -11,6 +11,10 @@ def topic_cmd(node_id: str, path: str) -> str:
 class MqttBus:
     def __init__(self):
         self.client = paho.Client(paho.CallbackAPIVersion.VERSION2, client_id="ultralights-ui")
+        # Allow a larger number of QoS>0 messages to be in-flight before blocking
+        self.client.max_inflight_messages_set(200)
+        # Ensure queued messages are buffered rather than rejected when under load
+        self.client.max_queued_messages_set(0)
         self.client.connect(settings.BROKER_HOST, settings.BROKER_PORT, keepalive=30)
         self.thread = threading.Thread(target=self.client.loop_forever, daemon=True)
         self.thread.start()
