@@ -19,7 +19,7 @@
 #define UL_STATE_RGB_MAX_STRIPS 4
 #define UL_STATE_WHITE_MAX_CHANNELS 4
 
-#define UL_STATE_MAX_PAYLOAD 1024
+#define UL_STATE_MAX_PAYLOAD UL_STATE_MAX_JSON_LEN
 #define UL_STATE_FLUSH_DELAY_US (3ULL * 1000000ULL)
 
 
@@ -57,6 +57,7 @@ static bool s_ready = false;
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 
 static void schedule_flush(size_t entry_index);
+static bool copy_entry(size_t entry_index, char *buffer, size_t buffer_len);
 
 static void ul_state_task(void *arg) {
   ul_state_msg_t msg;
@@ -251,6 +252,34 @@ static void update_entry(size_t entry_index, const char *payload, size_t len) {
   schedule_flush(entry_index);
 }
 
+static bool copy_entry(size_t entry_index, char *buffer, size_t buffer_len) {
+  if (!buffer || buffer_len == 0)
+    return false;
+
+  buffer[0] = '\0';
+
+  if (!s_ready)
+    return false;
+  if (entry_index >= s_entry_count)
+    return false;
+
+  bool copied = false;
+
+  portENTER_CRITICAL(&s_lock);
+  ul_state_entry_t *entry = &s_entries[entry_index];
+  if (entry->payload && entry->payload_len > 0 &&
+      entry->payload_len <= buffer_len) {
+    memcpy(buffer, entry->payload, entry->payload_len);
+    copied = true;
+  }
+  portEXIT_CRITICAL(&s_lock);
+
+  if (!copied)
+    buffer[0] = '\0';
+
+  return copied;
+}
+
 void ul_state_record_ws(int strip, const char *payload, size_t len) {
   if (strip < 0 || strip >= UL_STATE_WS_MAX_STRIPS)
     return;
@@ -268,4 +297,32 @@ void ul_state_record_white(int channel, const char *payload, size_t len) {
     return;
   size_t base = UL_STATE_WS_MAX_STRIPS + UL_STATE_RGB_MAX_STRIPS;
   update_entry(base + channel, payload, len);
+}
+
+bool ul_state_copy_ws(int strip, char *buffer, size_t buffer_len) {
+  if (strip < 0 || strip >= UL_STATE_WS_MAX_STRIPS) {
+    if (buffer && buffer_len > 0)
+      buffer[0] = '\0';
+    return false;
+  }
+  return copy_entry(strip, buffer, buffer_len);
+}
+
+bool ul_state_copy_rgb(int strip, char *buffer, size_t buffer_len) {
+  if (strip < 0 || strip >= UL_STATE_RGB_MAX_STRIPS) {
+    if (buffer && buffer_len > 0)
+      buffer[0] = '\0';
+    return false;
+  }
+  return copy_entry(UL_STATE_WS_MAX_STRIPS + strip, buffer, buffer_len);
+}
+
+bool ul_state_copy_white(int channel, char *buffer, size_t buffer_len) {
+  if (channel < 0 || channel >= UL_STATE_WHITE_MAX_CHANNELS) {
+    if (buffer && buffer_len > 0)
+      buffer[0] = '\0';
+    return false;
+  }
+  size_t base = UL_STATE_WS_MAX_STRIPS + UL_STATE_RGB_MAX_STRIPS;
+  return copy_entry(base + channel, buffer, buffer_len);
 }
