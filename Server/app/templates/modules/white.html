@@ -2,11 +2,7 @@
   <h3 class="text-lg font-semibold mb-3">White Channel</h3>
   <div class="mb-2">
     <label class="text-xs opacity-70">Channel</label>
-    <select id="wChannel" class="p-1 rounded bg-slate-900 border border-slate-700">
-      {% for i in range(4) %}
-      <option value="{{ i }}">{{ i }}</option>
-      {% endfor %}
-    </select>
+    <select id="wChannel" class="p-1 rounded bg-slate-900 border border-slate-700" disabled></select>
   </div>
   <div class="mb-3">
     <label class="text-xs opacity-70">Effect</label>
@@ -27,214 +23,524 @@
     <button id="wOn" class="px-4 py-2 pill bg-green-600 hover:bg-green-500 text-white">On</button>
     <button id="wOff" class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white">Off</button>
   </div>
+  <p class="mt-3 text-sm text-slate-400 hidden" data-module-empty-message>No white channels reported.</p>
 </section>
 <script type="module">
-import {renderParams,collectParams} from '/static/params.js';
-const WHITE_PARAM_DEFS={{ white_param_defs|tojson }};
-const MODULE_KEY='white';
+import { renderParams, collectParams } from '/static/params.js';
+const WHITE_PARAM_DEFS = {{ white_param_defs|tojson }};
+const MODULE_KEY = 'white';
 
-async function post(path,body){
-  const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(!res.ok){throw new Error('Request failed');}
-  return res;
+function getParamDefs(effect) {
+  return WHITE_PARAM_DEFS[effect] || [];
 }
 
-const chEl=document.getElementById('wChannel');
-const effEl=document.getElementById('wEffect');
-const wBriEl=document.getElementById('wBri');
-const lockBtn=document.getElementById('wBriLock');
-const wParamsEl=document.getElementById('wParams');
+const moduleWrapper = document.querySelector('[data-module="white"]');
+const channelEl = document.getElementById('wChannel');
+const effectEl = document.getElementById('wEffect');
+const briEl = document.getElementById('wBri');
+const lockBtn = document.getElementById('wBriLock');
+const paramsEl = document.getElementById('wParams');
+const onBtn = document.getElementById('wOn');
+const offBtn = document.getElementById('wOff');
+const emptyMessage = moduleWrapper ? moduleWrapper.querySelector('[data-module-empty-message]') : null;
 
-function activeChannel(){
-  const value=parseInt(chEl.value,10);
-  return Number.isNaN(value)?null:value;
-}
+if (!channelEl || !effectEl || !briEl || !lockBtn || !paramsEl || !onBtn || !offBtn) {
+  console.warn('White module UI not found');
+} else {
+  const moduleState = new Map();
+  let availableChannels = [];
+  let listenersBound = false;
+  let isInitializing = false;
+  let currentChannel = null;
+  let lastSend = 0;
+  let pendingSend = null;
+  const defaultEmptyMessage = emptyMessage ? emptyMessage.textContent : '';
 
-function getLimit(channel){
-  const data=window.nodeBrightnessLimits;
-  if(!data)return null;
-  const moduleData=data[MODULE_KEY];
-  if(!moduleData)return null;
-  const value=moduleData[String(channel)];
-  return typeof value==='number'?value:null;
-}
+  async function post(path, body) {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      throw new Error('Request failed');
+    }
+    return res;
+  }
 
-function cacheLimit(channel,limit){
-  const data=window.nodeBrightnessLimits||(window.nodeBrightnessLimits={});
-  const key=String(channel);
-  if(limit===null||limit===undefined){
-    const moduleData=data[MODULE_KEY];
-    if(moduleData){
-      delete moduleData[key];
-      if(Object.keys(moduleData).length===0){
-        delete data[MODULE_KEY];
+  function getDefaultEffect() {
+    const options = Array.from(effectEl.options);
+    for (const option of options) {
+      if (option.disabled) continue;
+      if (!option.value) continue;
+      return option.value;
+    }
+    return '';
+  }
+
+  function ensureEffectOption(effect) {
+    if (!effect) return;
+    if (!Array.from(effectEl.options).some((opt) => opt.value === effect)) {
+      const option = document.createElement('option');
+      option.value = effect;
+      option.textContent = effect;
+      effectEl.appendChild(option);
+    }
+    effectEl.value = effect;
+  }
+
+  function createStateFromEntry(entry) {
+    const state = {
+      effect: getDefaultEffect(),
+      brightness: 255,
+      paramCache: {},
+    };
+    if (entry && typeof entry === 'object') {
+      if (typeof entry.effect === 'string' && entry.effect.trim()) {
+        state.effect = entry.effect.trim();
+      }
+      if (typeof entry.brightness === 'number' && !Number.isNaN(entry.brightness)) {
+        state.brightness = Math.max(0, Math.min(255, Math.round(entry.brightness)));
+      }
+      if (Array.isArray(entry.params) && entry.params.length) {
+        state.paramCache[state.effect] = entry.params.slice();
       }
     }
-    return;
+    if (!state.effect) {
+      state.effect = getDefaultEffect();
+    }
+    if (!state.paramCache) {
+      state.paramCache = {};
+    }
+    return state;
   }
-  const moduleData=data[MODULE_KEY]||(data[MODULE_KEY]={});
-  moduleData[key]=limit;
-}
 
-function clampBrightness(value){
-  if(typeof value!=='number'){
-    value=parseInt(value,10);
+  function ensureChannelState(channel) {
+    const key = String(channel);
+    let state = moduleState.get(key);
+    if (!state) {
+      state = createStateFromEntry(null);
+      moduleState.set(key, state);
+    }
+    if (!state.paramCache) state.paramCache = {};
+    if (!state.effect) state.effect = getDefaultEffect();
+    return state;
   }
-  if(Number.isNaN(value))return null;
-  const channel=activeChannel();
-  if(channel!==null){
-    const limit=getLimit(channel);
-    if(limit!==null){
-      value=Math.min(value,limit);
+
+  function populateChannelOptions(channelIds) {
+    const sorted = channelIds
+      .map((value) => String(value))
+      .filter((value) => value !== '')
+      .sort((a, b) => Number(a) - Number(b));
+    const previous = channelEl.value;
+    channelEl.innerHTML = '';
+    for (const id of sorted) {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = id;
+      channelEl.appendChild(option);
+    }
+    let selection = null;
+    if (sorted.length) {
+      if (previous && sorted.includes(previous)) {
+        selection = previous;
+      } else if (currentChannel !== null) {
+        const currentValue = String(currentChannel);
+        if (sorted.includes(currentValue)) {
+          selection = currentValue;
+        }
+      }
+      if (!selection) {
+        selection = sorted[0];
+      }
+      channelEl.value = selection;
+      currentChannel = parseInt(selection, 10);
+    } else {
+      channelEl.value = '';
+      currentChannel = null;
+    }
+    return sorted;
+  }
+
+  function setModuleEnabled(enabled) {
+    const controls = [channelEl, effectEl, briEl, lockBtn, onBtn, offBtn];
+    controls.forEach((el) => {
+      if (!el) return;
+      if ('disabled' in el) {
+        el.disabled = !enabled;
+      } else if (!enabled) {
+        el.setAttribute('aria-disabled', 'true');
+      } else {
+        el.removeAttribute('aria-disabled');
+      }
+    });
+    if (emptyMessage) {
+      emptyMessage.classList.toggle('hidden', !!enabled);
+    }
+    if (!enabled) {
+      paramsEl.innerHTML = '';
     }
   }
-  if(value<0)value=0;
-  if(value>255)value=255;
-  return value;
-}
 
-function applyBrightnessLimit(){
-  const channel=activeChannel();
-  const limit=channel===null?null:getLimit(channel);
-  const maxValue=limit!==null?limit:255;
-  wBriEl.max=maxValue;
-  const current=parseInt(wBriEl.value,10);
-  let adjusted=current;
-  if(Number.isNaN(adjusted)){
-    adjusted=maxValue;
+  function activeChannel() {
+    if (!channelEl.value) return null;
+    const value = Number(channelEl.value);
+    return Number.isNaN(value) ? null : value;
   }
-  adjusted=Math.max(0,Math.min(adjusted,maxValue));
-  const changed=Number.isNaN(current)||adjusted!==current;
-  if(changed){
-    wBriEl.value=String(adjusted);
-  }
-  lockBtn.textContent=limit!==null?'🔒':'🔓';
-  lockBtn.setAttribute('aria-pressed',limit!==null?'true':'false');
-  lockBtn.title=limit!==null?`Unlock brightness limit (${maxValue})`:'Lock brightness to current value';
-  if(changed){
-    scheduleWhite();
-  }
-}
 
-// Throttled sender for real-time updates (max ~10 Hz)
-let wLastSend=0;
-let wPendingSend=null;
-function scheduleWhite(){
-  const now=Date.now();
-  const delay=100-(now-wLastSend);
-  if(delay<=0){
-    wLastSend=now;
-    sendWhite();
-  }else{
-    clearTimeout(wPendingSend);
-    wPendingSend=setTimeout(()=>{wLastSend=Date.now();sendWhite();},delay);
+  function getLimit(channel) {
+    const data = window.nodeBrightnessLimits;
+    if (!data) return null;
+    const moduleData = data[MODULE_KEY];
+    if (!moduleData) return null;
+    const value = moduleData[String(channel)];
+    return typeof value === 'number' && !Number.isNaN(value) ? value : null;
   }
-}
 
-function updateParams(){
-  const defs=WHITE_PARAM_DEFS[effEl.value]||[];
-  renderParams(defs,wParamsEl,scheduleWhite);
-}
-
-effEl.onchange=()=>{updateParams();scheduleWhite();};
-chEl.onchange=()=>{applyBrightnessLimit();scheduleWhite();};
-wBriEl.addEventListener('input',()=>{
-  const clamped=clampBrightness(wBriEl.value);
-  if(clamped===null)return;
-  if(clamped!==parseInt(wBriEl.value,10)){
-    wBriEl.value=String(clamped);
-  }
-  scheduleWhite();
-});
-if(effEl.value)updateParams();
-applyBrightnessLimit();
-
-function sendWhite(options={}){
-  const channel=activeChannel();
-  if(channel===null)return;
-  let effect=null;
-  if(options.effect!==undefined){
-    effect=String(options.effect).trim();
-  }
-  if(!effect){
-    effect=effEl.value.trim();
-  }
-  if(!effect)return;
-  let brightness=options.brightness!==undefined?options.brightness:parseInt(wBriEl.value,10);
-  if(typeof brightness!=='number'){
-    brightness=parseInt(brightness,10);
-  }
-  if(Number.isNaN(brightness))return;
-  const clamped=clampBrightness(brightness);
-  if(clamped===null)return;
-  brightness=clamped;
-  if(options.updateSlider!==false){
-    wBriEl.value=String(brightness);
-  }
-  let params;
-  if(options.params!==undefined){
-    params=options.params;
-  }else{
-    const defs=WHITE_PARAM_DEFS[effect]||[];
-    params=collectParams(defs,wParamsEl);
-  }
-  const msg={channel,effect,brightness};
-  if(Array.isArray(params)&&params.length)msg.params=params;
-  post(`/api/node/{{ node.id }}/white/set`,msg).catch(()=>{alert('Request failed');});
-}
-
-async function persistLimit(channel,limit){
-  try{
-    const res=await post(`/api/node/{{ node.id }}/white/brightness-limit`,{channel,limit});
-    let payload=null;
-    try{
-      payload=await res.json();
-    }catch(err){payload=null;}
-    if(payload&&payload.limit!==undefined){
-      const value=payload.limit;
-      if(typeof value==='number'){
-        cacheLimit(channel,Math.max(0,Math.min(255,value)));
-      }else{
-        cacheLimit(channel,null);
+  function cacheLimit(channel, limit) {
+    const data = window.nodeBrightnessLimits || (window.nodeBrightnessLimits = {});
+    const key = String(channel);
+    if (limit === null || limit === undefined) {
+      const moduleData = data[MODULE_KEY];
+      if (moduleData) {
+        delete moduleData[key];
+        if (Object.keys(moduleData).length === 0) {
+          delete data[MODULE_KEY];
+        }
       }
-    }else{
-      if(typeof limit==='number'){
-        cacheLimit(channel,limit);
-      }else{
-        cacheLimit(channel,null);
+      return;
+    }
+    const moduleData = data[MODULE_KEY] || (data[MODULE_KEY] = {});
+    moduleData[key] = limit;
+  }
+
+  function clampBrightness(value) {
+    let num = typeof value === 'number' ? value : Number(value);
+    if (Number.isNaN(num)) return null;
+    const channel = activeChannel();
+    if (channel !== null) {
+      const limit = getLimit(channel);
+      if (typeof limit === 'number') {
+        num = Math.min(num, limit);
       }
     }
+    if (num < 0) num = 0;
+    if (num > 255) num = 255;
+    return Math.round(num);
+  }
+
+  function applyBrightnessLimit() {
+    const channel = activeChannel();
+    const limit = channel === null ? null : getLimit(channel);
+    const hasLimit = typeof limit === 'number';
+    const maxValue = hasLimit ? limit : 255;
+    briEl.max = String(maxValue);
+    const current = Number(briEl.value);
+    let adjusted = Number.isNaN(current) ? maxValue : Math.max(0, Math.min(current, maxValue));
+    const changed = Number.isNaN(current) || adjusted !== current;
+    if (changed) {
+      briEl.value = String(adjusted);
+    }
+    lockBtn.textContent = hasLimit ? '🔒' : '🔓';
+    lockBtn.setAttribute('aria-pressed', hasLimit ? 'true' : 'false');
+    lockBtn.title = hasLimit ? `Unlock brightness limit (${maxValue})` : 'Lock brightness to current value';
+    if (changed && !isInitializing) {
+      scheduleSend();
+    }
+  }
+
+  function updateParams(initialParams) {
+    const effect = effectEl.value.trim();
+    const defs = getParamDefs(effect);
+    renderParams(defs, paramsEl, scheduleSend, initialParams);
+  }
+
+  function scheduleSend() {
+    if (isInitializing) return;
+    const now = Date.now();
+    const delay = 100 - (now - lastSend);
+    if (delay <= 0) {
+      lastSend = now;
+      sendWhite();
+    } else {
+      clearTimeout(pendingSend);
+      pendingSend = setTimeout(() => {
+        lastSend = Date.now();
+        sendWhite();
+      }, delay);
+    }
+  }
+
+  function sendWhite(options = {}) {
+    if (isInitializing) return;
+    const channel = activeChannel();
+    if (channel === null) return;
+    let effect;
+    if (options.effect !== undefined) {
+      effect = String(options.effect).trim();
+    } else {
+      effect = effectEl.value.trim();
+    }
+    if (!effect) return;
+    let brightness;
+    if (options.brightness !== undefined) {
+      brightness = Number(options.brightness);
+    } else {
+      brightness = Number(briEl.value);
+    }
+    if (Number.isNaN(brightness)) return;
+    const clamped = clampBrightness(brightness);
+    if (clamped === null) return;
+    brightness = clamped;
+    if (options.updateSlider !== false) {
+      briEl.value = String(brightness);
+    }
+    let params;
+    if (options.params !== undefined) {
+      params = Array.isArray(options.params) ? options.params.slice() : collectParams(getParamDefs(effect), paramsEl);
+    } else {
+      params = collectParams(getParamDefs(effect), paramsEl);
+    }
+    const message = { channel, effect, brightness };
+    if (Array.isArray(params) && params.length) {
+      message.params = params;
+    }
+    post(`/api/node/{{ node.id }}/white/set`, message).catch(() => {
+      alert('Request failed');
+    });
+    if (options.updateState !== false) {
+      const state = ensureChannelState(channel);
+      state.effect = effect;
+      state.brightness = brightness;
+      state.paramCache[effect] = Array.isArray(params) ? params.slice() : [];
+    }
+  }
+
+  async function persistLimit(channel, limit) {
+    try {
+      const res = await post(`/api/node/{{ node.id }}/white/brightness-limit`, { channel, limit });
+      let payload = null;
+      try {
+        payload = await res.json();
+      } catch (err) {
+        payload = null;
+      }
+      if (payload && payload.limit !== undefined) {
+        const value = payload.limit;
+        if (typeof value === 'number' && !Number.isNaN(value)) {
+          cacheLimit(channel, Math.max(0, Math.min(255, value)));
+        } else {
+          cacheLimit(channel, null);
+        }
+      } else if (typeof limit === 'number') {
+        cacheLimit(channel, limit);
+      } else {
+        cacheLimit(channel, null);
+      }
+      applyBrightnessLimit();
+    } catch (err) {
+      console.error(err);
+      alert('Request failed');
+      applyBrightnessLimit();
+    }
+  }
+
+  function applyChannelState(channel) {
+    const state = ensureChannelState(channel);
+    const effect = state.effect || getDefaultEffect();
+    ensureEffectOption(effect);
+    const params = state.paramCache ? state.paramCache[effect] : undefined;
+    updateParams(Array.isArray(params) ? params : undefined);
+    const brightness =
+      typeof state.brightness === 'number' && !Number.isNaN(state.brightness)
+        ? state.brightness
+        : 255;
+    briEl.value = String(Math.max(0, Math.min(255, Math.round(brightness))));
     applyBrightnessLimit();
-  }catch(err){
-    console.error(err);
-    alert('Request failed');
-    applyBrightnessLimit();
   }
-}
 
-lockBtn.addEventListener('click',()=>{
-  const channel=activeChannel();
-  if(channel===null){alert('Invalid channel');return;}
-  const currentLimit=getLimit(channel);
-  if(currentLimit!==null){
-    persistLimit(channel,null);
-    return;
+  function handleChannelChange() {
+    const channel = activeChannel();
+    currentChannel = channel;
+    if (channel === null) {
+      setModuleEnabled(false);
+      return;
+    }
+    ensureChannelState(channel);
+    const prevInit = isInitializing;
+    isInitializing = true;
+    try {
+      applyChannelState(channel);
+    } finally {
+      isInitializing = prevInit;
+    }
+    scheduleSend();
   }
-  const brightness=clampBrightness(wBriEl.value);
-  if(brightness===null){alert('Invalid brightness');return;}
-  persistLimit(channel,brightness);
-});
-document.getElementById('wOn').onclick=()=>{
-  const channel=activeChannel();
-  const limit=channel===null?null:getLimit(channel);
-  const target=limit!==null?limit:255;
-  wBriEl.value=String(target);
-  sendWhite({brightness:target});
-};
-document.getElementById('wOff').onclick=()=>{
-  const channel=activeChannel();
-  if(channel===null){alert('Invalid channel');return;}
-  wBriEl.value='0';
-  sendWhite({effect:'solid',brightness:0,params:[]});
-};
+
+  function handleEffectChange() {
+    const channel = activeChannel();
+    if (channel === null) return;
+    const effect = effectEl.value.trim() || getDefaultEffect();
+    const state = ensureChannelState(channel);
+    state.effect = effect;
+    const params = state.paramCache ? state.paramCache[effect] : undefined;
+    const prevInit = isInitializing;
+    isInitializing = true;
+    try {
+      ensureEffectOption(effect);
+      updateParams(Array.isArray(params) ? params : undefined);
+    } finally {
+      isInitializing = prevInit;
+    }
+    scheduleSend();
+  }
+
+  function handleBrightnessInput() {
+    const clamped = clampBrightness(briEl.value);
+    if (clamped === null) return;
+    if (clamped !== Number(briEl.value)) {
+      const prevInit = isInitializing;
+      isInitializing = true;
+      briEl.value = String(clamped);
+      isInitializing = prevInit;
+    }
+    const channel = activeChannel();
+    if (channel !== null) {
+      const state = ensureChannelState(channel);
+      state.brightness = clamped;
+    }
+    scheduleSend();
+  }
+
+  function handleLockClick() {
+    const channel = activeChannel();
+    if (channel === null) {
+      alert('Invalid channel');
+      return;
+    }
+    const currentLimit = getLimit(channel);
+    if (typeof currentLimit === 'number') {
+      persistLimit(channel, null);
+      return;
+    }
+    const brightness = clampBrightness(briEl.value);
+    if (brightness === null) {
+      alert('Invalid brightness');
+      return;
+    }
+    persistLimit(channel, brightness);
+  }
+
+  function handleOnClick() {
+    const channel = activeChannel();
+    const limit = channel === null ? null : getLimit(channel);
+    const target = typeof limit === 'number' ? limit : 255;
+    briEl.value = String(target);
+    if (channel !== null) {
+      const state = ensureChannelState(channel);
+      state.brightness = target;
+    }
+    sendWhite({ brightness: target });
+  }
+
+  function handleOffClick() {
+    const channel = activeChannel();
+    if (channel === null) {
+      alert('Invalid channel');
+      return;
+    }
+    briEl.value = '0';
+    sendWhite({ effect: 'solid', brightness: 0, params: [] });
+  }
+
+  function bindListeners() {
+    if (listenersBound) return;
+    listenersBound = true;
+    channelEl.addEventListener('change', handleChannelChange);
+    effectEl.addEventListener('change', handleEffectChange);
+    briEl.addEventListener('input', handleBrightnessInput);
+    lockBtn.addEventListener('click', handleLockClick);
+    onBtn.addEventListener('click', handleOnClick);
+    offBtn.addEventListener('click', handleOffClick);
+  }
+
+  function init(payload = {}) {
+    bindListeners();
+    const stateEntries = payload.state || payload.entries || {};
+    const providedChannels = Array.isArray(payload.channels) ? payload.channels : null;
+    const channelIds =
+      providedChannels && providedChannels.length
+        ? providedChannels
+        : Object.keys(stateEntries || {});
+    if (emptyMessage) {
+      emptyMessage.textContent =
+        typeof payload.message === 'string' && payload.message.trim()
+          ? payload.message
+          : defaultEmptyMessage;
+    }
+    if (payload.available === false) {
+      availableChannels = [];
+      moduleState.clear();
+      setModuleEnabled(false);
+      channelEl.value = '';
+      currentChannel = null;
+      return;
+    }
+    const previousState = new Map(moduleState);
+    moduleState.clear();
+    availableChannels = populateChannelOptions(channelIds);
+    availableChannels.forEach((id) => {
+      const key = String(id);
+      const entry = stateEntries[key] ?? stateEntries[String(Number(key))];
+      const state = createStateFromEntry(entry);
+      const prior = previousState.get(key);
+      if (prior) {
+        if (!state.effect && prior.effect) {
+          state.effect = prior.effect;
+        }
+        if (typeof entry?.brightness !== 'number' && typeof prior.brightness === 'number') {
+          state.brightness = prior.brightness;
+        }
+        state.paramCache = { ...(prior.paramCache || {}), ...(state.paramCache || {}) };
+      }
+      moduleState.set(key, state);
+      if (entry && typeof entry.limit === 'number' && !Number.isNaN(entry.limit)) {
+        cacheLimit(Number(key), Math.max(0, Math.min(255, entry.limit)));
+      }
+    });
+    const hasChannels = availableChannels.length > 0;
+    setModuleEnabled(hasChannels);
+    if (!hasChannels) {
+      currentChannel = null;
+      return;
+    }
+    const selected = activeChannel();
+    let targetChannel = selected;
+    if (targetChannel === null) {
+      targetChannel = Number(availableChannels[0]);
+      channelEl.value = availableChannels[0];
+    }
+    currentChannel = targetChannel;
+    const state = ensureChannelState(targetChannel);
+    const effect = state.effect || getDefaultEffect();
+    const params = state.paramCache ? state.paramCache[effect] : undefined;
+    const prevInit = isInitializing;
+    isInitializing = true;
+    try {
+      ensureEffectOption(effect);
+      updateParams(Array.isArray(params) ? params : undefined);
+      briEl.value = String(
+        typeof state.brightness === 'number' && !Number.isNaN(state.brightness)
+          ? Math.max(0, Math.min(255, Math.round(state.brightness)))
+          : 255,
+      );
+      applyBrightnessLimit();
+    } finally {
+      isInitializing = prevInit;
+    }
+  }
+
+  window.nodeModuleLoaders = window.nodeModuleLoaders || {};
+  window.nodeModuleLoaders.white = init;
+}
 </script>
