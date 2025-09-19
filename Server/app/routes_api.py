@@ -8,6 +8,7 @@ from .presets import get_preset, apply_preset, get_room_presets
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
+from .brightness_limits import brightness_limits
 
 router = APIRouter()
 BUS: Optional[MqttBus] = None
@@ -190,6 +191,34 @@ def api_rgb_set(node_id: str, payload: Dict[str, Any]):
         params = clean
     get_bus().rgb_set(node_id, strip, effect, brightness, params)
     return {"ok": True}
+
+
+@router.post("/api/node/{node_id}/{module}/brightness-limit")
+def api_set_brightness_limit(node_id: str, module: str, payload: Dict[str, Any]):
+    node = _valid_node(node_id)
+    module_key = str(module).lower()
+    if module_key not in {"ws", "white", "rgb"}:
+        raise HTTPException(404, "unsupported module")
+    if module_key not in node.get("modules", []):
+        raise HTTPException(404, "module not available")
+    try:
+        channel = int(payload.get("channel"))
+    except Exception:
+        raise HTTPException(400, "invalid channel")
+    if not 0 <= channel < 4:
+        raise HTTPException(400, "invalid channel")
+    limit = payload.get("limit")
+    if limit is None:
+        brightness_limits.set_limit(node_id, module_key, channel, None)
+        return {"ok": True, "limit": None}
+    try:
+        value = int(limit)
+    except Exception:
+        raise HTTPException(400, "invalid limit")
+    if not 0 <= value <= 255:
+        raise HTTPException(400, "invalid limit")
+    stored = brightness_limits.set_limit(node_id, module_key, channel, value)
+    return {"ok": True, "limit": stored}
 
 @router.post("/api/node/{node_id}/sensor/cooldown")
 def api_sensor_cooldown(node_id: str, payload: Dict[str, Any]):

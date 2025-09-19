@@ -23,6 +23,7 @@ from .presets import get_room_presets
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
+from .brightness_limits import brightness_limits
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -278,5 +279,6 @@ def node_page(request: Request, node_id: str):
             "rgb_param_defs": RGB_PARAM_DEFS,
             "status_timeout": status_monitor.timeout,
             "status_initial_online": status_initial_online,
+            "brightness_limits": brightness_limits.get_limits_for_node(node["id"]),
         },
     )

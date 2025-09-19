@@ -5,6 +5,7 @@
 #include "mqtt_client.h"
 #include "sdkconfig.h"
 #include "ul_core.h"
+#include "ul_state.h"
 #include "ul_ota.h"
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
@@ -17,6 +18,111 @@
 static const char *TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
+
+#define UL_WS_MAX_STRIPS 2
+#define UL_RGB_MAX_STRIPS 4
+#define UL_WHITE_MAX_CHANNELS 4
+
+static uint8_t s_ws_saved_bri[UL_WS_MAX_STRIPS];
+static bool s_ws_saved_valid[UL_WS_MAX_STRIPS];
+static uint8_t s_rgb_saved_bri[UL_RGB_MAX_STRIPS];
+static bool s_rgb_saved_valid[UL_RGB_MAX_STRIPS];
+static uint8_t s_white_saved_bri[UL_WHITE_MAX_CHANNELS];
+static bool s_white_saved_valid[UL_WHITE_MAX_CHANNELS];
+static bool s_lights_dimmed = false;
+
+static void remember_ws_brightness(void) {
+  for (int i = 0; i < UL_WS_MAX_STRIPS; ++i) {
+    ul_ws_strip_status_t st;
+    if (ul_ws_get_status(i, &st) && st.enabled) {
+      s_ws_saved_bri[i] = st.brightness;
+      s_ws_saved_valid[i] = true;
+    } else {
+      s_ws_saved_valid[i] = false;
+    }
+  }
+}
+
+static void remember_rgb_brightness(void) {
+  for (int i = 0; i < UL_RGB_MAX_STRIPS; ++i) {
+    ul_rgb_strip_status_t st;
+    if (ul_rgb_get_status(i, &st) && st.enabled) {
+      s_rgb_saved_bri[i] = st.brightness;
+      s_rgb_saved_valid[i] = true;
+    } else {
+      s_rgb_saved_valid[i] = false;
+    }
+  }
+}
+
+static void remember_white_brightness(void) {
+  for (int i = 0; i < UL_WHITE_MAX_CHANNELS; ++i) {
+    ul_white_ch_status_t st;
+    if (ul_white_get_status(i, &st) && st.enabled) {
+      s_white_saved_bri[i] = st.brightness;
+      s_white_saved_valid[i] = true;
+    } else {
+      s_white_saved_valid[i] = false;
+    }
+  }
+}
+
+static void dim_all_lights(void) {
+  if (s_lights_dimmed)
+    return;
+
+  remember_ws_brightness();
+  remember_rgb_brightness();
+  remember_white_brightness();
+
+  for (int i = 0; i < UL_WS_MAX_STRIPS; ++i) {
+    if (s_ws_saved_valid[i]) {
+      ul_ws_set_brightness(i, 0);
+    }
+  }
+
+  for (int i = 0; i < UL_RGB_MAX_STRIPS; ++i) {
+    if (s_rgb_saved_valid[i]) {
+      ul_rgb_set_brightness(i, 0);
+    }
+  }
+
+  for (int i = 0; i < UL_WHITE_MAX_CHANNELS; ++i) {
+    if (s_white_saved_valid[i]) {
+      ul_white_set_brightness(i, 0);
+    }
+  }
+
+  s_lights_dimmed = true;
+}
+
+static void restore_all_lights(void) {
+  if (!s_lights_dimmed)
+    return;
+
+  for (int i = 0; i < UL_WS_MAX_STRIPS; ++i) {
+    if (s_ws_saved_valid[i]) {
+      ul_ws_set_brightness(i, s_ws_saved_bri[i]);
+      s_ws_saved_valid[i] = false;
+    }
+  }
+
+  for (int i = 0; i < UL_RGB_MAX_STRIPS; ++i) {
+    if (s_rgb_saved_valid[i]) {
+      ul_rgb_set_brightness(i, s_rgb_saved_bri[i]);
+      s_rgb_saved_valid[i] = false;
+    }
+  }
+
+  for (int i = 0; i < UL_WHITE_MAX_CHANNELS; ++i) {
+    if (s_white_saved_valid[i]) {
+      ul_white_set_brightness(i, s_white_saved_bri[i]);
+      s_white_saved_valid[i] = false;
+    }
+  }
+
+  s_lights_dimmed = false;
+}
 
 // JSON helpers (defined later)
 
@@ -217,11 +323,14 @@ void ul_mqtt_publish_ota_event(const char *status, const char *detail) {
   cJSON_Delete(root);
 }
 
-static void handle_cmd_ws_set(cJSON *root) {
+static bool handle_cmd_ws_set(cJSON *root, int *out_strip) {
   int strip = 0;
   cJSON *jstrip = cJSON_GetObjectItem(root, "strip");
   if (jstrip && cJSON_IsNumber(jstrip))
     strip = jstrip->valueint;
+
+  if (out_strip)
+    *out_strip = strip;
 
   const char *effect = NULL;
   cJSON *jeffect = cJSON_GetObjectItem(root, "effect");
@@ -241,13 +350,17 @@ static void handle_cmd_ws_set(cJSON *root) {
   }
 
   publish_ws_ack(strip, effect, params, ok);
+  return (!effect || ok);
 }
 
-static void handle_cmd_rgb_set(cJSON *root) {
+static bool handle_cmd_rgb_set(cJSON *root, int *out_strip) {
   int strip = 0;
   cJSON *jstrip = cJSON_GetObjectItem(root, "strip");
   if (jstrip && cJSON_IsNumber(jstrip))
     strip = jstrip->valueint;
+
+  if (out_strip)
+    *out_strip = strip;
 
   int brightness = 255;
   cJSON *jbri = cJSON_GetObjectItem(root, "brightness");
@@ -272,9 +385,21 @@ static void handle_cmd_rgb_set(cJSON *root) {
   }
 
   publish_rgb_ack(strip, effect, params, brightness, ok);
+  return (!effect || ok);
 }
 
-static void handle_cmd_white_set(cJSON *root) { ul_white_apply_json(root); }
+static bool handle_cmd_white_set(cJSON *root, int *out_channel) {
+  int channel = 0;
+  cJSON *jch = cJSON_GetObjectItem(root, "channel");
+  if (jch && cJSON_IsNumber(jch))
+    channel = jch->valueint;
+
+  if (out_channel)
+    *out_channel = channel;
+
+  ul_white_apply_json(root);
+  return true;
+}
 static void on_message(esp_mqtt_event_handle_t event) {
   // topic expected: ul/<node>/cmd/...
   char node[64] = {0};
@@ -318,10 +443,18 @@ static void on_message(esp_mqtt_event_handle_t event) {
     const char *sub = cmdroot + 4; // skip "cmd/"
     if (starts_with(sub, "ws/set")) {
       override_index_from_path(root, sub, "ws/set", "strip");
-      handle_cmd_ws_set(root);
+      int strip = 0;
+      bool applied = handle_cmd_ws_set(root, &strip);
+      if (applied && event->data && event->data_len > 0) {
+        ul_state_record_ws(strip, event->data, event->data_len);
+      }
     } else if (starts_with(sub, "rgb/set")) {
       override_index_from_path(root, sub, "rgb/set", "strip");
-      handle_cmd_rgb_set(root);
+      int strip = 0;
+      bool applied = handle_cmd_rgb_set(root, &strip);
+      if (applied && event->data && event->data_len > 0) {
+        ul_state_record_rgb(strip, event->data, event->data_len);
+      }
       ul_mqtt_publish_status();
     } else if (starts_with(sub, "ota/check")) {
       ul_mqtt_publish_status();
@@ -330,7 +463,11 @@ static void on_message(esp_mqtt_event_handle_t event) {
     }
     else if (starts_with(sub, "white/set")) {
       override_index_from_path(root, sub, "white/set", "channel");
-      handle_cmd_white_set(root);
+      int channel = 0;
+      bool applied = handle_cmd_white_set(root, &channel);
+      if (applied && event->data && event->data_len > 0) {
+        ul_state_record_white(channel, event->data, event->data_len);
+      }
       ul_mqtt_publish_status();
     } else if (starts_with(sub, "status")) {
       ul_mqtt_publish_status_now();
@@ -348,6 +485,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_CONNECTED: {
     ESP_LOGI(TAG, "MQTT connected");
     s_ready = true;
+    restore_all_lights();
     if (ul_core_is_connected()) {
       char topic[128];
       snprintf(topic, sizeof(topic), "ul/%s/cmd/#", ul_core_get_node_id());
@@ -360,6 +498,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGW(TAG, "MQTT disconnected");
     s_ready = false;
+    dim_all_lights();
     break;
   case MQTT_EVENT_DATA:
     on_message(event);
@@ -410,16 +549,26 @@ void ul_mqtt_run_local(const char *path, const char *json) {
   cJSON *root = cJSON_Parse(json);
   if (!root)
     return;
+  size_t payload_len = strlen(json);
   if (starts_with(path, "ws/set")) {
     override_index_from_path(root, path, "ws/set", "strip");
-    handle_cmd_ws_set(root);
+    int strip = 0;
+    if (handle_cmd_ws_set(root, &strip) && payload_len > 0) {
+      ul_state_record_ws(strip, json, payload_len);
+    }
   } else if (starts_with(path, "rgb/set")) {
     override_index_from_path(root, path, "rgb/set", "strip");
-    handle_cmd_rgb_set(root);
+    int strip = 0;
+    if (handle_cmd_rgb_set(root, &strip) && payload_len > 0) {
+      ul_state_record_rgb(strip, json, payload_len);
+    }
     ul_mqtt_publish_status();
   } else if (starts_with(path, "white/set")) {
     override_index_from_path(root, path, "white/set", "channel");
-    handle_cmd_white_set(root);
+    int channel = 0;
+    if (handle_cmd_white_set(root, &channel) && payload_len > 0) {
+      ul_state_record_white(channel, json, payload_len);
+    }
   }
   cJSON_Delete(root);
 }

@@ -11,27 +11,110 @@
   <div class="mb-3">
     <label class="text-xs opacity-70">Effect</label>
     <select id="wEffect" class="w-full p-1 bg-slate-900 rounded border border-slate-700">
-      <option value="" selected disabled>Select effect</option>
+      <option value="" disabled>Select effect</option>
       {% for eff in white_effects %}
-      <option value="{{ eff }}">{{ eff }}</option>
+      <option value="{{ eff }}"{% if eff == 'solid' %} selected{% endif %}>{{ eff }}</option>
       {% endfor %}
     </select>
     <div id="wParams" class="mt-2 space-y-2"></div>
-    <label class="text-xs opacity-70 block mt-2">Brightness</label>
+    <div class="flex items-center justify-between mt-2">
+      <label for="wBri" class="text-xs opacity-70">Brightness</label>
+      <button id="wBriLock" type="button" class="text-xl leading-none" title="Lock brightness" aria-pressed="false">🔓</button>
+    </div>
     <input id="wBri" type="range" min="0" max="255" value="255" class="w-full">
   </div>
   <div class="flex gap-2">
-    <button id="wSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
+    <button id="wOn" class="px-4 py-2 pill bg-green-600 hover:bg-green-500 text-white">On</button>
+    <button id="wOff" class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white">Off</button>
   </div>
 </section>
 <script type="module">
 import {renderParams,collectParams} from '/static/params.js';
 const WHITE_PARAM_DEFS={{ white_param_defs|tojson }};
-async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
+const MODULE_KEY='white';
+
+async function post(path,body){
+  const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!res.ok){throw new Error('Request failed');}
+  return res;
+}
+
 const chEl=document.getElementById('wChannel');
 const effEl=document.getElementById('wEffect');
 const wBriEl=document.getElementById('wBri');
+const lockBtn=document.getElementById('wBriLock');
 const wParamsEl=document.getElementById('wParams');
+
+function activeChannel(){
+  const value=parseInt(chEl.value,10);
+  return Number.isNaN(value)?null:value;
+}
+
+function getLimit(channel){
+  const data=window.nodeBrightnessLimits;
+  if(!data)return null;
+  const moduleData=data[MODULE_KEY];
+  if(!moduleData)return null;
+  const value=moduleData[String(channel)];
+  return typeof value==='number'?value:null;
+}
+
+function cacheLimit(channel,limit){
+  const data=window.nodeBrightnessLimits||(window.nodeBrightnessLimits={});
+  const key=String(channel);
+  if(limit===null||limit===undefined){
+    const moduleData=data[MODULE_KEY];
+    if(moduleData){
+      delete moduleData[key];
+      if(Object.keys(moduleData).length===0){
+        delete data[MODULE_KEY];
+      }
+    }
+    return;
+  }
+  const moduleData=data[MODULE_KEY]||(data[MODULE_KEY]={});
+  moduleData[key]=limit;
+}
+
+function clampBrightness(value){
+  if(typeof value!=='number'){
+    value=parseInt(value,10);
+  }
+  if(Number.isNaN(value))return null;
+  const channel=activeChannel();
+  if(channel!==null){
+    const limit=getLimit(channel);
+    if(limit!==null){
+      value=Math.min(value,limit);
+    }
+  }
+  if(value<0)value=0;
+  if(value>255)value=255;
+  return value;
+}
+
+function applyBrightnessLimit(){
+  const channel=activeChannel();
+  const limit=channel===null?null:getLimit(channel);
+  const maxValue=limit!==null?limit:255;
+  wBriEl.max=maxValue;
+  const current=parseInt(wBriEl.value,10);
+  let adjusted=current;
+  if(Number.isNaN(adjusted)){
+    adjusted=maxValue;
+  }
+  adjusted=Math.max(0,Math.min(adjusted,maxValue));
+  const changed=Number.isNaN(current)||adjusted!==current;
+  if(changed){
+    wBriEl.value=String(adjusted);
+  }
+  lockBtn.textContent=limit!==null?'🔒':'🔓';
+  lockBtn.setAttribute('aria-pressed',limit!==null?'true':'false');
+  lockBtn.title=limit!==null?`Unlock brightness limit (${maxValue})`:'Lock brightness to current value';
+  if(changed){
+    scheduleWhite();
+  }
+}
 
 // Throttled sender for real-time updates (max ~10 Hz)
 let wLastSend=0;
@@ -47,26 +130,111 @@ function scheduleWhite(){
     wPendingSend=setTimeout(()=>{wLastSend=Date.now();sendWhite();},delay);
   }
 }
+
 function updateParams(){
   const defs=WHITE_PARAM_DEFS[effEl.value]||[];
   renderParams(defs,wParamsEl,scheduleWhite);
 }
-effEl.onchange=()=>{updateParams();scheduleWhite();};
-chEl.onchange=scheduleWhite;
-wBriEl.addEventListener('input',scheduleWhite);
 
-function sendWhite(){
-  const channel=parseInt(chEl.value,10);
-  if(Number.isNaN(channel))return;
-  const effect=effEl.value.trim();
+effEl.onchange=()=>{updateParams();scheduleWhite();};
+chEl.onchange=()=>{applyBrightnessLimit();scheduleWhite();};
+wBriEl.addEventListener('input',()=>{
+  const clamped=clampBrightness(wBriEl.value);
+  if(clamped===null)return;
+  if(clamped!==parseInt(wBriEl.value,10)){
+    wBriEl.value=String(clamped);
+  }
+  scheduleWhite();
+});
+if(effEl.value)updateParams();
+applyBrightnessLimit();
+
+function sendWhite(options={}){
+  const channel=activeChannel();
+  if(channel===null)return;
+  let effect=null;
+  if(options.effect!==undefined){
+    effect=String(options.effect).trim();
+  }
+  if(!effect){
+    effect=effEl.value.trim();
+  }
   if(!effect)return;
-  const brightness=parseInt(wBriEl.value,10);
+  let brightness=options.brightness!==undefined?options.brightness:parseInt(wBriEl.value,10);
+  if(typeof brightness!=='number'){
+    brightness=parseInt(brightness,10);
+  }
   if(Number.isNaN(brightness))return;
-  const params=collectParams(WHITE_PARAM_DEFS[effEl.value]||[],wParamsEl);
+  const clamped=clampBrightness(brightness);
+  if(clamped===null)return;
+  brightness=clamped;
+  if(options.updateSlider!==false){
+    wBriEl.value=String(brightness);
+  }
+  let params;
+  if(options.params!==undefined){
+    params=options.params;
+  }else{
+    const defs=WHITE_PARAM_DEFS[effect]||[];
+    params=collectParams(defs,wParamsEl);
+  }
   const msg={channel,effect,brightness};
-  if(params.length)msg.params=params;
-  post(`/api/node/{{ node.id }}/white/set`,msg);
+  if(Array.isArray(params)&&params.length)msg.params=params;
+  post(`/api/node/{{ node.id }}/white/set`,msg).catch(()=>{alert('Request failed');});
 }
 
-document.getElementById('wSet').onclick=sendWhite;
+async function persistLimit(channel,limit){
+  try{
+    const res=await post(`/api/node/{{ node.id }}/white/brightness-limit`,{channel,limit});
+    let payload=null;
+    try{
+      payload=await res.json();
+    }catch(err){payload=null;}
+    if(payload&&payload.limit!==undefined){
+      const value=payload.limit;
+      if(typeof value==='number'){
+        cacheLimit(channel,Math.max(0,Math.min(255,value)));
+      }else{
+        cacheLimit(channel,null);
+      }
+    }else{
+      if(typeof limit==='number'){
+        cacheLimit(channel,limit);
+      }else{
+        cacheLimit(channel,null);
+      }
+    }
+    applyBrightnessLimit();
+  }catch(err){
+    console.error(err);
+    alert('Request failed');
+    applyBrightnessLimit();
+  }
+}
+
+lockBtn.addEventListener('click',()=>{
+  const channel=activeChannel();
+  if(channel===null){alert('Invalid channel');return;}
+  const currentLimit=getLimit(channel);
+  if(currentLimit!==null){
+    persistLimit(channel,null);
+    return;
+  }
+  const brightness=clampBrightness(wBriEl.value);
+  if(brightness===null){alert('Invalid brightness');return;}
+  persistLimit(channel,brightness);
+});
+document.getElementById('wOn').onclick=()=>{
+  const channel=activeChannel();
+  const limit=channel===null?null:getLimit(channel);
+  const target=limit!==null?limit:255;
+  wBriEl.value=String(target);
+  sendWhite({brightness:target});
+};
+document.getElementById('wOff').onclick=()=>{
+  const channel=activeChannel();
+  if(channel===null){alert('Invalid channel');return;}
+  wBriEl.value='0';
+  sendWhite({effect:'solid',brightness:0,params:[]});
+};
 </script>
