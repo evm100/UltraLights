@@ -1,11 +1,9 @@
-{% set rgb_meta = (module_metadata | default({})).get('rgb', {}) %}
-{% set rgb_indices = rgb_meta.get('indices', []) %}
 <section class="glass rounded-2xl p-6">
   <h3 class="text-lg font-semibold mb-3">RGB Strip</h3>
   <div class="mb-2">
     <label class="text-xs opacity-70">Strip</label>
     <select id="rgbStrip" class="p-1 rounded bg-slate-900 border border-slate-700">
-      {% for i in rgb_indices %}
+      {% for i in range(4) %}
       <option value="{{ i }}">{{ i }}</option>
       {% endfor %}
     </select>
@@ -29,14 +27,11 @@
 import {renderParams,collectParams} from '/static/params.js';
 const RGB_PARAM_DEFS={{ rgb_param_defs|tojson }};
 const MODULE_KEY='rgb';
-const AVAILABLE_STRIPS={{ rgb_indices|tojson }};
 const stripEl=document.getElementById('rgbStrip');
 const briEl=document.getElementById('rgbBri');
 const lockBtn=document.getElementById('rgbBriLock');
 const paramsEl=document.getElementById('rgbParams');
 const solidParams=RGB_PARAM_DEFS['solid']||[{"type":"color","label":"Color"}];
-const onBtn=document.getElementById('rgbOn');
-const offBtn=document.getElementById('rgbOff');
 
 async function post(path,body){
   const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -44,34 +39,12 @@ async function post(path,body){
   return res;
 }
 
-function isValidStrip(strip){
-  return Number.isInteger(strip)&&AVAILABLE_STRIPS.includes(strip);
-}
-
-function ensureStripSelection(){
-  const hasStrips=AVAILABLE_STRIPS.length>0;
-  stripEl.disabled=!hasStrips;
-  briEl.disabled=!hasStrips;
-  lockBtn.disabled=!hasStrips;
-  if(onBtn)onBtn.disabled=!hasStrips;
-  if(offBtn)offBtn.disabled=!hasStrips;
-  if(!hasStrips){
-    return;
-  }
-  const current=parseInt(stripEl.value,10);
-  if(Number.isNaN(current)||!AVAILABLE_STRIPS.includes(current)){
-    stripEl.value=String(AVAILABLE_STRIPS[0]);
-  }
-}
-
 function activeStrip(){
   const value=parseInt(stripEl.value,10);
-  if(Number.isNaN(value))return null;
-  return isValidStrip(value)?value:null;
+  return Number.isNaN(value)?null:value;
 }
 
 function getLimit(channel){
-  if(!isValidStrip(channel))return null;
   const data=window.nodeBrightnessLimits;
   if(!data)return null;
   const moduleData=data[MODULE_KEY];
@@ -81,7 +54,6 @@ function getLimit(channel){
 }
 
 function cacheLimit(channel,limit){
-  if(!isValidStrip(channel))return;
   const data=window.nodeBrightnessLimits||(window.nodeBrightnessLimits={});
   const key=String(channel);
   if(limit===null||limit===undefined){
@@ -164,7 +136,7 @@ function collectColorParams(){
 
 function sendCmd(options={}){
   const strip=activeStrip();
-  if(strip===null||!isValidStrip(strip))return;
+  if(strip===null)return;
   let brightness=options.brightness!==undefined?options.brightness:parseInt(briEl.value,10);
   if(typeof brightness!=='number'){
     brightness=parseInt(brightness,10);
@@ -190,7 +162,6 @@ function sendCmd(options={}){
 }
 
 async function persistLimit(channel,limit){
-  if(!isValidStrip(channel)){alert('Invalid strip');return;}
   try{
     const res=await post(`/api/node/{{ node.id }}/rgb/brightness-limit`,{channel,limit});
     let payload=null;
@@ -219,7 +190,7 @@ async function persistLimit(channel,limit){
   }
 }
 
-stripEl.onchange=()=>{ensureStripSelection();applyBrightnessLimit();scheduleSend();};
+stripEl.onchange=()=>{applyBrightnessLimit();scheduleSend();};
 briEl.addEventListener('input',()=>{
   const clamped=clampBrightness(briEl.value);
   if(clamped===null)return;
@@ -229,30 +200,22 @@ briEl.addEventListener('input',()=>{
   scheduleSend();
 });
 updateParams();
-ensureStripSelection();
 applyBrightnessLimit();
 
-if(onBtn){
-onBtn.onclick=()=>{
+document.getElementById('rgbOn').onclick=()=>{
   const strip=activeStrip();
-  if(strip===null||!isValidStrip(strip)){alert('Invalid strip');return;}
   const limit=strip===null?null:getLimit(strip);
   const target=limit!==null?limit:255;
   briEl.value=String(target);
   sendCmd({brightness:target});
 };
-}
-if(offBtn){
-offBtn.onclick=()=>{
-  const strip=activeStrip();
-  if(strip===null||!isValidStrip(strip)){alert('Invalid strip');return;}
+document.getElementById('rgbOff').onclick=()=>{
   sendCmd({brightness:0,params:[0,0,0]});
 };
-}
 
 lockBtn.addEventListener('click',()=>{
   const strip=activeStrip();
-  if(strip===null||!isValidStrip(strip)){alert('Invalid strip');return;}
+  if(strip===null){alert('Invalid strip');return;}
   const currentLimit=getLimit(strip);
   if(currentLimit!==null){
     persistLimit(strip,null);
