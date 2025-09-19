@@ -42,7 +42,7 @@ const STATE_URL = `/api/node/${encodeURIComponent(STATUS_NODE_ID)}/state`;
 const statusDot = document.getElementById('nodeStatusDot');
 const moduleWrappers = Array.from(document.querySelectorAll('[data-module]'));
 const moduleStatusMessage = document.getElementById('moduleStateMessage');
-const moduleLoaders = window.nodeModuleLoaders || {};
+const moduleLoaders = (window.nodeModuleLoaders = window.nodeModuleLoaders || {});
 
 function setModuleStateMessage(text, mode) {
   if (!moduleStatusMessage) return;
