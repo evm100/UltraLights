@@ -1,14 +1,16 @@
 """Track node heartbeat/status messages from MQTT."""
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Sequence
 
 import paho.mqtt.client as mqtt
 
 from .config import settings
+from .node_capabilities import NodeCapabilities
 
 
 class StatusMonitor:
@@ -23,6 +25,7 @@ class StatusMonitor:
         self._last_seen: Dict[str, float] = {}
         self._last_ok: Dict[str, float] = {}
         self._last_payload: Dict[str, Any] = {}
+        self._metadata: Dict[str, NodeCapabilities] = {}
         self._running = False
 
     # ------------------------------------------------------------------
@@ -64,6 +67,10 @@ class StatusMonitor:
         with self._lock:
             self._last_seen[node_id] = now
             self._last_payload[node_id] = payload
+            if isinstance(payload, dict):
+                capabilities = NodeCapabilities.from_payload(payload)
+                if capabilities:
+                    self._metadata[node_id] = capabilities
             if status_value == "ok":
                 self._last_ok[node_id] = now
 
@@ -111,12 +118,54 @@ class StatusMonitor:
             },
         )
 
+    def capabilities_for(
+        self, node_id: str, *, fallback_modules: Sequence[Any] | None = None
+    ) -> NodeCapabilities:
+        """Return cached module metadata for ``node_id``.
+
+        ``fallback_modules`` should be the module definitions from the registry and
+        will be used whenever no live MQTT snapshot is available.
+        """
+
+        fallback = NodeCapabilities.from_modules(fallback_modules)
+        with self._lock:
+            live = self._metadata.get(node_id)
+        if live:
+            return live.merged_with(fallback)
+        return fallback
+
+    async def wait_for_payload(
+        self,
+        node_id: str,
+        *,
+        after: Optional[float] = None,
+        timeout: float = 2.0,
+    ) -> Optional[Dict[str, Any]]:
+        """Wait for a new status payload for ``node_id``.
+
+        Returns the latest payload when a fresh message arrives after the ``after``
+        timestamp or ``None`` when the timeout elapses.
+        """
+
+        deadline = time.monotonic() + max(timeout, 0.0)
+        while True:
+            info = self.status_for(node_id)
+            payload = info.get("payload")
+            last_seen = info.get("last_seen")
+            if payload is not None and isinstance(last_seen, (int, float)):
+                if after is None or last_seen > after:
+                    return payload
+            if time.monotonic() >= deadline:
+                return None
+            await asyncio.sleep(0.05)
+
     def forget(self, node_id: str) -> None:
         """Drop any cached status information for ``node_id``."""
         with self._lock:
             self._last_seen.pop(node_id, None)
             self._last_ok.pop(node_id, None)
             self._last_payload.pop(node_id, None)
+            self._metadata.pop(node_id, None)
 
 
 status_monitor = StatusMonitor()

@@ -1,10 +1,12 @@
 import threading
 import json
 import time
-from typing import Optional, List, Dict, Union, Tuple
+from typing import Optional, List, Dict, Union, Tuple, Sequence
 import paho.mqtt.client as paho
 from .config import settings
 from . import registry
+from .status_monitor import status_monitor
+from .node_capabilities import NodeCapabilities
 
 def topic_cmd(node_id: str, path: str) -> str:
     return f"ul/{node_id}/cmd/{path}"
@@ -94,6 +96,40 @@ class MqttBus:
         if len(parts) >= 3 and parts[0] == "ul" and parts[2] == "cmd":
             return parts[1]
         return None
+
+    async def refresh_capabilities(
+        self,
+        node_id: str,
+        *,
+        timeout: float = 2.0,
+        fallback_modules: Sequence[str] | None = None,
+    ) -> tuple[NodeCapabilities, bool]:
+        """Publish a status request and return the node's capabilities.
+
+        Returns a tuple ``(capabilities, fresh)`` where ``fresh`` indicates that a
+        new MQTT payload was observed after the status command was published.
+        """
+
+        info = status_monitor.status_for(node_id)
+        last_seen = info.get("last_seen")
+        after: Optional[float] = None
+        if isinstance(last_seen, (int, float)):
+            after = float(last_seen)
+
+        self.pub(topic_cmd(node_id, "status"), {})
+        await status_monitor.wait_for_payload(node_id, after=after, timeout=timeout)
+
+        updated = status_monitor.status_for(node_id)
+        new_seen = updated.get("last_seen")
+        fresh = False
+        if isinstance(new_seen, (int, float)):
+            if after is None or new_seen > after:
+                fresh = True
+
+        capabilities = status_monitor.capabilities_for(
+            node_id, fallback_modules=fallback_modules
+        )
+        return capabilities, fresh
 
     def shutdown(self) -> None:
         with self._rate_condition:

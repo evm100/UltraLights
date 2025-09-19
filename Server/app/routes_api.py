@@ -9,6 +9,7 @@ from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
+from .node_capabilities import enabled_module_keys, NodeCapabilities
 
 
 router = APIRouter()
@@ -25,6 +26,12 @@ def _valid_node(node_id: str) -> Dict[str, Any]:
     if node:
         return node
     raise HTTPException(404, "Unknown node id")
+
+
+def _node_capabilities(node: Dict[str, Any]) -> NodeCapabilities:
+    return status_monitor.capabilities_for(
+        node["id"], fallback_modules=enabled_module_keys(node)
+    )
 
 
 @router.delete("/api/node/{node_id}")
@@ -110,12 +117,18 @@ def api_set_motion_schedule(house_id: str, room_id: str, payload: Dict[str, Any]
 
 @router.post("/api/node/{node_id}/ws/set")
 def api_ws_set(node_id: str, payload: Dict[str, Any]):
-    _valid_node(node_id)
+    node = _valid_node(node_id)
+    caps = _node_capabilities(node)
+    if not caps.has_module("ws"):
+        raise HTTPException(404, "module not available")
     try:
         strip = int(payload.get("strip"))
     except Exception:
         raise HTTPException(400, "invalid strip")
-    if not 0 <= strip < 4:
+    valid_strips = caps.indexes("ws")
+    if not valid_strips:
+        raise HTTPException(404, "module not available")
+    if strip not in valid_strips:
         raise HTTPException(400, "invalid strip")
     effect = str(payload.get("effect", "")).strip()
     if effect not in WS_EFFECTS:
@@ -144,12 +157,18 @@ def api_ws_set(node_id: str, payload: Dict[str, Any]):
 
 @router.post("/api/node/{node_id}/white/set")
 def api_white_set(node_id: str, payload: Dict[str, Any]):
-    _valid_node(node_id)
+    node = _valid_node(node_id)
+    caps = _node_capabilities(node)
+    if not caps.has_module("white"):
+        raise HTTPException(404, "module not available")
     try:
         channel = int(payload.get("channel"))
     except Exception:
         raise HTTPException(400, "invalid channel")
-    if not 0 <= channel < 4:
+    valid_channels = caps.indexes("white")
+    if not valid_channels:
+        raise HTTPException(404, "module not available")
+    if channel not in valid_channels:
         raise HTTPException(400, "invalid channel")
     effect = str(payload.get("effect", "")).strip()
     if effect not in WHITE_EFFECTS:
@@ -174,12 +193,18 @@ def api_white_set(node_id: str, payload: Dict[str, Any]):
 
 @router.post("/api/node/{node_id}/rgb/set")
 def api_rgb_set(node_id: str, payload: Dict[str, Any]):
-    _valid_node(node_id)
+    node = _valid_node(node_id)
+    caps = _node_capabilities(node)
+    if not caps.has_module("rgb"):
+        raise HTTPException(404, "module not available")
     try:
         strip = int(payload.get("strip"))
     except Exception:
         raise HTTPException(400, "invalid strip")
-    if not 0 <= strip < 4:
+    valid_strips = caps.indexes("rgb")
+    if not valid_strips:
+        raise HTTPException(404, "module not available")
+    if strip not in valid_strips:
         raise HTTPException(400, "invalid strip")
     effect = str(payload.get("effect", "")).strip()
     if effect not in RGB_EFFECTS:
@@ -215,13 +240,17 @@ def api_set_brightness_limit(node_id: str, module: str, payload: Dict[str, Any])
     module_key = str(module).lower()
     if module_key not in {"ws", "white", "rgb"}:
         raise HTTPException(404, "unsupported module")
-    if module_key not in node.get("modules", []):
+    caps = _node_capabilities(node)
+    if not caps.has_module(module_key):
         raise HTTPException(404, "module not available")
     try:
         channel = int(payload.get("channel"))
     except Exception:
         raise HTTPException(400, "invalid channel")
-    if not 0 <= channel < 4:
+    valid_channels = caps.indexes(module_key)
+    if not valid_channels:
+        raise HTTPException(404, "module not available")
+    if channel not in valid_channels:
         raise HTTPException(400, "invalid channel")
     limit = payload.get("limit")
     if limit is None:

@@ -20,6 +20,12 @@
     {% include 'modules/' ~ mod ~ '.html' ignore missing %}
   {% endfor %}
 </div>
+{% else %}
+<p class="mt-4 text-sm opacity-80">
+  No modules are available for this node yet. Check that it has reported its
+  status over MQTT or verify the registry configuration.
+</p>
+{% endif %}
 
 <script>
 const STATUS_NODE_ID = {{ node.id|tojson }};
