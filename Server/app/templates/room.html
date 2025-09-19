@@ -85,6 +85,33 @@
     </div>
   </div>
 </div>
+<div class="mt-8" id="motionImmunity" data-fetch-url="/api/house/{{ house.id }}/room/{{ room.id }}/motion-immune" data-save-url="/api/house/{{ house.id }}/room/{{ room.id }}/motion-immune">
+  <h2 class="text-2xl font-semibold mb-4">Motion Immunity</h2>
+  <div class="glass rounded-xl p-4">
+    <p class="text-sm opacity-80 mb-3">Select nodes to ignore when motion automations run.</p>
+    <div class="motion-immunity-status text-sm opacity-80 mb-3" role="status" aria-live="polite"></div>
+    {% if room.nodes %}
+    <div class="space-y-3" id="motionImmunityList" role="group" aria-label="Motion immunity nodes">
+      {% for n in room.nodes %}
+      <label class="flex items-center gap-3 motion-immunity-option">
+        <input type="checkbox"
+               class="motion-immunity-checkbox"
+               value="{{ n.id }}"
+               data-node-id="{{ n.id }}"
+               aria-label="Ignore {{ n.name }} ({{ n.id }})" />
+        <span>
+          <span class="font-semibold">{{ n.name }}</span>
+          <span class="block text-xs uppercase tracking-wide opacity-60">ID: {{ n.id }}</span>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    <button type="button" class="motion-button motion-button--primary mt-4 motion-immunity-save">Save Changes</button>
+    {% else %}
+    <div class="opacity-60">No nodes available for motion immunity.</div>
+    {% endif %}
+  </div>
+</div>
 <div class="mt-8">
   <h2 class="text-2xl font-semibold mb-4">Motion Timer</h2>
   {% if motion_config.sensors %}
@@ -566,6 +593,166 @@ document.getElementById('addNode').onclick = async () => {
         }
       });
     }
+  }
+
+  const immunityContainer = document.getElementById('motionImmunity');
+  if (immunityContainer) {
+    const fetchUrl = immunityContainer.dataset.fetchUrl || '';
+    const saveUrl = immunityContainer.dataset.saveUrl || fetchUrl;
+    const statusEl = immunityContainer.querySelector('.motion-immunity-status');
+    const checkboxes = Array.from(
+      immunityContainer.querySelectorAll('.motion-immunity-checkbox')
+    );
+    const saveButton = immunityContainer.querySelector('.motion-immunity-save');
+    const statusClasses = {
+      base: 'motion-immunity-status text-sm opacity-80 mb-3',
+      info: 'motion-immunity-status text-sm text-slate-200 opacity-80 mb-3',
+      success: 'motion-immunity-status text-sm text-emerald-300 mb-3',
+      error: 'motion-immunity-status text-sm text-rose-300 mb-3',
+    };
+    let statusTimer = null;
+
+    const setStatus = (message, tone = 'base', autoClear = false) => {
+      if (!statusEl) return;
+      if (statusTimer) {
+        clearTimeout(statusTimer);
+        statusTimer = null;
+      }
+      if (!message) {
+        statusEl.textContent = '';
+        statusEl.className = statusClasses.base;
+        return;
+      }
+      const cls = statusClasses[tone] || statusClasses.base;
+      statusEl.className = cls;
+      statusEl.textContent = message;
+      if (autoClear) {
+        statusTimer = setTimeout(() => {
+          statusEl.textContent = '';
+          statusEl.className = statusClasses.base;
+          statusTimer = null;
+        }, 2200);
+      }
+    };
+
+    const normalizeList = (values) => {
+      const clean = [];
+      const seen = new Set();
+      if (Array.isArray(values)) {
+        values.forEach((value) => {
+          const text = value === undefined || value === null ? '' : String(value).trim();
+          if (text && !seen.has(text)) {
+            seen.add(text);
+            clean.push(text);
+          }
+        });
+      }
+      return clean;
+    };
+
+    const applyImmuneState = (values) => {
+      const immuneSet = new Set(values);
+      checkboxes.forEach((checkbox) => {
+        const nodeId = String(checkbox.value || '').trim();
+        checkbox.checked = immuneSet.has(nodeId);
+      });
+    };
+
+    const collectSelected = () => {
+      const selected = [];
+      const seen = new Set();
+      checkboxes.forEach((checkbox) => {
+        if (!checkbox.checked) {
+          return;
+        }
+        const value = String(checkbox.value || '').trim();
+        if (value && !seen.has(value)) {
+          seen.add(value);
+          selected.push(value);
+        }
+      });
+      return selected;
+    };
+
+    const loadImmunity = async () => {
+      if (!fetchUrl) {
+        return;
+      }
+      if (checkboxes.length) {
+        setStatus('Loading immunity...', 'info');
+      }
+      try {
+        const response = await fetch(fetchUrl);
+        let data = null;
+        try {
+          data = await response.json();
+        } catch (err) {
+          data = null;
+        }
+        if (!response.ok) {
+          const detail = data && (data.detail || data.error || data.message || data.reason);
+          const message = detail ? String(detail) : `Request failed (${response.status})`;
+          throw new Error(message);
+        }
+        const immune = normalizeList(data && data.immune);
+        applyImmuneState(immune);
+        setStatus('', 'base');
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load immunity.';
+        setStatus(`Failed to load immunity: ${message}`, 'error');
+      }
+    };
+
+    if (saveButton) {
+      if (!checkboxes.length || !saveUrl) {
+        saveButton.disabled = true;
+      }
+      saveButton.addEventListener('click', async () => {
+        if (!saveUrl) {
+          setStatus('Saving immunity is not available.', 'error');
+          return;
+        }
+        const selected = collectSelected();
+        try {
+          saveButton.disabled = true;
+          setStatus('Saving immunity...', 'info');
+          const response = await fetch(saveUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ immune: selected }),
+          });
+          let data = null;
+          try {
+            data = await response.json();
+          } catch (err) {
+            data = null;
+          }
+          if (!response.ok) {
+            const detail = data && (data.detail || data.error || data.message || data.reason);
+            const message = detail ? String(detail) : `Request failed (${response.status})`;
+            throw new Error(message);
+          }
+          const immune = normalizeList(data && data.immune);
+          applyImmuneState(immune);
+          setStatus('Immunity saved ✓', 'success', true);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Failed to save immunity.';
+          setStatus(`Failed to save immunity: ${message}`, 'error');
+        } finally {
+          saveButton.disabled = !checkboxes.length || !saveUrl;
+        }
+      });
+    }
+
+    if (checkboxes.length) {
+      checkboxes.forEach((checkbox) => {
+        checkbox.addEventListener('change', () => {
+          setStatus('Unsaved changes – click save to persist.', 'info');
+        });
+      });
+    }
+
+    loadImmunity();
   }
 
   const timerSliders = document.querySelectorAll('.motion-timer-slider');
