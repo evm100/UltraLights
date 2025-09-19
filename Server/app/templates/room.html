@@ -13,11 +13,20 @@
   </a>
   {% endfor %}
 </div>
-<div class="mt-8">
-  <h2 class="text-2xl font-semibold mb-4">Presets</h2>
-  <div class="flex flex-wrap gap-2">
+<div class="mt-8" id="presetSection">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <h2 class="text-2xl font-semibold">Presets</h2>
+    <button id="presetSaveButton" type="button" class="glass px-4 py-2 rounded-lg text-sm font-semibold tracking-wide uppercase hover:ring-2 hover:ring-indigo-400">Save Preset</button>
+  </div>
+  <div id="presetStatus" class="text-sm mb-3 opacity-80" role="status" aria-live="polite"></div>
+  <div id="presetList" class="flex flex-wrap gap-2" data-house-id="{{ house.id }}" data-room-id="{{ room.id }}" data-api-base="/api/house/{{ house.id }}/room/{{ room.id }}" data-initial-presets='{{ presets|tojson }}'>
     {% for p in presets %}
-    <button class="preset glass px-4 py-2 rounded-lg hover:ring-2 hover:ring-indigo-400" data-id="{{ p.id }}">{{ p.name }}</button>
+    <div class="preset-item" data-preset-id="{{ p.id }}" data-custom="{{ 'true' if p.source == 'custom' else 'false' }}">
+      <button class="preset preset-button glass px-4 py-2 rounded-lg hover:ring-2 hover:ring-indigo-400" type="button" data-preset-id="{{ p.id }}">{{ p.name or p.id }}</button>
+      {% if p.source == 'custom' %}
+      <button class="preset-delete" type="button" aria-label="Delete preset {{ p.name or p.id }}" data-preset-id="{{ p.id }}">✕</button>
+      {% endif %}
+    </div>
     {% else %}
     <div class="opacity-60">No presets configured.</div>
     {% endfor %}
@@ -82,6 +91,7 @@
   <div id="motionTimerLabel" class="text-center mt-2"></div>
 </div>
 {% endif %}
+<script type="module" src="/static/presets.js"></script>
 <script>
 document.getElementById('addNode').onclick = async () => {
   const name = prompt('New node name');
@@ -91,15 +101,6 @@ document.getElementById('addNode').onclick = async () => {
   });
   if(res.ok) location.reload(); else alert('Failed to add node');
 };
-document.querySelectorAll('.preset').forEach(btn => {
-  btn.onclick = async () => {
-    const id = btn.dataset.id;
-    const res = await fetch(`/api/house/{{ house.id }}/room/{{ room.id }}/preset/${id}`, {
-      method:'POST'
-    });
-    if(!res.ok) alert('Failed to apply preset');
-  };
-});
 {% if motion_config %}
 (function(){
   const scheduleContainer = document.getElementById('motionSchedule');
@@ -112,8 +113,20 @@ document.querySelectorAll('.preset').forEach(btn => {
     if (!scheduleData.length) {
       scheduleData.push(null);
     }
-    const presetNames = {{ motion_config.preset_names|tojson }};
-    const presetColors = {{ motion_config.preset_colors|tojson }};
+    const palette = [
+      "#f97316",
+      "#38bdf8",
+      "#a855f7",
+      "#22c55e",
+      "#eab308",
+      "#f43f5e",
+      "#6366f1",
+      "#14b8a6",
+      "#ec4899",
+      "#facc15",
+    ];
+    let presetNames = {{ motion_config.preset_names|tojson }};
+    let presetColors = {{ motion_config.preset_colors|tojson }};
     const noMotionColor = "{{ motion_config.no_motion_color }}";
     const slotMinutes = parseInt(scheduleContainer.dataset.slotMinutes || "60", 10) || 60;
     const startSelect = document.getElementById('motionScheduleStart');
@@ -299,6 +312,111 @@ document.querySelectorAll('.preset').forEach(btn => {
       }
       updateSlotHighlight();
     };
+
+    const rebuildPresetSelectOptions = (list) => {
+      if (!presetSelect) return;
+      const previous = presetSelect.value;
+      presetSelect.innerHTML = '';
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'No Motion';
+      presetSelect.appendChild(defaultOption);
+      if (Array.isArray(list)) {
+        list.forEach((preset) => {
+          if (!preset || preset.id === undefined || preset.id === null) {
+            return;
+          }
+          const id = String(preset.id);
+          const name = preset.name ? String(preset.name) : id;
+          const opt = document.createElement('option');
+          opt.value = id;
+          opt.textContent = name;
+          presetSelect.appendChild(opt);
+        });
+      }
+      if (Array.from(presetSelect.options).some((opt) => opt.value === previous)) {
+        presetSelect.value = previous;
+      } else {
+        presetSelect.value = '';
+      }
+    };
+
+    const updateMotionPresets = (list) => {
+      const normalized = [];
+      if (Array.isArray(list)) {
+        list.forEach((preset) => {
+          if (!preset || preset.id === undefined || preset.id === null) {
+            return;
+          }
+          const id = String(preset.id);
+          const name = preset.name ? String(preset.name) : id;
+          normalized.push({ id, name });
+        });
+      }
+      const required = new Set(
+        Array.isArray(scheduleData)
+          ? scheduleData.filter((value) => value !== null && value !== undefined && value !== '')
+          : []
+      );
+      const newNames = { '': 'No Motion' };
+      normalized.forEach((preset) => {
+        newNames[preset.id] = preset.name;
+      });
+      required.forEach((id) => {
+        if (!newNames[id]) {
+          const fallback = presetNames[id] || String(id);
+          newNames[id] = fallback;
+        }
+      });
+      const newColors = {};
+      const usedColors = new Set();
+      normalized.forEach((preset, index) => {
+        const existing = presetColors[preset.id];
+        if (existing) {
+          newColors[preset.id] = existing;
+          usedColors.add(existing);
+          return;
+        }
+        let assigned = null;
+        for (let offset = 0; offset < palette.length; offset++) {
+          const candidate = palette[(index + offset) % palette.length];
+          if (!usedColors.has(candidate)) {
+            assigned = candidate;
+            break;
+          }
+        }
+        if (!assigned) {
+          assigned = palette[index % palette.length];
+        }
+        newColors[preset.id] = assigned;
+        usedColors.add(assigned);
+      });
+      required.forEach((id) => {
+        if (!newColors[id] && presetColors[id]) {
+          newColors[id] = presetColors[id];
+          usedColors.add(presetColors[id]);
+          if (!newNames[id]) {
+            newNames[id] = presetNames[id] || String(id);
+          }
+        }
+      });
+      presetNames = newNames;
+      presetColors = newColors;
+      rebuildPresetSelectOptions(normalized);
+      renderSchedule();
+      updateSelection(selectedSlot);
+    };
+
+    document.addEventListener('ultralights:presets-changed', (event) => {
+      if (!event || !event.detail || !Array.isArray(event.detail.presets)) {
+        return;
+      }
+      updateMotionPresets(event.detail.presets);
+    });
+
+    if (window.UltraLights && Array.isArray(window.UltraLights.presets)) {
+      updateMotionPresets(window.UltraLights.presets);
+    }
 
     const setStatus = (message, cls) => {
       if (!statusEl) return;
