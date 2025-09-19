@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException
-from .mqtt_bus import get_bus
+from .mqtt_bus import MqttBus
 from . import registry
 from .effects import WS_EFFECTS, WHITE_EFFECTS, RGB_EFFECTS
 from .presets import get_preset, apply_preset, get_room_presets
@@ -9,67 +9,22 @@ from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
-from .routes_pages import _enabled_module_keys, _DEFAULT_MODULE_INDICES
 
 
 router = APIRouter()
+BUS: Optional[MqttBus] = None
+
+def get_bus() -> MqttBus:
+    global BUS
+    if BUS is None:
+        BUS = MqttBus()
+    return BUS
 
 def _valid_node(node_id: str) -> Dict[str, Any]:
     _, _, node = registry.find_node(node_id)
     if node:
         return node
     raise HTTPException(404, "Unknown node id")
-
-
-def _node_module_capabilities(
-    node_id: str, node: Dict[str, Any]
-) -> tuple[list[str], dict[str, dict[str, Any]]]:
-    capabilities = status_monitor.capabilities_for(node_id)
-    modules = capabilities.get("modules")
-    if not isinstance(modules, dict):
-        modules = {}
-    module_keys_raw = capabilities.get("module_keys")
-    module_keys: list[str] = []
-    if isinstance(module_keys_raw, list):
-        for entry in module_keys_raw:
-            key_str = str(entry).strip()
-            if key_str:
-                module_keys.append(key_str)
-    if module_keys:
-        return module_keys, modules
-    fallback_keys = _enabled_module_keys(node)
-    fallback_modules: dict[str, dict[str, Any]] = {}
-    for key in fallback_keys:
-        fallback_modules[key] = {
-            "indices": list(_DEFAULT_MODULE_INDICES.get(key, ())),
-            "enabled": True,
-        }
-    return fallback_keys, fallback_modules
-
-
-def _module_indices(metadata: dict[str, dict[str, Any]], module_key: str) -> list[int]:
-    entry = metadata.get(module_key)
-    if not isinstance(entry, dict):
-        return []
-    indices = entry.get("indices")
-    if not isinstance(indices, list):
-        return []
-    result: list[int] = []
-    for value in indices:
-        if isinstance(value, bool):
-            continue
-        if isinstance(value, int):
-            result.append(value)
-            continue
-        if isinstance(value, float) and value.is_integer():
-            result.append(int(value))
-            continue
-        if isinstance(value, str):
-            try:
-                result.append(int(value.strip()))
-            except Exception:
-                continue
-    return result
 
 
 @router.delete("/api/node/{node_id}")
@@ -155,16 +110,12 @@ def api_set_motion_schedule(house_id: str, room_id: str, payload: Dict[str, Any]
 
 @router.post("/api/node/{node_id}/ws/set")
 def api_ws_set(node_id: str, payload: Dict[str, Any]):
-    node = _valid_node(node_id)
-    module_keys, module_caps = _node_module_capabilities(node_id, node)
+    _valid_node(node_id)
     try:
         strip = int(payload.get("strip"))
     except Exception:
         raise HTTPException(400, "invalid strip")
-    if "ws" not in module_keys:
-        raise HTTPException(404, "module not available")
-    allowed_strips = _module_indices(module_caps, "ws")
-    if not allowed_strips or strip not in allowed_strips:
+    if not 0 <= strip < 4:
         raise HTTPException(400, "invalid strip")
     effect = str(payload.get("effect", "")).strip()
     if effect not in WS_EFFECTS:
@@ -193,16 +144,12 @@ def api_ws_set(node_id: str, payload: Dict[str, Any]):
 
 @router.post("/api/node/{node_id}/white/set")
 def api_white_set(node_id: str, payload: Dict[str, Any]):
-    node = _valid_node(node_id)
-    module_keys, module_caps = _node_module_capabilities(node_id, node)
+    _valid_node(node_id)
     try:
         channel = int(payload.get("channel"))
     except Exception:
         raise HTTPException(400, "invalid channel")
-    if "white" not in module_keys:
-        raise HTTPException(404, "module not available")
-    allowed_channels = _module_indices(module_caps, "white")
-    if not allowed_channels or channel not in allowed_channels:
+    if not 0 <= channel < 4:
         raise HTTPException(400, "invalid channel")
     effect = str(payload.get("effect", "")).strip()
     if effect not in WHITE_EFFECTS:
@@ -227,16 +174,12 @@ def api_white_set(node_id: str, payload: Dict[str, Any]):
 
 @router.post("/api/node/{node_id}/rgb/set")
 def api_rgb_set(node_id: str, payload: Dict[str, Any]):
-    node = _valid_node(node_id)
-    module_keys, module_caps = _node_module_capabilities(node_id, node)
+    _valid_node(node_id)
     try:
         strip = int(payload.get("strip"))
     except Exception:
         raise HTTPException(400, "invalid strip")
-    if "rgb" not in module_keys:
-        raise HTTPException(404, "module not available")
-    allowed_strips = _module_indices(module_caps, "rgb")
-    if not allowed_strips or strip not in allowed_strips:
+    if not 0 <= strip < 4:
         raise HTTPException(400, "invalid strip")
     effect = str(payload.get("effect", "")).strip()
     if effect not in RGB_EFFECTS:
@@ -272,15 +215,13 @@ def api_set_brightness_limit(node_id: str, module: str, payload: Dict[str, Any])
     module_key = str(module).lower()
     if module_key not in {"ws", "white", "rgb"}:
         raise HTTPException(404, "unsupported module")
-    module_keys, module_caps = _node_module_capabilities(node_id, node)
-    if module_key not in module_keys:
+    if module_key not in node.get("modules", []):
         raise HTTPException(404, "module not available")
     try:
         channel = int(payload.get("channel"))
     except Exception:
         raise HTTPException(400, "invalid channel")
-    allowed_indices = _module_indices(module_caps, module_key)
-    if not allowed_indices or channel not in allowed_indices:
+    if not 0 <= channel < 4:
         raise HTTPException(400, "invalid channel")
     limit = payload.get("limit")
     if limit is None:

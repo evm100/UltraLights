@@ -1,4 +1,8 @@
 from collections import defaultdict
+from typing import Any
+
+from typing import Any, Dict, List, Optional
+
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Request
@@ -22,7 +26,6 @@ from .presets import get_room_presets
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
-from .mqtt_bus import request_status_snapshot
 from .brightness_limits import brightness_limits
 
 
@@ -128,9 +131,7 @@ _DEFAULT_MODULE_INDICES = {
 
 
 def _module_status_metadata(
-    module_keys: list[str],
-    status_payload: Any,
-    capability_modules: Optional[dict[str, dict[str, Any]]] = None,
+    module_keys: list[str], status_payload: Any
 ) -> dict[str, dict[str, Any]]:
     """Build metadata describing available indices for each module."""
 
@@ -139,67 +140,37 @@ def _module_status_metadata(
 
     for key in module_keys:
         info: dict[str, Any] = {}
-        cap_entry = capability_modules.get(key) if capability_modules else None
-        indices: list[int] = []
-        has_live_data = False
-
-        if isinstance(cap_entry, dict):
-            cap_indices = cap_entry.get("indices")
-            if isinstance(cap_indices, list) and cap_indices:
-                converted: list[int] = []
-                for value in cap_indices:
-                    if isinstance(value, bool):
-                        continue
-                    if isinstance(value, int):
-                        converted.append(value)
-                        continue
-                    if isinstance(value, float) and value.is_integer():
-                        converted.append(int(value))
-                        continue
-                    if isinstance(value, str):
-                        try:
-                            converted.append(int(value.strip()))
-                        except Exception:
-                            continue
-                if converted:
-                    indices = converted
-                    has_live_data = True
-
-        entries_data = payload_dict.get(key) if isinstance(payload_dict, dict) else None
         index_field = _MODULE_INDEX_KEYS.get(key)
-        if not indices and index_field and isinstance(entries_data, list):
+        entries_data = payload_dict.get(key) if isinstance(payload_dict, dict) else None
+        indices: list[int] = []
+        entries: list[dict[str, Any]] = []
+
+        if index_field and isinstance(entries_data, list):
             seen: set[int] = set()
-            derived: list[int] = []
             for entry in entries_data:
                 if not isinstance(entry, dict):
                     continue
                 idx = entry.get(index_field)
-                if not isinstance(idx, int) or idx in seen:
+                if not isinstance(idx, int):
+                    continue
+                enabled = entry.get("enabled")
+                if enabled is not None and not _coerce_enabled(enabled):
+                    continue
+                if idx in seen:
                     continue
                 seen.add(idx)
-                derived.append(idx)
-            if derived:
-                indices = derived
-                has_live_data = True
-
-        if not indices:
-            fallback = list(_DEFAULT_MODULE_INDICES.get(key, ()))
-            indices = fallback
-            has_live_data = False
+                indices.append(idx)
+                entries.append(entry)
 
         if indices:
-            indices = list(dict.fromkeys(indices))
-        info["indices"] = indices
-        info["has_live_data"] = has_live_data
-
-        status_entries = None
-        if isinstance(cap_entry, dict) and isinstance(cap_entry.get("status"), list):
-            status_entries = cap_entry["status"]
-        elif isinstance(entries_data, list):
-            status_entries = entries_data
-        if status_entries:
-            info["status"] = status_entries
-
+            info["indices"] = indices
+            info["has_live_data"] = True
+        else:
+            fallback = list(_DEFAULT_MODULE_INDICES.get(key, ()))
+            info["indices"] = fallback
+            info["has_live_data"] = False
+        if entries:
+            info["status"] = entries
         metadata[key] = info
 
     return metadata
@@ -404,7 +375,7 @@ def room_page(request: Request, house_id: str, room_id: str):
     )
 
 @router.get("/node/{node_id}", response_class=HTMLResponse)
-async def node_page(request: Request, node_id: str):
+def node_page(request: Request, node_id: str):
     house, room, node = registry.find_node(node_id)
     if not node:
         return templates.TemplateResponse(
@@ -416,31 +387,7 @@ async def node_page(request: Request, node_id: str):
     else:
         subtitle = None
 
-    capabilities: Dict[str, Any] = {}
-    try:
-        capabilities = await request_status_snapshot(node_id, timeout=1.5)
-    except Exception:
-        capabilities = status_monitor.capabilities_for(node_id)
-        capabilities["fresh"] = False
-
-    modules_data = capabilities.get("modules")
-    if not isinstance(modules_data, dict):
-        modules_data = {}
-
-    live_module_keys_raw = capabilities.get("module_keys")
-    live_module_keys: List[str] = []
-    if isinstance(live_module_keys_raw, list):
-        for entry in live_module_keys_raw:
-            key_str = str(entry).strip()
-            if key_str:
-                live_module_keys.append(key_str)
-
-    if live_module_keys:
-        enabled_modules = live_module_keys
-        capability_metadata: Optional[dict[str, dict[str, Any]]] = modules_data
-    else:
-        enabled_modules = _enabled_module_keys(node)
-        capability_metadata = None
+    enabled_modules = _enabled_module_keys(node)
 
     missing = [eff for eff in WS_EFFECTS if eff not in WS_PARAM_DEFS]
     if missing:
@@ -466,13 +413,8 @@ async def node_page(request: Request, node_id: str):
 
     status_info = status_monitor.status_for(node["id"])
     status_initial_online = bool(status_info.get("online"))
-    status_payload = capabilities.get("payload")
-    if status_payload is None:
-        status_payload = status_info.get("payload")
     module_metadata = _module_status_metadata(
-        enabled_modules,
-        status_payload,
-        capability_modules=capability_metadata,
+        enabled_modules, status_info.get("payload")
     )
 
     return templates.TemplateResponse(
