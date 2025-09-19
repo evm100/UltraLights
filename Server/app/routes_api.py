@@ -4,7 +4,14 @@ from fastapi import APIRouter, HTTPException
 from .mqtt_bus import MqttBus
 from . import registry
 from .effects import WS_EFFECTS, WHITE_EFFECTS, RGB_EFFECTS
-from .presets import get_preset, apply_preset, get_room_presets
+from .presets import (
+    get_preset,
+    apply_preset,
+    get_room_presets,
+    save_custom_preset,
+    delete_custom_preset,
+    snapshot_to_actions,
+)
 from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
@@ -13,6 +20,9 @@ from .brightness_limits import brightness_limits
 
 router = APIRouter()
 BUS: Optional[MqttBus] = None
+
+DEFAULT_SNAPSHOT_TIMEOUT = 3.0
+MAX_CUSTOM_PRESET_NAME_LENGTH = 64
 
 def get_bus() -> MqttBus:
     global BUS
@@ -170,6 +180,56 @@ def _format_node_state(
     }
 
 
+def _module_index_sort_key(value: Any) -> tuple[int, Any]:
+    try:
+        return (0, int(str(value)))
+    except (TypeError, ValueError):
+        return (1, str(value))
+
+
+def _modules_to_snapshot(modules: Dict[str, Any]) -> Dict[str, Any]:
+    snapshot: Dict[str, Any] = {}
+    if not isinstance(modules, dict):
+        return snapshot
+
+    for module_name, module_state in modules.items():
+        if not isinstance(module_state, dict):
+            continue
+
+        if module_name == "white":
+            entries: List[Dict[str, Any]] = []
+            for key, entry in sorted(module_state.items(), key=lambda item: _module_index_sort_key(item[0])):
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    channel = int(str(key))
+                except (TypeError, ValueError):
+                    continue
+                payload_entry = dict(entry)
+                payload_entry["channel"] = channel
+                entries.append(payload_entry)
+            if entries:
+                snapshot["white"] = entries
+            continue
+
+        if module_name in {"ws", "rgb"}:
+            entries = []
+            for key, entry in sorted(module_state.items(), key=lambda item: _module_index_sort_key(item[0])):
+                if not isinstance(entry, dict):
+                    continue
+                try:
+                    strip = int(str(key))
+                except (TypeError, ValueError):
+                    continue
+                payload_entry = dict(entry)
+                payload_entry["strip"] = strip
+                entries.append(payload_entry)
+            if entries:
+                snapshot[module_name] = entries
+
+    return snapshot
+
+
 @router.delete("/api/node/{node_id}")
 def api_remove_node(node_id: str):
     house, room, node = registry.find_node(node_id)
@@ -212,6 +272,121 @@ def api_add_node(house_id: str, room_id: str, payload: Dict[str, Any]):
     except KeyError:
         raise HTTPException(404, "Unknown room")
     return {"ok": True, "node": node}
+
+
+@router.get("/api/house/{house_id}/room/{room_id}/presets")
+def api_list_room_presets(house_id: str, room_id: str):
+    house, room = registry.find_room(house_id, room_id)
+    if not house or not room:
+        raise HTTPException(404, "Unknown room")
+    presets = get_room_presets(house_id, room_id)
+    return {"presets": presets}
+
+
+@router.post("/api/house/{house_id}/room/{room_id}/presets")
+def api_create_room_preset(house_id: str, room_id: str, payload: Dict[str, Any]):
+    house, room = registry.find_room(house_id, room_id)
+    if not house or not room:
+        raise HTTPException(404, "Unknown room")
+
+    raw_name = payload.get("name")
+    if raw_name is None:
+        raise HTTPException(400, "missing preset name")
+    name = str(raw_name).strip()
+    if not name:
+        raise HTTPException(400, "missing preset name")
+    if len(name) > MAX_CUSTOM_PRESET_NAME_LENGTH:
+        raise HTTPException(400, "preset name too long")
+
+    timeout_raw = payload.get("timeout", DEFAULT_SNAPSHOT_TIMEOUT)
+    try:
+        timeout_value = float(timeout_raw)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "invalid timeout")
+    if timeout_value != timeout_value or timeout_value <= 0:
+        raise HTTPException(400, "timeout must be positive")
+
+    node_entries: List[tuple[str, Dict[str, Any]]] = []
+    seen_nodes: set[str] = set()
+    room_nodes = room.get("nodes")
+    if not isinstance(room_nodes, list):
+        room_nodes = []
+    for entry in room_nodes:
+        if not isinstance(entry, dict):
+            continue
+        node_id = entry.get("id")
+        if not isinstance(node_id, str):
+            continue
+        node_key = node_id.strip()
+        if not node_key or node_key in seen_nodes:
+            continue
+        node = _valid_node(node_key)
+        node_entries.append((node_key, node))
+        seen_nodes.add(node_key)
+
+    actions: List[Dict[str, Any]] = []
+    bus = get_bus()
+    for node_id, node in node_entries:
+        info = status_monitor.status_for(node_id)
+        since_seq_raw = info.get("seq") if isinstance(info, dict) else 0
+        try:
+            since_seq = int(since_seq_raw)
+        except (TypeError, ValueError):
+            since_seq = 0
+
+        bus.status_request(node_id)
+        seq, snapshot_payload = status_monitor.wait_for_snapshot(
+            node_id, since_seq, timeout_value
+        )
+        if not isinstance(snapshot_payload, dict) or snapshot_payload.get("event") != "snapshot":
+            raise HTTPException(504, f"Timed out waiting for status snapshot from {node_id}")
+
+        formatted_state = _format_node_state(node_id, node, seq, snapshot_payload)
+        modules = formatted_state.get("modules")
+        module_snapshot = _modules_to_snapshot(modules if isinstance(modules, dict) else {})
+        node_actions = snapshot_to_actions(node_id, module_snapshot)
+        if node_actions:
+            actions.extend(node_actions)
+
+    existing_ids = {
+        str(p.get("id"))
+        for p in get_room_presets(house_id, room_id)
+        if isinstance(p, dict) and p.get("id") is not None
+    }
+    base_id = registry.slugify(name)
+    if not base_id:
+        base_id = "preset"
+    preset_id = base_id
+    counter = 2
+    while preset_id in existing_ids:
+        preset_id = f"{base_id}-{counter}"
+        counter += 1
+
+    saved = save_custom_preset(
+        house_id,
+        room_id,
+        {"id": preset_id, "name": name, "actions": actions, "source": "custom"},
+    )
+
+    presets = get_room_presets(house_id, room_id)
+    return {"ok": True, "preset": saved, "presets": presets}
+
+
+@router.delete("/api/house/{house_id}/room/{room_id}/presets")
+def api_delete_room_preset(house_id: str, room_id: str, preset_id: str):
+    house, room = registry.find_room(house_id, room_id)
+    if not house or not room:
+        raise HTTPException(404, "Unknown room")
+
+    preset_key = str(preset_id).strip()
+    if not preset_key:
+        raise HTTPException(400, "invalid preset id")
+
+    if not delete_custom_preset(house_id, room_id, preset_key):
+        raise HTTPException(404, "Unknown preset")
+
+    presets = get_room_presets(house_id, room_id)
+    return {"ok": True, "presets": presets}
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/preset/{preset_id}")
