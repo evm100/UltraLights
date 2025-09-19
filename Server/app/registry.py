@@ -118,3 +118,23 @@ def remove_node(node_id: str) -> Node:
                     save_registry()
                     return removed
     raise KeyError("node not found")
+
+
+def remove_room(house_id: str, room_id: str) -> Room:
+    """Remove ``room_id`` from ``house_id`` and return the removed room."""
+
+    house = find_house(house_id)
+    if not house:
+        raise KeyError("house not found")
+
+    rooms = house.get("rooms")
+    if not isinstance(rooms, list):
+        raise KeyError("room not found")
+
+    for idx, room in enumerate(rooms):
+        if room.get("id") == room_id:
+            removed = rooms.pop(idx)
+            save_registry()
+            return removed
+
+    raise KeyError("room not found")

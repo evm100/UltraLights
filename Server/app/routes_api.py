@@ -290,6 +290,44 @@ def api_add_room(house_id: str, payload: Dict[str, str]):
         raise HTTPException(404, "Unknown house")
     return {"ok": True, "room": room}
 
+
+@router.delete("/api/house/{house_id}/rooms/{room_id}")
+def api_delete_room(house_id: str, room_id: str):
+    house, room = registry.find_room(house_id, room_id)
+    if not house or not room:
+        raise HTTPException(404, "Unknown room")
+
+    seen: set[str] = set()
+    node_ids: List[str] = []
+    nodes = room.get("nodes")
+    if isinstance(nodes, list):
+        for entry in nodes:
+            if not isinstance(entry, dict):
+                continue
+            raw_id = entry.get("id")
+            if not isinstance(raw_id, str):
+                continue
+            node_id = raw_id.strip()
+            if not node_id or node_id in seen:
+                continue
+            seen.add(node_id)
+            node_ids.append(node_id)
+
+    try:
+        removed = registry.remove_room(house_id, room_id)
+    except KeyError:
+        raise HTTPException(404, "Unknown room")
+
+    for node_id in node_ids:
+        motion_manager.forget_node(node_id)
+        status_monitor.forget(node_id)
+
+    motion_manager.forget_room(house_id, room_id)
+    motion_schedule.remove_room(house_id, room_id)
+
+    return {"ok": True, "room": removed, "removed_nodes": node_ids}
+
+
 @router.post("/api/house/{house_id}/room/{room_id}/nodes")
 def api_add_node(house_id: str, room_id: str, payload: Dict[str, Any]):
     name = str(payload.get("name", "")).strip()

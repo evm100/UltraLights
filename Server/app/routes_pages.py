@@ -168,6 +168,7 @@ def _admin_template_context(
     description: Optional[str] = None,
     status_house_id: Optional[str] = None,
     allow_remove: bool = False,
+    house_rooms: Optional[List[Dict[str, Any]]] = None,
 ):
     return {
         "request": request,
@@ -180,6 +181,7 @@ def _admin_template_context(
         "status_timeout": status_monitor.timeout,
         "status_house_id": status_house_id,
         "allow_remove": allow_remove,
+        "house_rooms": house_rooms,
     }
 
 
@@ -209,6 +211,30 @@ def admin_house_panel(request: Request, house_id: str):
         )
     house_name = house.get("name") or house.get("id") or house_id
     nodes = _collect_admin_nodes(house_id)
+    rooms: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for entry in house.get("rooms", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        room_id = entry.get("id")
+        if not isinstance(room_id, str):
+            continue
+        clean_id = room_id.strip()
+        if not clean_id:
+            continue
+        if clean_id in seen_ids:
+            continue
+        seen_ids.add(clean_id)
+        name = entry.get("name")
+        room_name = str(name).strip() if isinstance(name, str) else clean_id
+        node_count = 0
+        node_entries = entry.get("nodes")
+        if isinstance(node_entries, list):
+            for node in node_entries:
+                if isinstance(node, dict) and node.get("id"):
+                    node_count += 1
+        rooms.append({"id": clean_id, "name": room_name, "node_count": node_count})
+    rooms.sort(key=lambda item: item["name"].lower())
     return templates.TemplateResponse(
         "admin.html",
         _admin_template_context(
@@ -220,6 +246,7 @@ def admin_house_panel(request: Request, house_id: str):
             description=f"Monitor node heartbeats for {house_name}.",
             status_house_id=house_id,
             allow_remove=True,
+            house_rooms=rooms,
         ),
     )
 

@@ -107,6 +107,20 @@ class MotionScheduleStore:
             self.save()
             return list(clean)
 
+    def remove_room(self, house_id: str, room_id: str) -> None:
+        """Forget any stored schedule for ``house_id``/``room_id``."""
+
+        with self._lock:
+            house = self._data.get(str(house_id))
+            if not house:
+                return
+            removed = house.pop(str(room_id), None)
+            if removed is None:
+                return
+            if not house:
+                self._data.pop(str(house_id), None)
+            self.save()
+
     def active_preset(
         self,
         house_id: str,

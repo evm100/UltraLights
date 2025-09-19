@@ -81,6 +81,34 @@ class MotionManager:
             self._status_request_times.pop(node_id, None)
         self.motion_preferences.remove_node(node_id)
 
+    def forget_room(self, house_id: str, room_id: str) -> None:
+        """Drop any cached state associated with ``house_id``/``room_id``."""
+
+        self.room_sensors.pop((house_id, room_id), None)
+
+        existing = self.active.get(room_id)
+        if existing and existing.get("house_id") not in (None, house_id):
+            return
+
+        entry = self.active.pop(room_id, None)
+        if not entry:
+            return
+
+        timers = entry.get("timers")
+        if isinstance(timers, dict):
+            for timer in timers.values():
+                try:
+                    timer.cancel()
+                except Exception:
+                    pass
+
+        timer = entry.get("timer")
+        if timer:
+            try:
+                timer.cancel()
+            except Exception:
+                pass
+
     def ensure_room_loaded(self, house_id: str, room_id: str) -> None:
         house, room = registry.find_room(house_id, room_id)
         if not house or not room:
