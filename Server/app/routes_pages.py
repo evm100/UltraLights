@@ -30,7 +30,7 @@ from .brightness_limits import brightness_limits
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
-NODE_MODULE_TEMPLATES = ["ws", "rgb", "white", "sensor", "ota", "motion"]
+NODE_MODULE_TEMPLATES = ["ws", "rgb", "white", "ota", "motion"]
 
 
 @router.get("/", response_class=HTMLResponse)
