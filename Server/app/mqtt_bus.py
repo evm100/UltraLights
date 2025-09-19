@@ -1,10 +1,12 @@
+import asyncio
 import threading
 import json
 import time
-from typing import Optional, List, Dict, Union, Tuple
+from typing import Any, Optional, List, Dict, Union, Tuple
 import paho.mqtt.client as paho
 from .config import settings
 from . import registry
+from .status_monitor import status_monitor
 
 def topic_cmd(node_id: str, path: str) -> str:
     return f"ul/{node_id}/cmd/{path}"
@@ -102,6 +104,55 @@ class MqttBus:
         self.client.disconnect()
         self._rate_thread.join(timeout=5.0)
         self.thread.join(timeout=5.0)
+
+_BUS: Optional["MqttBus"] = None
+_BUS_LOCK = threading.Lock()
+
+
+def get_bus() -> "MqttBus":
+    global _BUS
+    if _BUS is not None:
+        return _BUS
+    with _BUS_LOCK:
+        if _BUS is None:
+            _BUS = MqttBus()
+    return _BUS
+
+
+async def request_status_snapshot(node_id: str, timeout: float = 1.0) -> Dict[str, Any]:
+    """Request a live status snapshot and return capability metadata."""
+
+    bus = get_bus()
+    before = status_monitor.capabilities_for(node_id)
+    previous_ts = before.get("timestamp")
+
+    bus.pub(topic_cmd(node_id, "status"), {})
+
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    poll_delay = 0.05
+
+    while True:
+        await asyncio.sleep(poll_delay)
+        current = status_monitor.capabilities_for(node_id)
+        current_ts = current.get("timestamp")
+        if current_ts is not None and (previous_ts is None or current_ts > previous_ts):
+            current["fresh"] = True
+            return current
+        if time.monotonic() >= deadline:
+            fallback = current if current.get("module_keys") or current.get("modules") else before
+            if not isinstance(fallback, dict):
+                fallback = {}
+            modules = fallback.get("modules")
+            if not isinstance(modules, dict):
+                modules = {}
+            result: Dict[str, Any] = {
+                "module_keys": list(fallback.get("module_keys", [])),
+                "modules": modules,
+                "timestamp": fallback.get("timestamp"),
+                "payload": fallback.get("payload"),
+                "fresh": False,
+            }
+            return result
 
     # ---- WS strip commands ----
     def ws_set(
