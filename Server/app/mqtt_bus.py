@@ -168,6 +168,10 @@ class MqttBus:
         """Program motion state commands on the node."""
         self.pub(topic_cmd(node_id, "sensor/motion"), states)
 
+    def status_request(self, node_id: str) -> None:
+        """Request a full status snapshot from ``node_id``."""
+        self.pub(topic_cmd(node_id, "status"), {}, retain=False)
+
     # ---- OTA ----
     def ota_check(self, node_id: str):
         """Trigger an OTA update check without retaining the command."""

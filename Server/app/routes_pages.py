@@ -30,6 +30,7 @@ from .brightness_limits import brightness_limits
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+NODE_MODULE_TEMPLATES = ["ws", "rgb", "white", "sensor", "ota", "motion"]
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -286,5 +287,6 @@ def node_page(request: Request, node_id: str):
             "status_timeout": status_monitor.timeout,
             "status_initial_online": status_initial_online,
             "brightness_limits": brightness_limits.get_limits_for_node(node["id"]),
+            "module_templates": NODE_MODULE_TEMPLATES,
         },
     )
