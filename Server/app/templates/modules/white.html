@@ -1,11 +1,9 @@
-{% set white_meta = (module_metadata | default({})).get('white', {}) %}
-{% set white_indices = white_meta.get('indices', []) %}
 <section class="glass rounded-2xl p-6">
   <h3 class="text-lg font-semibold mb-3">White Channel</h3>
   <div class="mb-2">
     <label class="text-xs opacity-70">Channel</label>
     <select id="wChannel" class="p-1 rounded bg-slate-900 border border-slate-700">
-      {% for i in white_indices %}
+      {% for i in range(4) %}
       <option value="{{ i }}">{{ i }}</option>
       {% endfor %}
     </select>
@@ -34,7 +32,6 @@
 import {renderParams,collectParams} from '/static/params.js';
 const WHITE_PARAM_DEFS={{ white_param_defs|tojson }};
 const MODULE_KEY='white';
-const AVAILABLE_CHANNELS={{ white_indices|tojson }};
 
 async function post(path,body){
   const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -47,38 +44,13 @@ const effEl=document.getElementById('wEffect');
 const wBriEl=document.getElementById('wBri');
 const lockBtn=document.getElementById('wBriLock');
 const wParamsEl=document.getElementById('wParams');
-const onBtn=document.getElementById('wOn');
-const offBtn=document.getElementById('wOff');
-
-function isValidChannel(channel){
-  return Number.isInteger(channel)&&AVAILABLE_CHANNELS.includes(channel);
-}
-
-function ensureChannelSelection(){
-  const hasChannels=AVAILABLE_CHANNELS.length>0;
-  chEl.disabled=!hasChannels;
-  effEl.disabled=!hasChannels;
-  wBriEl.disabled=!hasChannels;
-  lockBtn.disabled=!hasChannels;
-  if(onBtn)onBtn.disabled=!hasChannels;
-  if(offBtn)offBtn.disabled=!hasChannels;
-  if(!hasChannels){
-    return;
-  }
-  const current=parseInt(chEl.value,10);
-  if(Number.isNaN(current)||!AVAILABLE_CHANNELS.includes(current)){
-    chEl.value=String(AVAILABLE_CHANNELS[0]);
-  }
-}
 
 function activeChannel(){
   const value=parseInt(chEl.value,10);
-  if(Number.isNaN(value))return null;
-  return isValidChannel(value)?value:null;
+  return Number.isNaN(value)?null:value;
 }
 
 function getLimit(channel){
-  if(!isValidChannel(channel))return null;
   const data=window.nodeBrightnessLimits;
   if(!data)return null;
   const moduleData=data[MODULE_KEY];
@@ -88,7 +60,6 @@ function getLimit(channel){
 }
 
 function cacheLimit(channel,limit){
-  if(!isValidChannel(channel))return;
   const data=window.nodeBrightnessLimits||(window.nodeBrightnessLimits={});
   const key=String(channel);
   if(limit===null||limit===undefined){
@@ -166,7 +137,7 @@ function updateParams(){
 }
 
 effEl.onchange=()=>{updateParams();scheduleWhite();};
-chEl.onchange=()=>{ensureChannelSelection();applyBrightnessLimit();scheduleWhite();};
+chEl.onchange=()=>{applyBrightnessLimit();scheduleWhite();};
 wBriEl.addEventListener('input',()=>{
   const clamped=clampBrightness(wBriEl.value);
   if(clamped===null)return;
@@ -176,12 +147,11 @@ wBriEl.addEventListener('input',()=>{
   scheduleWhite();
 });
 if(effEl.value)updateParams();
-ensureChannelSelection();
 applyBrightnessLimit();
 
 function sendWhite(options={}){
   const channel=activeChannel();
-  if(channel===null||!isValidChannel(channel))return;
+  if(channel===null)return;
   let effect=null;
   if(options.effect!==undefined){
     effect=String(options.effect).trim();
@@ -214,7 +184,6 @@ function sendWhite(options={}){
 }
 
 async function persistLimit(channel,limit){
-  if(!isValidChannel(channel)){alert('Invalid channel');return;}
   try{
     const res=await post(`/api/node/{{ node.id }}/white/brightness-limit`,{channel,limit});
     let payload=null;
@@ -245,7 +214,7 @@ async function persistLimit(channel,limit){
 
 lockBtn.addEventListener('click',()=>{
   const channel=activeChannel();
-  if(channel===null||!isValidChannel(channel)){alert('Invalid channel');return;}
+  if(channel===null){alert('Invalid channel');return;}
   const currentLimit=getLimit(channel);
   if(currentLimit!==null){
     persistLimit(channel,null);
@@ -255,22 +224,17 @@ lockBtn.addEventListener('click',()=>{
   if(brightness===null){alert('Invalid brightness');return;}
   persistLimit(channel,brightness);
 });
-if(onBtn){
-onBtn.onclick=()=>{
+document.getElementById('wOn').onclick=()=>{
   const channel=activeChannel();
-  if(channel===null||!isValidChannel(channel)){alert('Invalid channel');return;}
   const limit=channel===null?null:getLimit(channel);
   const target=limit!==null?limit:255;
   wBriEl.value=String(target);
   sendWhite({brightness:target});
 };
-}
-if(offBtn){
-offBtn.onclick=()=>{
+document.getElementById('wOff').onclick=()=>{
   const channel=activeChannel();
-  if(channel===null||!isValidChannel(channel)){alert('Invalid channel');return;}
+  if(channel===null){alert('Invalid channel');return;}
   wBriEl.value='0';
   sendWhite({effect:'solid',brightness:0,params:[]});
 };
-}
 </script>
