@@ -2,8 +2,9 @@
   <h3 class="text-lg font-semibold mb-3">Addressable Strip</h3>
   <div class="mb-2">
     <label class="text-xs opacity-70">Strip</label>
+    {% set ws_indices = module_index_options.get('ws', range(4)) %}
     <select id="wsStrip" class="p-1 rounded bg-slate-900 border border-slate-700">
-      {% for i in range(4) %}
+      {% for i in ws_indices %}
       <option value="{{ i }}">{{ i }}</option>
       {% endfor %}
     </select>

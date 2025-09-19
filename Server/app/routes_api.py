@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
+
 from fastapi import APIRouter, HTTPException
-from .mqtt_bus import MqttBus
+
+from .mqtt_bus import MqttBus, get_mqtt_bus
 from . import registry
 from .effects import WS_EFFECTS, WHITE_EFFECTS, RGB_EFFECTS
 from .presets import get_preset, apply_preset, get_room_presets
@@ -9,21 +11,33 @@ from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
+from .node_capabilities import (
+    DEFAULT_INDEX_RANGES,
+    build_index_options,
+    merge_module_lists,
+    registry_enabled_modules,
+)
 
 router = APIRouter()
-BUS: Optional[MqttBus] = None
+
 
 def get_bus() -> MqttBus:
-    global BUS
-    if BUS is None:
-        BUS = MqttBus()
-    return BUS
+    return get_mqtt_bus()
 
 def _valid_node(node_id: str) -> Dict[str, Any]:
     _, _, node = registry.find_node(node_id)
     if node:
         return node
     raise HTTPException(404, "Unknown node id")
+
+
+def _node_state(node_id: str) -> tuple[Dict[str, Any], list[str], dict[str, list[int]]]:
+    node = _valid_node(node_id)
+    snapshot = status_monitor.capabilities_for(node_id)
+    live_modules = snapshot.get("modules") or []
+    modules = merge_module_lists(live_modules, registry_enabled_modules(node))
+    indexes = build_index_options(snapshot.get("indexes", {}), DEFAULT_INDEX_RANGES)
+    return node, modules, indexes
 
 @router.post("/api/all-off")
 def api_all_off():
@@ -94,12 +108,16 @@ def api_set_motion_schedule(house_id: str, room_id: str, payload: Dict[str, Any]
 
 @router.post("/api/node/{node_id}/ws/set")
 def api_ws_set(node_id: str, payload: Dict[str, Any]):
-    _valid_node(node_id)
+    _, modules, indexes = _node_state(node_id)
+    module_lookup = {m.lower(): m for m in modules}
+    if "ws" not in module_lookup:
+        raise HTTPException(404, "WS module not available")
     try:
         strip = int(payload.get("strip"))
     except Exception:
         raise HTTPException(400, "invalid strip")
-    if not 0 <= strip < 4:
+    valid_strips = indexes.get("ws", list(DEFAULT_INDEX_RANGES["ws"]))
+    if strip not in valid_strips:
         raise HTTPException(400, "invalid strip")
     effect = str(payload.get("effect", "")).strip()
     if effect not in WS_EFFECTS:
@@ -128,12 +146,16 @@ def api_ws_set(node_id: str, payload: Dict[str, Any]):
 
 @router.post("/api/node/{node_id}/white/set")
 def api_white_set(node_id: str, payload: Dict[str, Any]):
-    _valid_node(node_id)
+    _, modules, indexes = _node_state(node_id)
+    module_lookup = {m.lower(): m for m in modules}
+    if "white" not in module_lookup:
+        raise HTTPException(404, "White module not available")
     try:
         channel = int(payload.get("channel"))
     except Exception:
         raise HTTPException(400, "invalid channel")
-    if not 0 <= channel < 4:
+    valid_channels = indexes.get("white", list(DEFAULT_INDEX_RANGES["white"]))
+    if channel not in valid_channels:
         raise HTTPException(400, "invalid channel")
     effect = str(payload.get("effect", "")).strip()
     if effect not in WHITE_EFFECTS:
@@ -158,12 +180,16 @@ def api_white_set(node_id: str, payload: Dict[str, Any]):
 
 @router.post("/api/node/{node_id}/rgb/set")
 def api_rgb_set(node_id: str, payload: Dict[str, Any]):
-    _valid_node(node_id)
+    _, modules, indexes = _node_state(node_id)
+    module_lookup = {m.lower(): m for m in modules}
+    if "rgb" not in module_lookup:
+        raise HTTPException(404, "RGB module not available")
     try:
         strip = int(payload.get("strip"))
     except Exception:
         raise HTTPException(400, "invalid strip")
-    if not 0 <= strip < 4:
+    valid_strips = indexes.get("rgb", list(DEFAULT_INDEX_RANGES["rgb"]))
+    if strip not in valid_strips:
         raise HTTPException(400, "invalid strip")
     effect = str(payload.get("effect", "")).strip()
     if effect not in RGB_EFFECTS:
@@ -195,17 +221,19 @@ def api_rgb_set(node_id: str, payload: Dict[str, Any]):
 
 @router.post("/api/node/{node_id}/{module}/brightness-limit")
 def api_set_brightness_limit(node_id: str, module: str, payload: Dict[str, Any]):
-    node = _valid_node(node_id)
+    _, modules, indexes = _node_state(node_id)
     module_key = str(module).lower()
     if module_key not in {"ws", "white", "rgb"}:
         raise HTTPException(404, "unsupported module")
-    if module_key not in node.get("modules", []):
+    module_lookup = {m.lower(): m for m in modules}
+    if module_key not in module_lookup:
         raise HTTPException(404, "module not available")
     try:
         channel = int(payload.get("channel"))
     except Exception:
         raise HTTPException(400, "invalid channel")
-    if not 0 <= channel < 4:
+    valid_channels = indexes.get(module_key, list(DEFAULT_INDEX_RANGES[module_key]))
+    if channel not in valid_channels:
         raise HTTPException(400, "invalid channel")
     limit = payload.get("limit")
     if limit is None:

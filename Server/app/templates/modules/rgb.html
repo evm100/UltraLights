@@ -2,8 +2,9 @@
   <h3 class="text-lg font-semibold mb-3">RGB Strip</h3>
   <div class="mb-2">
     <label class="text-xs opacity-70">Strip</label>
+    {% set rgb_strips = module_index_options.get('rgb', range(4)) %}
     <select id="rgbStrip" class="p-1 rounded bg-slate-900 border border-slate-700">
-      {% for i in range(4) %}
+      {% for i in rgb_strips %}
       <option value="{{ i }}">{{ i }}</option>
       {% endfor %}
     </select>

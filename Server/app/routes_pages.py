@@ -1,5 +1,6 @@
+import logging
 from collections import defaultdict
-
+from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -21,9 +22,17 @@ from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
+from .mqtt_bus import get_mqtt_bus
+from .node_capabilities import (
+    DEFAULT_INDEX_RANGES,
+    build_index_options,
+    merge_module_lists,
+    registry_enabled_modules,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+logger = logging.getLogger(__name__)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -48,13 +57,14 @@ def admin_panel(request: Request):
             room_name = (room.get("name") or room.get("id") or "")
         node_name = node.get("name") or node.get("id") or ""
         node_id = node.get("id") or node_name
+        node_modules = registry_enabled_modules(node)
         nodes.append(
             {
                 "id": node_id,
                 "name": node_name,
                 "house": house_name,
                 "room": room_name,
-                "has_ota": "ota" in (node.get("modules") or []),
+                "has_ota": any(m.lower() == "ota" for m in node_modules),
             }
         )
     nodes.sort(key=lambda item: (item["house"].lower(), item["room"].lower(), item["name"].lower()))
@@ -167,7 +177,7 @@ def room_page(request: Request, house_id: str, room_id: str):
     )
 
 @router.get("/node/{node_id}", response_class=HTMLResponse)
-def node_page(request: Request, node_id: str):
+async def node_page(request: Request, node_id: str):
     house, room, node = registry.find_node(node_id)
     if not node:
         return templates.TemplateResponse(
@@ -179,10 +189,28 @@ def node_page(request: Request, node_id: str):
     else:
         subtitle = None
 
+    registry_modules = registry_enabled_modules(node)
+    capability_snapshot = status_monitor.capabilities_for(node_id)
+    try:
+        capability_snapshot = await get_mqtt_bus().request_status_snapshot(node_id)
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.warning("Failed to request status snapshot for %s: %s", node_id, exc)
+    live_modules = capability_snapshot.get("modules") or []
+    module_indexes = build_index_options(
+        capability_snapshot.get("indexes", {}), DEFAULT_INDEX_RANGES
+    )
+    node_modules = merge_module_lists(live_modules, registry_modules)
+    capability_updated_at = capability_snapshot.get("updated_at")
+    capability_updated_iso = None
+    if isinstance(capability_updated_at, (int, float)):
+        capability_updated_iso = datetime.fromtimestamp(
+            capability_updated_at, tz=timezone.utc
+        ).isoformat()
+    module_source = "mqtt" if live_modules else "registry"
+
     missing = [eff for eff in WS_EFFECTS if eff not in WS_PARAM_DEFS]
     if missing:
-        import logging
-        logging.warning("WS_PARAM_DEFS missing entries for: %s", ", ".join(sorted(missing)))
+        logger.warning("WS_PARAM_DEFS missing entries for: %s", ", ".join(sorted(missing)))
 
     tier_groups: dict[str, list[str]] = defaultdict(list)
     for eff in sorted(WS_EFFECTS):
@@ -217,5 +245,11 @@ def node_page(request: Request, node_id: str):
             "white_param_defs": WHITE_PARAM_DEFS,
             "rgb_param_defs": RGB_PARAM_DEFS,
             "brightness_limits": brightness_limits.get_limits_for_node(node["id"]),
+            "node_modules": node_modules,
+            "module_index_options": module_indexes,
+            "module_source": module_source,
+            "capability_updated_at": capability_updated_at,
+            "capability_updated_at_iso": capability_updated_iso,
+            "capability_snapshot": capability_snapshot,
         },
     )

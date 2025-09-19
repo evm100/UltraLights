@@ -2,8 +2,9 @@
   <h3 class="text-lg font-semibold mb-3">White Channel</h3>
   <div class="mb-2">
     <label class="text-xs opacity-70">Channel</label>
+    {% set white_channels = module_index_options.get('white', range(4)) %}
     <select id="wChannel" class="p-1 rounded bg-slate-900 border border-slate-700">
-      {% for i in range(4) %}
+      {% for i in white_channels %}
       <option value="{{ i }}">{{ i }}</option>
       {% endfor %}
     </select>

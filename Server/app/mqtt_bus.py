@@ -1,10 +1,12 @@
+import asyncio
 import threading
 import json
 import time
-from typing import Optional, List, Dict, Union, Tuple
+from typing import Optional, List, Dict, Union, Tuple, Any
 import paho.mqtt.client as paho
 from .config import settings
 from . import registry
+from .status_monitor import status_monitor
 
 def topic_cmd(node_id: str, path: str) -> str:
     return f"ul/{node_id}/cmd/{path}"
@@ -173,6 +175,21 @@ class MqttBus:
         """Trigger an OTA update check without retaining the command."""
         self.pub(topic_cmd(node_id, "ota/check"), {}, retain=False)
 
+    async def request_status_snapshot(
+        self, node_id: str, timeout: float = 2.0
+    ) -> Dict[str, Any]:
+        """Request a live status snapshot and return parsed capabilities."""
+
+        loop = asyncio.get_running_loop()
+        before = status_monitor.capabilities_for(node_id)
+        before_ts = before.get("updated_at")
+        self.pub(topic_cmd(node_id, "status"), {}, retain=False)
+
+        def _wait() -> Dict[str, Any]:
+            return status_monitor.wait_for_capabilities(node_id, before_ts, timeout)
+
+        return await loop.run_in_executor(None, _wait)
+
     def all_off(self):
         """Turn off all known nodes."""
         for _, _, n in registry.iter_nodes():
@@ -181,4 +198,16 @@ class MqttBus:
                 self.ws_set(nid, i, "solid", 255, [0, 0, 0])
                 self.rgb_set(nid, i, "solid", 0, [0, 0, 0])
                 self.white_set(nid, i, "solid", 0)
+
+
+_SHARED_BUS: Optional[MqttBus] = None
+
+
+def get_mqtt_bus() -> MqttBus:
+    """Return a shared :class:`MqttBus` instance."""
+
+    global _SHARED_BUS
+    if _SHARED_BUS is None:
+        _SHARED_BUS = MqttBus()
+    return _SHARED_BUS
 

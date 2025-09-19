@@ -4,9 +4,24 @@
 <script>
   window.nodeBrightnessLimits = {{ brightness_limits|default({})|tojson }};
 </script>
+{% if node_modules %}
+{% if module_source == 'mqtt' %}
+<div class="text-xs opacity-60 mb-2">
+  Modules reported by device{% if capability_updated_at_iso %} (updated {{ capability_updated_at_iso }}){% endif %}.
+</div>
+{% else %}
+<div class="text-xs opacity-60 mb-2">
+  Using registry configuration; waiting for device capabilities.
+</div>
+{% endif %}
 <div class="grid md:grid-cols-2 gap-6">
-  {% for mod in node.modules %}
-    {% include 'modules/' ~ mod ~ '.html' %}
+  {% for mod in node_modules %}
+    {% include 'modules/' ~ mod ~ '.html' ignore missing %}
   {% endfor %}
 </div>
+{% else %}
+<div class="glass rounded-2xl p-6 text-sm opacity-70">
+  This node has no enabled modules configured.
+</div>
+{% endif %}
 {% endblock %}
