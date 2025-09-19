@@ -127,6 +127,8 @@ async function refreshState() {
     if (!data || typeof data !== 'object') {
       throw new Error('Invalid state payload');
     }
+    // A successful state fetch indicates we received a snapshot message.
+    setDot(true);
     const limits = data.limits && typeof data.limits === 'object' ? data.limits : {};
     window.nodeBrightnessLimits = limits;
     const modules = data.modules && typeof data.modules === 'object' ? data.modules : {};
