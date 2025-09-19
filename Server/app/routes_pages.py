@@ -3,6 +3,8 @@ from typing import Any
 
 from typing import Any, Dict, List, Optional
 
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -25,6 +27,7 @@ from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
+
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -159,6 +162,7 @@ def _admin_template_context(
     heading: Optional[str] = None,
     description: Optional[str] = None,
     status_house_id: Optional[str] = None,
+    allow_remove: bool = False,
 ):
     return {
         "request": request,
@@ -170,6 +174,7 @@ def _admin_template_context(
         or "Monitor node heartbeats and trigger OTA checks.",
         "status_timeout": status_monitor.timeout,
         "status_house_id": status_house_id,
+        "allow_remove": allow_remove,
     }
 
 
@@ -209,6 +214,7 @@ def admin_house_panel(request: Request, house_id: str):
             heading=f"{house_name} Admin",
             description=f"Monitor node heartbeats for {house_name}.",
             status_house_id=house_id,
+            allow_remove=True,
         ),
     )
 

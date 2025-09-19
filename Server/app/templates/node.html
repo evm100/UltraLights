@@ -20,11 +20,6 @@
     {% include 'modules/' ~ mod ~ '.html' ignore missing %}
   {% endfor %}
 </div>
-{% else %}
-<div class="glass rounded-2xl p-6 text-sm opacity-70">
-  This node has no enabled modules configured.
-</div>
-{% endif %}
 
 <script>
 const STATUS_NODE_ID = {{ node.id|tojson }};
