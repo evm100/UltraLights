@@ -268,7 +268,7 @@ def api_remove_node(node_id: str):
         removed = registry.remove_node(node_id)
     except KeyError:
         raise HTTPException(404, "Unknown node id")
-    motion_manager.config.pop(node_id, None)
+    motion_manager.forget_node(node_id)
     status_monitor.forget(node_id)
     return {"ok": True, "node": removed}
 
@@ -429,7 +429,7 @@ def api_apply_preset(house_id: str, room_id: str, preset_id: str):
 
 @router.post("/api/house/{house_id}/room/{room_id}/motion-schedule")
 def api_set_motion_schedule(house_id: str, room_id: str, payload: Dict[str, Any]):
-    if (house_id, room_id) not in SPECIAL_ROOM_PRESETS:
+    if (house_id, room_id) not in motion_manager.room_sensors:
         raise HTTPException(404, "Motion schedule not supported for this room")
     schedule = payload.get("schedule")
     if not isinstance(schedule, list):
@@ -437,7 +437,7 @@ def api_set_motion_schedule(house_id: str, room_id: str, payload: Dict[str, Any]
     if len(schedule) != motion_schedule.slot_count:
         raise HTTPException(400, "invalid schedule length")
     valid_presets = {p["id"] for p in get_room_presets(house_id, room_id)}
-    default_preset = SPECIAL_ROOM_PRESETS[(house_id, room_id)].get("on")
+    default_preset = SPECIAL_ROOM_PRESETS.get((house_id, room_id), {}).get("on")
     if default_preset:
         valid_presets.add(default_preset)
     clean: List[Optional[str]] = []

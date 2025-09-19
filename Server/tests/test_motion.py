@@ -63,6 +63,7 @@ def _build_manager(module):
     manager.bus = _RecordingBus()
     manager.active = {}
     manager.config = {}
+    manager.room_sensors = {}
     return manager
 
 
