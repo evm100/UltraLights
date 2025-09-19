@@ -66,6 +66,12 @@ class Settings:
             str(Path(__file__).with_name("motion_schedule.json")),
         )
     )
+    CUSTOM_PRESET_FILE = Path(
+        os.getenv(
+            "CUSTOM_PRESET_FILE",
+            str(Path(__file__).with_name("custom_presets.json")),
+        )
+    )
     BRIGHTNESS_LIMITS_FILE = Path(
         os.getenv(
             "BRIGHTNESS_LIMITS_FILE",
