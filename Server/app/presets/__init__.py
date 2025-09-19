@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import math
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional
 
 from ..config import settings
 from ..mqtt_bus import MqttBus
@@ -12,7 +13,6 @@ from .action_registry import (
     reverse_action,
     with_action_type,
 )
-from .actions import rgb_swell_action, solid_color_action, white_swell_action, ws_swell_action
 from .catalog import ROOM_PRESETS
 from .custom_store import CustomPresetStore
 
@@ -104,44 +104,93 @@ def reverse_preset(preset: Dict[str, Any]) -> Dict[str, Any]:
     return reversed_preset
 
 
+def _coerce_int(value: Any, default: int = 0) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if math.isnan(value):
+            return default
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return default
+        try:
+            return int(text, 10)
+        except ValueError:
+            try:
+                candidate = float(text)
+            except ValueError:
+                return default
+            if math.isnan(candidate):
+                return default
+            return int(candidate)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        pass
+    try:
+        candidate_float = float(value)
+    except (TypeError, ValueError):
+        return default
+    if math.isnan(candidate_float):
+        return default
+    return int(candidate_float)
+
+
+def _normalize_sequence(value: Any) -> Optional[List[Any]]:
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, tuple):
+        return list(value)
+    return None
+
+
+def _normalize_rgb_params(value: Any) -> Optional[List[int]]:
+    params = _normalize_sequence(value)
+    if params is None:
+        return None
+    return [_coerce_int(item, default=0) for item in params]
+
+
 def apply_preset(bus: MqttBus, preset: Dict[str, Any]) -> None:
     """Apply ``preset`` by sending commands through ``bus``."""
 
-    for action in preset.get("actions", []):
-        node = action.get("node")
-        module = action.get("module")
+    actions = preset.get("actions", [])
+    if not isinstance(actions, list):
+        return
+
+    for raw_action in actions:
+        if not isinstance(raw_action, dict):
+            continue
+
+        module_raw = raw_action.get("module")
+        node_raw = raw_action.get("node")
+        module = str(module_raw).strip().lower() if module_raw is not None else ""
+        node = str(node_raw).strip() if node_raw is not None else ""
+        if not module or not node:
+            continue
+
+        effect_raw = raw_action.get("effect")
+        effect = str(effect_raw) if effect_raw is not None else ""
+        brightness = _coerce_int(raw_action.get("brightness"), default=0)
+
         if module == "ws":
-            bus.ws_set(
-                node,
-                int(action.get("strip", 0)),
-                action.get("effect", ""),
-                int(action.get("brightness", 0)),
-                action.get("params"),
-            )
+            strip = _coerce_int(raw_action.get("strip"), default=0)
+            params = _normalize_sequence(raw_action.get("params"))
+            bus.ws_set(node, strip, effect, brightness, params)
         elif module == "rgb":
-            params = action.get("params")
-            clean_params: Optional[List[int]]
-            if params is None:
-                clean_params = None
-            elif isinstance(params, list):
-                clean_params = [int(p) for p in params]
-            else:
-                clean_params = None
-            bus.rgb_set(
-                node,
-                int(action.get("strip", 0)),
-                action.get("effect", ""),
-                int(action.get("brightness", 0)),
-                clean_params,
-            )
+            strip = _coerce_int(raw_action.get("strip"), default=0)
+            params = _normalize_rgb_params(raw_action.get("params"))
+            bus.rgb_set(node, strip, effect, brightness, params)
         elif module == "white":
-            bus.white_set(
-                node,
-                int(action.get("channel", 0)),
-                action.get("effect", ""),
-                int(action.get("brightness", 0)),
-                action.get("params"),
-            )
+            channel = _coerce_int(raw_action.get("channel"), default=0)
+            params = _normalize_sequence(raw_action.get("params"))
+            bus.white_set(node, channel, effect, brightness, params)
         else:
             # Unknown action type; ignore for now.
             continue
@@ -190,233 +239,34 @@ def _normalize_custom_preset(preset: Dict[str, Any]) -> Dict[str, Any]:
     return clean
 
 
-def _as_list(value: Any) -> List[Any]:
-    if isinstance(value, list):
-        return value
-    if isinstance(value, tuple):
-        return list(value)
-    return []
-
-
-def _extract_int(
-    *candidates: Any,
-    default: Optional[int] = None,
-    min_value: Optional[int] = None,
-    max_value: Optional[int] = None,
-) -> Optional[int]:
-    for candidate in candidates:
-        if candidate is None:
-            continue
-        try:
-            result = int(float(candidate))
-        except (TypeError, ValueError):
-            continue
-        if min_value is not None and result < min_value:
-            result = min_value
-        if max_value is not None and result > max_value:
-            result = max_value
-        return result
-    return default
-
-
-def _extract_index(value: Any) -> Optional[int]:
-    try:
-        result = int(value)
-    except (TypeError, ValueError):
-        return None
-    if result < 0:
-        return None
-    return result
-
-
-def _extract_color(entry: Dict[str, Any], params: Sequence[Any]) -> Optional[Tuple[float, float, float]]:
-    sources: List[Sequence[Any]] = []
-    color_value = entry.get("color")
-    if isinstance(color_value, (list, tuple)):
-        sources.append(color_value)
-    if isinstance(params, (list, tuple)) and params:
-        sources.append(params)
-
-    for source in sources:
-        if len(source) < 3:
-            continue
-        try:
-            r = float(source[0])
-            g = float(source[1])
-            b = float(source[2])
-        except (TypeError, ValueError):
-            continue
-        return (r, g, b)
-    return None
-
-
-def _white_entry_to_action(node_id: str, channel: int, entry: Dict[str, Any]) -> Optional[ActionDict]:
-    effect = entry.get("effect")
-    if not isinstance(effect, str):
-        return None
-
-    effect_key = effect.strip().lower()
-    if effect_key != "swell":
-        return None
-
-    params = _as_list(entry.get("params"))
-    start = _extract_int(
-        entry.get("start"),
-        params[0] if len(params) > 0 else None,
-        default=0,
-        min_value=0,
-        max_value=255,
-    )
-    if start is None:
-        start = 0
-
-    end = _extract_int(
-        entry.get("end"),
-        params[1] if len(params) > 1 else None,
-        default=start,
-        min_value=0,
-        max_value=255,
-    )
-    if end is None:
-        end = start
-
-    ms = _extract_int(
-        entry.get("ms"),
-        params[2] if len(params) > 2 else None,
-        default=0,
-        min_value=0,
-    )
-    if ms is None:
-        ms = 0
-
-    action = white_swell_action(str(node_id), channel, start, end, ms)
-    brightness = _extract_int(entry.get("brightness"), default=None, min_value=0, max_value=255)
-    if brightness is not None:
-        action["brightness"] = brightness
-    action["start"] = start
-    action["end"] = end
-    return action
-
-
-def _color_entry_to_action(
-    node_id: str,
-    module: str,
-    index: int,
-    entry: Dict[str, Any],
-) -> Optional[ActionDict]:
-    effect = entry.get("effect")
-    if not isinstance(effect, str):
-        return None
-
-    effect_key = effect.strip().lower()
-    params = _as_list(entry.get("params"))
-    brightness = _extract_int(entry.get("brightness"), default=None, min_value=0, max_value=255)
-
-    if effect_key == "solid":
-        if module != "ws":
-            return None
-        color = _extract_color(entry, params)
-        if color is None:
-            return None
-        action = solid_color_action(str(node_id), index, color[0], color[1], color[2])
-        if brightness is not None:
-            action["brightness"] = brightness
-        return action
-
-    if effect_key == "color_swell":
-        color = _extract_color(entry, params)
-        if color is None:
-            return None
-
-        start = _extract_int(
-            entry.get("start"),
-            params[3] if len(params) > 3 else None,
-            default=0,
-            min_value=0,
-            max_value=255,
-        )
-        if start is None:
-            start = 0
-
-        end = _extract_int(
-            entry.get("end"),
-            params[4] if len(params) > 4 else None,
-            default=start,
-            min_value=0,
-            max_value=255,
-        )
-        if end is None:
-            end = start
-
-        ms = _extract_int(
-            entry.get("ms"),
-            params[5] if len(params) > 5 else None,
-            default=0,
-            min_value=0,
-        )
-        if ms is None:
-            ms = 0
-
-        if module == "ws":
-            builder = ws_swell_action
-        elif module == "rgb":
-            builder = rgb_swell_action
-        else:
-            return None
-
-        action = builder(str(node_id), index, color[0], color[1], color[2], start, end, ms)
-        if brightness is not None:
-            action["brightness"] = brightness
-        action["start"] = start
-        action["end"] = end
-        return action
-
-    return None
-
-
 def snapshot_to_actions(node_id: str, snapshot: Dict[str, Any]) -> List[ActionDict]:
     """Translate ``snapshot`` information for ``node_id`` into preset actions."""
 
     if not isinstance(snapshot, dict):
         return []
 
-    node_key = str(node_id)
+    node_key = str(node_id).strip()
+    if not node_key:
+        return []
+
     actions: List[ActionDict] = []
 
-    white_entries = snapshot.get("white")
-    if isinstance(white_entries, list):
-        for entry in white_entries:
+    def _collect(module: str, index_field: str) -> None:
+        entries = snapshot.get(module)
+        if not isinstance(entries, list):
+            return
+        for entry in entries:
             if not isinstance(entry, dict):
                 continue
-            channel = _extract_index(entry.get("channel"))
-            if channel is None:
+            if entry.get(index_field) is None:
                 continue
-            action = _white_entry_to_action(node_key, channel, entry)
-            if action is not None:
-                actions.append(action)
+            action = deepcopy(entry)
+            action["node"] = node_key
+            action["module"] = module
+            actions.append(action)
 
-    ws_entries = snapshot.get("ws")
-    if isinstance(ws_entries, list):
-        for entry in ws_entries:
-            if not isinstance(entry, dict):
-                continue
-            strip = _extract_index(entry.get("strip"))
-            if strip is None:
-                continue
-            action = _color_entry_to_action(node_key, "ws", strip, entry)
-            if action is not None:
-                actions.append(action)
-
-    rgb_entries = snapshot.get("rgb")
-    if isinstance(rgb_entries, list):
-        for entry in rgb_entries:
-            if not isinstance(entry, dict):
-                continue
-            strip = _extract_index(entry.get("strip"))
-            if strip is None:
-                continue
-            action = _color_entry_to_action(node_key, "rgb", strip, entry)
-            if action is not None:
-                actions.append(action)
+    _collect("white", "channel")
+    _collect("ws", "strip")
+    _collect("rgb", "strip")
 
     return actions
