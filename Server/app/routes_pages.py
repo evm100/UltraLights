@@ -51,8 +51,11 @@ def _build_motion_config(
     sensor_nodes: List[Dict[str, Any]] = []
     if sensor_entry:
         for node_id, node_info in sensor_entry.get("nodes", {}).items():
-            node_config = node_info.get("config") or motion_manager.config.get(node_id, {})
-            sensors = node_info.get("sensors", {})
+            raw_config = node_info.get("config")
+            if not raw_config:
+                raw_config = motion_manager.config.get(node_id, {})
+            node_config = raw_config or {}
+            sensors = node_info.get("sensors") or {}
             if not node_config and not sensors:
                 continue
             node_name = node_info.get("node_name")
@@ -67,6 +70,8 @@ def _build_motion_config(
             pir_enabled = None
             if node_config is not None and "pir_enabled" in node_config:
                 pir_enabled = bool(node_config.get("pir_enabled"))
+                if pir_enabled is False and not sensors:
+                    continue
             node_entry: Dict[str, Any] = {
                 "node_id": node_id,
                 "node_name": node_name,

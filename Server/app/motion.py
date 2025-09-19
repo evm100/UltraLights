@@ -513,17 +513,28 @@ class MotionManager:
             },
         )
         node_entry["node_name"] = node.get("name") or node_id
+        sensors = node_entry.setdefault("sensors", {})
         config_data = config or self.config.get(node_id)
+        pir_enabled_flag: Optional[bool] = None
         if config_data:
             clean_config = {
                 "enabled": bool(config_data.get("enabled", True)),
                 "duration": int(config_data.get("duration", 30)),
             }
             if "pir_enabled" in config_data:
-                clean_config["pir_enabled"] = bool(config_data.get("pir_enabled"))
+                pir_enabled_flag = bool(config_data.get("pir_enabled"))
+                clean_config["pir_enabled"] = pir_enabled_flag
             node_entry["config"] = clean_config
         else:
-            node_entry.setdefault("config", {"enabled": True, "duration": 30})
+            existing_config = node_entry.setdefault(
+                "config", {"enabled": True, "duration": 30}
+            )
+            if isinstance(existing_config, dict) and "pir_enabled" in existing_config:
+                pir_enabled_flag = bool(existing_config.get("pir_enabled"))
+        if pir_enabled_flag is False and isinstance(sensors, dict):
+            sensors.pop("pir", None)
+            if not sensors:
+                node_entry["sensors"] = {}
         if request_status and created:
             self._request_motion_status(node_id)
         return node_entry
