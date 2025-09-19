@@ -15,6 +15,13 @@
   window.nodeBrightnessLimits = {{ brightness_limits|default({})|tojson }};
 </script>
 {% set default_modules = node.modules or [] %}
+<p
+  id="moduleStateMessage"
+  class="text-sm text-slate-400 mb-4"
+  aria-live="polite"
+>
+  Loading module state…
+</p>
 <div class="grid md:grid-cols-2 gap-6">
   {% for mod in module_templates %}
     <div
@@ -34,6 +41,25 @@ const STATUS_URL = `/api/node/${encodeURIComponent(STATUS_NODE_ID)}/status`;
 const STATE_URL = `/api/node/${encodeURIComponent(STATUS_NODE_ID)}/state`;
 const statusDot = document.getElementById('nodeStatusDot');
 const moduleWrappers = Array.from(document.querySelectorAll('[data-module]'));
+const moduleStatusMessage = document.getElementById('moduleStateMessage');
+const moduleLoaders = window.nodeModuleLoaders || {};
+
+function setModuleStateMessage(text, mode) {
+  if (!moduleStatusMessage) return;
+  if (!text) {
+    moduleStatusMessage.textContent = '';
+    moduleStatusMessage.classList.add('hidden');
+    moduleStatusMessage.classList.remove('text-red-400');
+    return;
+  }
+  moduleStatusMessage.textContent = text;
+  moduleStatusMessage.classList.remove('hidden');
+  if (mode === 'error') {
+    moduleStatusMessage.classList.add('text-red-400');
+  } else {
+    moduleStatusMessage.classList.remove('text-red-400');
+  }
+}
 
 function setDot(online) {
   if (!statusDot) return;
@@ -87,19 +113,42 @@ function applyModuleVisibility(modulesList) {
 }
 
 async function refreshState() {
+  setModuleStateMessage('Loading module state…');
   try {
     const res = await fetch(STATE_URL, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (data && typeof data === 'object') {
-      if (data.limits && typeof data.limits === 'object') {
-        window.nodeBrightnessLimits = data.limits;
-      }
-      applyModuleVisibility(data.available_modules);
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid state payload');
     }
+    const limits = data.limits && typeof data.limits === 'object' ? data.limits : {};
+    window.nodeBrightnessLimits = limits;
+    const modules = data.modules && typeof data.modules === 'object' ? data.modules : {};
+    const availableList = Array.isArray(data.available_modules)
+      ? data.available_modules.map((value) => String(value))
+      : null;
+    applyModuleVisibility(availableList);
+    Object.entries(moduleLoaders).forEach(([key, init]) => {
+      if (typeof init !== 'function') return;
+      const moduleState = modules[key] && typeof modules[key] === 'object' ? modules[key] : {};
+      const isAvailable = !availableList || availableList.includes(key);
+      const payload = {
+        state: isAvailable ? moduleState : {},
+        channels: isAvailable ? Object.keys(moduleState) : [],
+        limits: limits[key],
+        available: isAvailable,
+      };
+      try {
+        init(payload);
+      } catch (err) {
+        console.error(`Failed to initialize module ${key}`, err);
+      }
+    });
+    setModuleStateMessage('', 'success');
   } catch (err) {
     console.error('Failed to fetch node state', err);
     applyModuleVisibility(null);
+    setModuleStateMessage('Failed to load module state.', 'error');
   }
 }
 
