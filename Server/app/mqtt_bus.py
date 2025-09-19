@@ -160,10 +160,6 @@ class MqttBus:
         self.pub(topic_cmd(node_id, f"white/set/{channel}"), msg, retain=True)
 
     # ---- Sensor commands ----
-    def sensor_cooldown(self, node_id: str, seconds: int):
-        msg = {"seconds": int(seconds)}
-        self.pub(topic_cmd(node_id, "sensor/cooldown"), msg)
-
     def sensor_motion_program(self, node_id: str, states: Dict[str, object]):
         """Program motion state commands on the node."""
         self.pub(topic_cmd(node_id, "sensor/motion"), states)

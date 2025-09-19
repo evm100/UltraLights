@@ -153,8 +153,6 @@ Registered effects: `solid`, `breathe`, and `swell`.
 
 ### Sensor and OTA commands
 
-`ul/<node-id>/cmd/sensor/cooldown` – `{ "seconds": <int 1‑3600> }`
-
 `ul/<node-id>/cmd/sensor/motion` – configure motion behaviour. Fields:
 
 | Field | Type | Notes |

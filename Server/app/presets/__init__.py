@@ -94,8 +94,6 @@ def apply_preset(bus: MqttBus, preset: Dict[str, Any]) -> None:
                 int(action.get("brightness", 0)),
                 action.get("params"),
             )
-        elif module == "sensor_cooldown":
-            bus.sensor_cooldown(node, int(action.get("seconds", 30)))
         else:
             # Unknown action type; ignore for now.
             continue

@@ -147,12 +147,18 @@ def _format_node_state(
     if isinstance(registry_modules, list):
         for mod in registry_modules:
             mod_key = str(mod)
+            if mod_key == "sensor":
+                continue
             if mod_key not in {"ws", "rgb", "white"}:
                 available.add(mod_key)
 
-    available_modules = sorted(available)
+    available_modules = sorted(mod for mod in available if mod != "sensor")
     if not available_modules and isinstance(registry_modules, list):
-        available_modules = [str(mod) for mod in registry_modules]
+        available_modules = [
+            str(mod)
+            for mod in registry_modules
+            if str(mod) != "sensor"
+        ]
 
     return {
         "node": node_id,
@@ -372,18 +378,6 @@ def api_set_brightness_limit(node_id: str, module: str, payload: Dict[str, Any])
         raise HTTPException(400, "invalid limit")
     stored = brightness_limits.set_limit(node_id, module_key, channel, value)
     return {"ok": True, "limit": stored}
-
-@router.post("/api/node/{node_id}/sensor/cooldown")
-def api_sensor_cooldown(node_id: str, payload: Dict[str, Any]):
-    _valid_node(node_id)
-    try:
-        seconds = int(payload.get("seconds"))
-    except Exception:
-        raise HTTPException(400, "invalid seconds")
-    if not 10 <= seconds <= 3600:
-        raise HTTPException(400, "invalid seconds")
-    get_bus().sensor_cooldown(node_id, seconds)
-    return {"ok": True, "seconds": seconds}
 
 @router.post("/api/node/{node_id}/motion")
 def api_node_motion(node_id: str, payload: Dict[str, Any]):

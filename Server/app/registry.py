@@ -101,7 +101,7 @@ def add_node(
     if not room:
         raise KeyError("room not found")
     node = {"id": slugify(name), "name": name, "kind": kind}
-    node["modules"] = modules or ["ws", "rgb", "white", "sensor", "ota"]
+    node["modules"] = modules or ["ws", "rgb", "white", "ota"]
     room.setdefault("nodes", []).append(node)
     save_registry()
     return node
