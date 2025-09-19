@@ -13,7 +13,14 @@
     >
       <header class="flex items-center justify-between">
         <h4 class="text-base font-semibold">
-          Strip <span data-role="channel-label"></span>
+          <input
+            type="text"
+            data-role="channel-name"
+            class="bg-transparent text-base font-semibold border border-transparent rounded px-2 py-1 focus:outline-none focus:border-slate-600 focus:bg-slate-900/60"
+            maxlength="80"
+            autocomplete="off"
+            spellcheck="false"
+          />
         </h4>
         <span class="text-xs uppercase tracking-wide opacity-70" data-role="effect-label"></span>
       </header>
@@ -93,6 +100,8 @@ class RgbModuleManager {
     this.emptyMessage = host.querySelector('[data-module-empty-message]');
     this.defaultEmptyMessage = this.emptyMessage ? this.emptyMessage.textContent : '';
     this.controllers = new Map();
+    this.nameCache = new Map();
+    this.labelPrefix = 'Strip';
     this.ready = Boolean(this.listEl && this.template);
     if (!this.ready) {
       console.warn('RGB module template missing host container');
@@ -110,6 +119,26 @@ class RgbModuleManager {
     return DEFAULT_EFFECT;
   }
 
+  getDefaultName(channelId) {
+    return `${this.labelPrefix} ${channelId}`;
+  }
+
+  cacheName(channelId, name) {
+    const key = String(channelId);
+    const clean = typeof name === 'string' ? name.trim() : '';
+    if (clean) {
+      this.nameCache.set(key, clean);
+    } else {
+      this.nameCache.delete(key);
+    }
+  }
+
+  getCachedName(channelId) {
+    const key = String(channelId);
+    const value = this.nameCache.get(key);
+    return typeof value === 'string' ? value : '';
+  }
+
   post(path, body) {
     return fetch(path, {
       method: 'POST',
@@ -121,6 +150,41 @@ class RgbModuleManager {
       }
       return res;
     });
+  }
+
+  async persistName(channelId, name) {
+    const trimmed = typeof name === 'string' ? name.trim() : '';
+    const payload = {
+      channel: toChannelValue(channelId),
+      name: trimmed ? trimmed : null,
+    };
+    try {
+      const res = await this.post(
+        `/api/node/${encodeURIComponent(NODE_ID)}/${MODULE_KEY}/channel-name`,
+        payload,
+      );
+      let response = null;
+      try {
+        response = await res.json();
+      } catch (err) {
+        response = null;
+      }
+      let stored = '';
+      if (response && Object.prototype.hasOwnProperty.call(response, 'name')) {
+        const value = response.name;
+        if (typeof value === 'string' && value.trim()) {
+          stored = value.trim();
+        }
+      } else {
+        stored = trimmed;
+      }
+      this.cacheName(channelId, stored);
+      return stored;
+    } catch (err) {
+      console.error(err);
+      alert('Request failed');
+      throw err;
+    }
   }
 
   getLimit(channel) {
@@ -188,6 +252,7 @@ class RgbModuleManager {
       effect: this.getDefaultEffect(),
       brightness: 255,
       paramCache: {},
+      name: '',
     };
     if (entry && typeof entry === 'object') {
       if (typeof entry.effect === 'string' && entry.effect.trim()) {
@@ -204,6 +269,9 @@ class RgbModuleManager {
         if (normalized && normalized.length) {
           state.paramCache[state.effect] = normalized;
         }
+      }
+      if (typeof entry.name === 'string' && entry.name.trim()) {
+        state.name = entry.name.trim();
       }
     }
     if (!state.effect) {
@@ -332,17 +400,18 @@ class RgbChannelController {
       return;
     }
 
-    this.labelEl = this.root.querySelector('[data-role="channel-label"]');
+    this.nameInput = this.root.querySelector('[data-role="channel-name"]');
+    this.defaultName = this.manager.getDefaultName(this.channelId);
+    if (this.nameInput) {
+      this.nameInput.value = this.defaultName;
+      this.nameInput.placeholder = this.defaultName;
+    }
     this.effectLabelEl = this.root.querySelector('[data-role="effect-label"]');
     this.paramsEl = this.root.querySelector('[data-role="params"]');
     this.brightnessInput = this.root.querySelector('[data-role="brightness"]');
     this.lockBtn = this.root.querySelector('[data-role="lock"]');
     this.onBtn = this.root.querySelector('[data-role="on"]');
     this.offBtn = this.root.querySelector('[data-role="off"]');
-
-    if (this.labelEl) {
-      this.labelEl.textContent = this.channelId;
-    }
 
     this.bindListeners();
     this.applyState(null);
@@ -353,6 +422,10 @@ class RgbChannelController {
   }
 
   bindListeners() {
+    if (this.nameInput) {
+      this.nameInput.addEventListener('blur', () => this.commitName());
+      this.nameInput.addEventListener('keydown', (event) => this.handleNameKeyDown(event));
+    }
     if (this.brightnessInput) {
       this.brightnessInput.addEventListener('input', () => this.handleBrightnessInput());
     }
@@ -365,6 +438,66 @@ class RgbChannelController {
     if (this.offBtn) {
       this.offBtn.addEventListener('click', () => this.handleOffClick());
     }
+  }
+
+  setName(name, options = {}) {
+    const clean = typeof name === 'string' ? name.trim() : '';
+    this.state.name = clean;
+    if (options.cache) {
+      this.manager.cacheName(this.channelId, clean);
+    }
+    if (this.nameInput) {
+      const display = clean || this.defaultName;
+      if (this.nameInput.value !== display) {
+        this.nameInput.value = display;
+      }
+      if (!this.nameInput.placeholder) {
+        this.nameInput.placeholder = this.defaultName;
+      }
+    }
+  }
+
+  handleNameKeyDown(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (this.nameInput) {
+        this.nameInput.blur();
+      }
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      this.setName(this.state.name, { cache: false });
+      if (this.nameInput) {
+        this.nameInput.blur();
+      }
+    }
+  }
+
+  commitName() {
+    if (!this.nameInput || this.nameInput.disabled) {
+      return;
+    }
+    const raw = this.nameInput.value;
+    const trimmed = typeof raw === 'string' ? raw.trim() : '';
+    const desired = trimmed && trimmed !== this.defaultName ? trimmed : '';
+    const previous = typeof this.state.name === 'string' ? this.state.name : '';
+    if (desired === previous) {
+      this.setName(previous, { cache: false });
+      return;
+    }
+    this.nameInput.disabled = true;
+    this.manager
+      .persistName(this.channelId, desired)
+      .then((stored) => {
+        this.setName(stored, { cache: true });
+      })
+      .catch(() => {
+        this.setName(previous, { cache: true });
+      })
+      .finally(() => {
+        if (this.nameInput) {
+          this.nameInput.disabled = false;
+        }
+      });
   }
 
   renderParams(initialParams) {
@@ -381,7 +514,23 @@ class RgbChannelController {
     if (!nextState.effect) {
       nextState.effect = previous.effect || this.manager.getDefaultEffect();
     }
+    const entryHasName =
+      entry && typeof entry === 'object' && Object.prototype.hasOwnProperty.call(entry, 'name');
+    const previousName = typeof previous.name === 'string' ? previous.name : '';
+    let resolvedName = '';
+    if (entryHasName) {
+      resolvedName = typeof nextState.name === 'string' ? nextState.name : '';
+    } else if (previousName) {
+      resolvedName = previousName;
+    } else {
+      const cached = this.manager.getCachedName(this.channelId);
+      if (cached) {
+        resolvedName = cached;
+      }
+    }
+    nextState.name = resolvedName;
     this.state = nextState;
+    this.setName(resolvedName, { cache: entryHasName });
     this.isInitializing = true;
     try {
       const effect = nextState.effect || this.manager.getDefaultEffect();
