@@ -87,8 +87,34 @@
 </div>
 <div class="mt-8">
   <h2 class="text-2xl font-semibold mb-4">Motion Timer</h2>
-  <input type="range" id="motionTimer" min="10" max="3600" step="10" value="{{ motion_config.duration }}" data-node="{{ motion_config.node_id }}" class="w-full" />
-  <div id="motionTimerLabel" class="text-center mt-2"></div>
+  {% if motion_config.sensors %}
+  <div id="motionTimerList" class="space-y-4">
+    {% for sensor in motion_config.sensors %}
+    <div class="glass rounded-xl p-4 motion-timer" data-node="{{ sensor.node_id }}">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div>
+          <div class="text-lg font-semibold">{{ sensor.node_name }}</div>
+          <div class="text-xs uppercase tracking-wide opacity-60">
+            {{ 'Enabled' if sensor.enabled else 'Disabled' }}
+          </div>
+        </div>
+        <div class="motion-timer-label text-sm font-semibold"></div>
+      </div>
+      <input type="range"
+             id="motionTimer-{{ loop.index0 }}"
+             class="motion-timer-slider w-full"
+             min="10"
+             max="3600"
+             step="10"
+             value="{{ sensor.duration }}"
+             data-node="{{ sensor.node_id }}"
+             data-enabled="{{ 'true' if sensor.enabled else 'false' }}" />
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="opacity-60">No PIR sensors reported.</div>
+  {% endif %}
 </div>
 {% endif %}
 <script type="module" src="/static/presets.js"></script>
@@ -542,30 +568,43 @@ document.getElementById('addNode').onclick = async () => {
     }
   }
 
-  const timerSlider = document.getElementById('motionTimer');
-  if (timerSlider) {
-    const timerLabel = document.getElementById('motionTimerLabel');
-    const timerNodeId = timerSlider.dataset.node;
+  const timerSliders = document.querySelectorAll('.motion-timer-slider');
+  if (timerSliders.length) {
     const fmtTime = (sec) => {
+      if (!Number.isInteger(sec)) return '';
       if (sec < 60) return `${sec}s`;
       const m = Math.floor(sec / 60);
       const s = sec % 60;
       return s ? `${m}m ${s}s` : `${m}m`;
     };
-    const updateTimer = () => {
-      timerLabel.textContent = fmtTime(parseInt(timerSlider.value, 10));
-    };
-    timerSlider.addEventListener('input', updateTimer);
-    timerSlider.addEventListener('change', async () => {
-      const duration = parseInt(timerSlider.value, 10);
-      const res = await fetch(`/api/node/${timerNodeId}/motion`, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({enabled:true, duration})
+    timerSliders.forEach((slider) => {
+      const container = slider.closest('.motion-timer');
+      const label = container ? container.querySelector('.motion-timer-label') : null;
+      const nodeId = slider.dataset.node;
+      if (!nodeId) {
+        return;
+      }
+      const enabled = slider.dataset.enabled !== 'false';
+      const updateTimer = () => {
+        if (!label) return;
+        const duration = parseInt(slider.value, 10);
+        label.textContent = fmtTime(Number.isInteger(duration) ? duration : 0);
+      };
+      slider.addEventListener('input', updateTimer);
+      slider.addEventListener('change', async () => {
+        const duration = parseInt(slider.value, 10);
+        if (!Number.isInteger(duration)) {
+          return;
+        }
+        const res = await fetch(`/api/node/${nodeId}/motion`, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({enabled, duration})
+        });
+        if(!res.ok) alert('Failed to update timer');
       });
-      if(!res.ok) alert('Failed to update timer');
+      updateTimer();
     });
-    updateTimer();
   }
 })();
 {% endif %}

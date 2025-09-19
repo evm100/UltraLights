@@ -42,6 +42,90 @@ def home(request: Request):
     )
 
 
+def _build_motion_config(
+    house_id: str, room_id: str, presets: List[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    room_key = (house_id, room_id)
+    sensor_entry = motion_manager.room_sensors.get(room_key)
+    sensor_nodes: List[Dict[str, Any]] = []
+    if sensor_entry:
+        for node_id, node_info in sensor_entry.get("nodes", {}).items():
+            node_config = node_info.get("config") or motion_manager.config.get(node_id, {})
+            sensors = node_info.get("sensors", {})
+            if not node_config and not sensors:
+                continue
+            node_name = node_info.get("node_name")
+            if not node_name:
+                _, _, node = registry.find_node(node_id)
+                if node:
+                    node_name = node.get("name") or node_id
+                else:
+                    node_name = node_id
+            duration = int(node_config.get("duration", 30)) if node_config else 30
+            enabled = bool(node_config.get("enabled", True)) if node_config else True
+            sensor_nodes.append(
+                {
+                    "node_id": node_id,
+                    "node_name": node_name,
+                    "enabled": enabled,
+                    "duration": duration,
+                }
+            )
+    if not sensor_nodes:
+        return None
+    sensor_nodes.sort(key=lambda item: item["node_name"].lower())
+    special = SPECIAL_ROOM_PRESETS.get((house_id, room_id))
+    default_preset = special.get("on") if special else None
+    schedule = motion_schedule.get_schedule_or_default(
+        house_id, room_id, default=default_preset
+    )
+    palette = [
+        "#f97316",
+        "#38bdf8",
+        "#a855f7",
+        "#22c55e",
+        "#eab308",
+        "#f43f5e",
+        "#6366f1",
+        "#14b8a6",
+        "#ec4899",
+        "#facc15",
+    ]
+    preset_colors: Dict[str, str] = {}
+    preset_names: Dict[str, str] = {}
+    for idx, preset in enumerate(presets):
+        preset_id = preset.get("id")
+        if not preset_id:
+            continue
+        preset_id = str(preset_id)
+        preset_colors[preset_id] = palette[idx % len(palette)]
+        preset_names[preset_id] = preset.get("name", preset_id)
+    if default_preset and default_preset not in preset_colors:
+        preset_colors[default_preset] = palette[len(preset_colors) % len(palette)]
+        preset_names.setdefault(default_preset, default_preset)
+    for preset_id in schedule:
+        if preset_id and preset_id not in preset_colors:
+            preset_colors[preset_id] = palette[len(preset_colors) % len(palette)]
+            preset_names.setdefault(preset_id, preset_id)
+    legend = [
+        {
+            "id": preset_id,
+            "name": preset_names.get(preset_id, preset_id),
+            "color": color,
+        }
+        for preset_id, color in preset_colors.items()
+    ]
+    return {
+        "schedule": schedule,
+        "slot_minutes": motion_schedule.slot_minutes,
+        "preset_colors": preset_colors,
+        "preset_names": preset_names,
+        "legend": legend,
+        "no_motion_color": "#1f2937",
+        "sensors": sensor_nodes,
+    }
+
+
 def _collect_admin_nodes(house_id: Optional[str] = None) -> List[Dict[str, Any]]:
     nodes: List[Dict[str, Any]] = []
     for house, room, node in registry.iter_nodes():
@@ -166,58 +250,7 @@ def room_page(request: Request, house_id: str, room_id: str):
         )
     title = f"{house.get('name', house_id)} - {room.get('name', room_id)}"
     presets = get_room_presets(house_id, room_id)
-    motion_config = None
-    special = SPECIAL_ROOM_PRESETS.get((house_id, room_id))
-    if special:
-        node_id = special.get("node")
-        if node_id:
-            cfg = motion_manager.config.get(node_id, {})
-            default_preset = special.get("on")
-            schedule = motion_schedule.get_schedule_or_default(
-                house_id, room_id, default=default_preset
-            )
-            palette = [
-                "#f97316",
-                "#38bdf8",
-                "#a855f7",
-                "#22c55e",
-                "#eab308",
-                "#f43f5e",
-                "#6366f1",
-                "#14b8a6",
-                "#ec4899",
-                "#facc15",
-            ]
-            preset_colors = {}
-            preset_names = {}
-            for idx, preset in enumerate(presets):
-                preset_colors[preset["id"]] = palette[idx % len(palette)]
-                preset_names[preset["id"]] = preset.get("name", preset["id"])
-            if default_preset and default_preset not in preset_colors:
-                preset_colors[default_preset] = palette[len(preset_colors) % len(palette)]
-                preset_names.setdefault(default_preset, default_preset)
-            for preset_id in schedule:
-                if preset_id and preset_id not in preset_colors:
-                    preset_colors[preset_id] = palette[len(preset_colors) % len(palette)]
-                    preset_names.setdefault(preset_id, preset_id)
-            legend = [
-                {
-                    "id": preset_id,
-                    "name": preset_names.get(preset_id, preset_id),
-                    "color": color,
-                }
-                for preset_id, color in preset_colors.items()
-            ]
-            motion_config = {
-                "duration": int(cfg.get("duration", 30)),
-                "node_id": node_id,
-                "schedule": schedule,
-                "slot_minutes": motion_schedule.slot_minutes,
-                "preset_colors": preset_colors,
-                "preset_names": preset_names,
-                "legend": legend,
-                "no_motion_color": "#1f2937",
-            }
+    motion_config = _build_motion_config(house_id, room_id, presets)
     return templates.TemplateResponse(
         "room.html",
         {
