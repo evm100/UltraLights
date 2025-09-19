@@ -11,21 +11,23 @@
   <div class="mb-3">
     <label class="text-xs opacity-70">Effect</label>
     <select id="wsEffect" class="w-full p-1 bg-slate-900 rounded border border-slate-700">
-      <option value="" selected disabled>Select effect</option>
+      <option value="" disabled>Select effect</option>
       {% for group in ws_effect_groups %}
       <optgroup label="{{ group.label }}">
         {% for eff in group.effects %}
-        <option value="{{ eff }}" data-tier="{{ group.key }}">{{ eff }}</option>
+        <option value="{{ eff }}" data-tier="{{ group.key }}"{% if eff == 'color_swell' %} selected{% endif %}>{{ eff }}</option>
         {% endfor %}
       </optgroup>
       {% endfor %}
     </select>
     <div id="wsParams" class="mt-2 space-y-2"></div>
-    <label class="text-xs opacity-70 block mt-2">Brightness</label>
+    <div class="flex items-center justify-between mt-2">
+      <label for="wsBri" class="text-xs opacity-70">Brightness</label>
+      <button id="wsBriLock" type="button" class="text-xl leading-none" title="Lock brightness" aria-pressed="false">🔓</button>
+    </div>
     <input id="wsBri" type="range" min="0" max="255" value="255" class="w-full">
   </div>
   <div class="flex gap-2">
-    <button id="wsSet" class="px-4 py-2 pill bg-indigo-500 hover:bg-indigo-400 text-white">Set</button>
     <button id="wsOn" class="px-4 py-2 pill bg-green-600 hover:bg-green-500 text-white">On</button>
     <button id="wsOff" class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white">Off</button>
   </div>
@@ -34,15 +36,94 @@
 <script type="module">
 import {renderParams,collectParams} from '/static/params.js';
 const WS_PARAM_DEFS={{ ws_param_defs|tojson }};
+const MODULE_KEY='ws';
 
 function getParamDefs(eff){
   return WS_PARAM_DEFS[eff]||[];
 }
-async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
+
+async function post(path,body){
+  const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!res.ok){throw new Error('Request failed');}
+  return res;
+}
+
 const stripEl=document.getElementById('wsStrip');
 const effectEl=document.getElementById('wsEffect');
 const briEl=document.getElementById('wsBri');
+const lockBtn=document.getElementById('wsBriLock');
 const paramsEl=document.getElementById('wsParams');
+
+function activeStrip(){
+  const value=parseInt(stripEl.value,10);
+  return Number.isNaN(value)?null:value;
+}
+
+function getLimit(channel){
+  const data=window.nodeBrightnessLimits;
+  if(!data)return null;
+  const moduleData=data[MODULE_KEY];
+  if(!moduleData)return null;
+  const value=moduleData[String(channel)];
+  return typeof value==='number'?value:null;
+}
+
+function cacheLimit(channel,limit){
+  const data=window.nodeBrightnessLimits||(window.nodeBrightnessLimits={});
+  const key=String(channel);
+  if(limit===null||limit===undefined){
+    const moduleData=data[MODULE_KEY];
+    if(moduleData){
+      delete moduleData[key];
+      if(Object.keys(moduleData).length===0){
+        delete data[MODULE_KEY];
+      }
+    }
+    return;
+  }
+  const moduleData=data[MODULE_KEY]||(data[MODULE_KEY]={});
+  moduleData[key]=limit;
+}
+
+function clampBrightness(value){
+  if(typeof value!=='number'){
+    value=parseInt(value,10);
+  }
+  if(Number.isNaN(value))return null;
+  const strip=activeStrip();
+  if(strip!==null){
+    const limit=getLimit(strip);
+    if(limit!==null){
+      value=Math.min(value,limit);
+    }
+  }
+  if(value<0)value=0;
+  if(value>255)value=255;
+  return value;
+}
+
+function applyBrightnessLimit(){
+  const strip=activeStrip();
+  const limit=strip===null?null:getLimit(strip);
+  const maxValue=limit!==null?limit:255;
+  briEl.max=maxValue;
+  const current=parseInt(briEl.value,10);
+  let adjusted=current;
+  if(Number.isNaN(adjusted)){
+    adjusted=maxValue;
+  }
+  adjusted=Math.max(0,Math.min(adjusted,maxValue));
+  const changed=Number.isNaN(current)||adjusted!==current;
+  if(changed){
+    briEl.value=String(adjusted);
+  }
+  lockBtn.textContent=limit!==null?'🔒':'🔓';
+  lockBtn.setAttribute('aria-pressed',limit!==null?'true':'false');
+  lockBtn.title=limit!==null?`Unlock brightness limit (${maxValue})`:'Lock brightness to current value';
+  if(changed){
+    scheduleSend();
+  }
+}
 
 // Throttled sender for real-time updates (max ~10 Hz)
 let lastSend=0;
@@ -64,30 +145,93 @@ function updateParams(){
   const defs=getParamDefs(eff);
   renderParams(defs,paramsEl,scheduleSend);
 }
-effectEl.onchange=()=>{updateParams();scheduleSend();};
-stripEl.onchange=scheduleSend;
-briEl.addEventListener('input',scheduleSend);
-if(effectEl.value)updateParams();
 
-function sendCmd(){
-  const strip=parseInt(stripEl.value,10);
-  if(Number.isNaN(strip))return;
+effectEl.onchange=()=>{updateParams();scheduleSend();};
+stripEl.onchange=()=>{applyBrightnessLimit();scheduleSend();};
+briEl.addEventListener('input',()=>{
+  const clamped=clampBrightness(briEl.value);
+  if(clamped===null)return;
+  if(clamped!==parseInt(briEl.value,10)){
+    briEl.value=String(clamped);
+  }
+  scheduleSend();
+});
+if(effectEl.value)updateParams();
+applyBrightnessLimit();
+
+function sendCmd(brightOverride){
+  const strip=activeStrip();
+  if(strip===null)return;
   const eff=effectEl.value.trim();
   if(!eff)return;
-  const bri=parseInt(briEl.value,10);
+  let bri=brightOverride!==undefined?brightOverride:parseInt(briEl.value,10);
   if(Number.isNaN(bri))return;
+  const clamped=clampBrightness(bri);
+  if(clamped===null)return;
+  bri=clamped;
+  briEl.value=String(bri);
   const params=collectParams(getParamDefs(eff),paramsEl);
   const msg={strip,effect:eff,brightness:bri,params};
-  post(`/api/node/{{ node.id }}/ws/set`,msg);
+  post(`/api/node/{{ node.id }}/ws/set`,msg).catch(()=>{alert('Request failed');});
 }
 
-document.getElementById('wsSet').onclick=sendCmd;
+async function persistLimit(channel,limit){
+  try{
+    const res=await post(`/api/node/{{ node.id }}/ws/brightness-limit`,{channel,limit});
+    let payload=null;
+    try{
+      payload=await res.json();
+    }catch(err){payload=null;}
+    if(payload&&payload.limit!==undefined){
+      const value=payload.limit;
+      if(typeof value==='number'){
+        cacheLimit(channel,Math.max(0,Math.min(255,value)));
+      }else{
+        cacheLimit(channel,null);
+      }
+    }else{
+      if(typeof limit==='number'){
+        cacheLimit(channel,limit);
+      }else{
+        cacheLimit(channel,null);
+      }
+    }
+    applyBrightnessLimit();
+  }catch(err){
+    console.error(err);
+    alert('Request failed');
+    applyBrightnessLimit();
+  }
+}
 
-document.getElementById('wsOn').onclick=sendCmd;
+lockBtn.addEventListener('click',()=>{
+  const strip=activeStrip();
+  if(strip===null){alert('Invalid strip');return;}
+  const currentLimit=getLimit(strip);
+  if(currentLimit!==null){
+    persistLimit(strip,null);
+    return;
+  }
+  const brightness=clampBrightness(briEl.value);
+  if(brightness===null){alert('Invalid brightness');return;}
+  persistLimit(strip,brightness);
+});
+
+document.getElementById('wsOn').onclick=()=>{
+  const strip=activeStrip();
+  const limit=strip===null?null:getLimit(strip);
+  const target=limit!==null?limit:255;
+  briEl.value=String(target);
+  sendCmd(target);
+};
 document.getElementById('wsOff').onclick=async()=>{
-  const s=parseInt(stripEl.value,10);
-  if(Number.isNaN(s)){alert('Invalid strip');return;}
-  await post(`/api/node/{{ node.id }}/ws/set`,{strip:s,effect:'solid',brightness:255,params:[0,0,0]});
+  const s=activeStrip();
+  if(s===null){alert('Invalid strip');return;}
+  try{
+    await post(`/api/node/{{ node.id }}/ws/set`,{strip:s,effect:'solid',brightness:255,params:[0,0,0]});
+  }catch(err){
+    alert('Request failed');
+  }
 };
 </script>
 
