@@ -5,7 +5,7 @@ import asyncio
 import json
 import threading
 import time
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence
 
 import paho.mqtt.client as mqtt
 
@@ -136,7 +136,10 @@ class StatusMonitor:
         )
 
     def capabilities_for(
-        self, node_id: str, *, fallback_modules: Sequence[Any] | None = None
+        self,
+        node_id: str,
+        *,
+        fallback_modules: Sequence[Any] | Mapping[str, Any] | None = None,
     ) -> NodeCapabilities:
         """Return cached module metadata for ``node_id``.
 

@@ -9,7 +9,7 @@ from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
-from .node_capabilities import enabled_module_keys, NodeCapabilities
+from .node_capabilities import NodeCapabilities
 
 
 router = APIRouter()
@@ -33,7 +33,7 @@ def _node_capabilities(node: Dict[str, Any]) -> NodeCapabilities:
     if not node_identifier:
         raise HTTPException(404, "Unknown node id")
     return status_monitor.capabilities_for(
-        str(node_identifier), fallback_modules=enabled_module_keys(node)
+        str(node_identifier), fallback_modules=node.get("modules")
     )
 
 

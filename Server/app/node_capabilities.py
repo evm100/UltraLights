@@ -71,32 +71,50 @@ def _module_entry_enabled(config: Any) -> bool:
     return _coerce_enabled(config)
 
 
-def enabled_module_keys(node: Mapping[str, Any] | MutableMapping[str, Any]) -> list[str]:
-    """Extract enabled module keys from ``node`` preserving declaration order."""
-
-    modules = node.get("modules") if isinstance(node, Mapping) else None
-    if not modules:
-        return []
+def _collect_modules_from_config(
+    modules: Any,
+) -> tuple[list[str], dict[str, Tuple[int, ...]]]:
+    """Return normalized modules and default channel indexes from ``modules``."""
 
     result: list[str] = []
+    channels: dict[str, Tuple[int, ...]] = {}
 
-    def add_key(raw: Any) -> None:
+    def add_module(raw: Any, indexes: Iterable[Any] | None = None) -> None:
         key = _normalize_module_key(raw)
-        if key and key not in result:
-            result.append(key)
+        if not key or key in result:
+            return
+        result.append(key)
+        cleaned_indexes: tuple[int, ...] = tuple(
+            _clean_indexes(indexes) if indexes is not None else []
+        )
+        if cleaned_indexes:
+            channels[key] = cleaned_indexes
+            return
+        default = _DEFAULT_INDEXES.get(key)
+        if default:
+            channels[key] = default
+
+    if not modules:
+        return result, channels
 
     if isinstance(modules, Mapping):
-        for key, cfg in modules.items():
-            if not key:
+        for raw_key, cfg in modules.items():
+            if not raw_key:
                 continue
-            if _module_entry_enabled(cfg):
-                add_key(key)
-        return result
+            if not _module_entry_enabled(cfg):
+                continue
+            indexes: Iterable[Any] | None = None
+            if isinstance(cfg, Mapping):
+                indexes = _collect_payload_indexes(cfg)
+            add_module(raw_key, indexes)
+        return result, channels
 
     if isinstance(modules, (list, tuple)):
         for entry in modules:
+            if entry is None:
+                continue
             if isinstance(entry, str):
-                add_key(entry)
+                add_module(entry)
                 continue
             if isinstance(entry, Mapping):
                 name = (
@@ -105,26 +123,33 @@ def enabled_module_keys(node: Mapping[str, Any] | MutableMapping[str, Any]) -> l
                     or entry.get("id")
                     or entry.get("name")
                 )
-                if name and _module_entry_enabled(entry):
-                    add_key(name)
+                if not name or not _module_entry_enabled(entry):
+                    continue
+                add_module(name, _collect_payload_indexes(entry))
                 continue
-            if entry is None:
-                continue
-            add_key(entry)
-        return result
+            add_module(entry)
+        return result, channels
 
     if isinstance(modules, set):
         for entry in modules:
             if entry is None:
                 continue
-            add_key(entry)
-        return result
+            add_module(entry)
+        return result, channels
 
     if isinstance(modules, str):
-        add_key(modules)
-        return result
+        add_module(modules)
+        return result, channels
 
-    add_key(modules)
+    add_module(modules)
+    return result, channels
+
+
+def enabled_module_keys(node: Mapping[str, Any] | MutableMapping[str, Any]) -> list[str]:
+    """Extract normalized enabled module keys from ``node``."""
+
+    modules = node.get("modules") if isinstance(node, Mapping) else None
+    result, _ = _collect_modules_from_config(modules)
     return result
 
 
@@ -212,19 +237,12 @@ class NodeCapabilities:
         object.__setattr__(self, "module_channels", MappingProxyType(cleaned))
 
     @classmethod
-    def from_modules(cls, modules: Sequence[Any] | None) -> "NodeCapabilities":
-        module_list: list[str] = []
-        channels: dict[str, Tuple[int, ...]] = {}
-        if modules:
-            for entry in modules:
-                key = _normalize_module_key(entry)
-                if not key or key in module_list:
-                    continue
-                module_list.append(key)
-                default = _DEFAULT_INDEXES.get(key)
-                if default:
-                    channels[key] = default
-        return cls(tuple(module_list), channels, source="registry")
+    def from_modules(
+        cls, modules: Sequence[Any] | Mapping[str, Any] | None
+    ) -> "NodeCapabilities":
+        module_list, channels = _collect_modules_from_config(modules)
+        normalized_channels = {k: tuple(v) for k, v in channels.items()}
+        return cls(tuple(module_list), normalized_channels, source="registry")
 
     @classmethod
     def from_payload(cls, payload: Any) -> "NodeCapabilities | None":

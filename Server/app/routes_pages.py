@@ -23,7 +23,6 @@ from .motion import motion_manager, SPECIAL_ROOM_PRESETS
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
-from .node_capabilities import enabled_module_keys
 
 
 router = APIRouter()
@@ -242,9 +241,8 @@ def node_page(request: Request, node_id: str):
         subtitle = None
 
     node_identifier = node.get("id") or node_id
-    fallback_modules = enabled_module_keys(node)
     capabilities = status_monitor.capabilities_for(
-        node_identifier, fallback_modules=fallback_modules
+        node_identifier, fallback_modules=node.get("modules")
     )
     node_modules = list(capabilities.modules)
 
