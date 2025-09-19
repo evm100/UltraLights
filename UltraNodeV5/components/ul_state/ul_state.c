@@ -20,6 +20,8 @@
 #define UL_STATE_WHITE_MAX_CHANNELS 4
 
 #define UL_STATE_MAX_PAYLOAD 1024
+#define UL_STATE_FLUSH_DELAY_US (3ULL * 1000000ULL)
+
 
 static const char *TAG = "ul_state";
 
@@ -117,8 +119,9 @@ static void flush_timer_cb(void *arg) {
     return;
   ul_state_msg_t msg = {.entry_index = entry_index};
   if (xQueueSend(s_queue, &msg, 0) != pdPASS) {
-    ESP_LOGW(TAG, "Persistence queue full; dropping request for %d",
+    ESP_LOGW(TAG, "Persistence queue full; delaying request for %d",
              entry_index);
+    schedule_flush(entry_index);
   }
 }
 
@@ -202,7 +205,7 @@ static void schedule_flush(size_t entry_index) {
     ESP_LOGW(TAG, "Failed to stop timer for %u: %s", (unsigned)entry_index,
              esp_err_to_name(err));
   }
-  err = esp_timer_start_once(entry->timer, 1000000);
+  err = esp_timer_start_once(entry->timer, UL_STATE_FLUSH_DELAY_US);
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "Failed to arm timer for %u: %s", (unsigned)entry_index,
              esp_err_to_name(err));
