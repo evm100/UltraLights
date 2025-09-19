@@ -46,6 +46,7 @@ def _build_motion_config(
     house_id: str, room_id: str, presets: List[Dict[str, Any]]
 ) -> Optional[Dict[str, Any]]:
     room_key = (house_id, room_id)
+    motion_manager.ensure_room_loaded(house_id, room_id)
     sensor_entry = motion_manager.room_sensors.get(room_key)
     sensor_nodes: List[Dict[str, Any]] = []
     if sensor_entry:
@@ -63,14 +64,18 @@ def _build_motion_config(
                     node_name = node_id
             duration = int(node_config.get("duration", 30)) if node_config else 30
             enabled = bool(node_config.get("enabled", True)) if node_config else True
-            sensor_nodes.append(
-                {
-                    "node_id": node_id,
-                    "node_name": node_name,
-                    "enabled": enabled,
-                    "duration": duration,
-                }
-            )
+            pir_enabled = None
+            if node_config is not None and "pir_enabled" in node_config:
+                pir_enabled = bool(node_config.get("pir_enabled"))
+            node_entry: Dict[str, Any] = {
+                "node_id": node_id,
+                "node_name": node_name,
+                "enabled": enabled,
+                "duration": duration,
+            }
+            if pir_enabled is not None:
+                node_entry["pir_enabled"] = pir_enabled
+            sensor_nodes.append(node_entry)
     if not sensor_nodes:
         return None
     sensor_nodes.sort(key=lambda item: item["node_name"].lower())

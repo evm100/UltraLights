@@ -11,6 +11,7 @@ All topics are rooted at `ul/<node-id>/`. The node subscribes to commands addres
 | → node | `ul/<node-id>/cmd/...` | Control commands |
 | ← node | `ul/<node-id>/evt/status` | Status updates and snapshots |
 | ← node | `ul/<node-id>/evt/sensor/motion` | Motion events |
+| ← node | `ul/<node-id>/evt/motion/status` | Motion module capabilities |
 | ← node | `ul/<node-id>/evt/ota` | OTA check and update progress |
 
 `<node-id>` is set at build time by `ul_core_get_node_id()`.
@@ -174,6 +175,16 @@ Motion state meanings:
 1. `0` – no motion
 2. `1` – motion detected
 
+`ul/<node-id>/cmd/motion/status` – request the motion module capabilities. The
+node responds on `ul/<node-id>/evt/motion/status` with:
+
+```json
+{ "pir_enabled": <bool> }
+```
+
+`pir_enabled` reports whether the firmware was built with the PIR task enabled
+and ready to publish motion events.
+
 `ul/<node-id>/cmd/ota/check` – empty JSON `{}` triggers an OTA manifest check.
 
 OTA progress events are published on `ul/<node-id>/evt/ota` with payload
@@ -189,6 +200,9 @@ Most commands produce a short acknowledgement on `ul/<node-id>/evt/status`:
 * `ws/set` echoes the chosen effect and its parameters.
 
 To retrieve the full device state, publish an empty JSON object to `ul/<node-id>/cmd/status`. The node then responds on `ul/<node-id>/evt/status` with a detailed snapshot describing each strip and channel. The `color` fields in the `ws` and `rgb` sections are meaningful only when the corresponding strip effect is `solid`.
+
+Snapshots also include `"pir_enabled": <bool>` so controllers can detect
+whether motion events are expected from the node.
 
 ## Publishing from Python
 

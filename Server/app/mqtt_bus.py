@@ -198,6 +198,15 @@ class MqttBus:
         """Program motion state commands on the node."""
         self.pub(topic_cmd(node_id, "sensor/motion"), states)
 
+    def motion_status_request(self, node_id: str, *, rate_limited: bool = False) -> None:
+        """Request the motion module status from ``node_id``."""
+        self.pub(
+            topic_cmd(node_id, "motion/status"),
+            {},
+            retain=False,
+            rate_limited=rate_limited,
+        )
+
     def status_request(self, node_id: str) -> None:
         """Request a full status snapshot from ``node_id``."""
         self.pub(topic_cmd(node_id, "status"), {}, retain=False)
