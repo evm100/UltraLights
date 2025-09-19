@@ -38,7 +38,7 @@ def home(request: Request):
     )
 
 
-  def _collect_admin_nodes(house_id: Optional[str] = None) -> List[Dict[str, Any]]:
+def _collect_admin_nodes(house_id: Optional[str] = None) -> List[Dict[str, Any]]:
     nodes: List[Dict[str, Any]] = []
     for house, room, node in registry.iter_nodes():
         if house_id and house and house.get("id") != house_id:
@@ -259,6 +259,9 @@ def node_page(request: Request, node_id: str):
         )
     ]
 
+    status_info = status_monitor.status_for(node["id"])
+    status_initial_online = bool(status_info.get("online"))
+
     return templates.TemplateResponse(
         "node.html",
         {
@@ -274,6 +277,8 @@ def node_page(request: Request, node_id: str):
             "ws_param_defs": WS_PARAM_DEFS,
             "white_param_defs": WHITE_PARAM_DEFS,
             "rgb_param_defs": RGB_PARAM_DEFS,
+            "status_timeout": status_monitor.timeout,
+            "status_initial_online": status_initial_online,
             "brightness_limits": brightness_limits.get_limits_for_node(node["id"]),
         },
     )

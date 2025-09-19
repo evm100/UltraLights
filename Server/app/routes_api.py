@@ -252,6 +252,27 @@ def api_ota_check(node_id: str):
     return {"ok": True}
 
 
+@router.get("/api/node/{node_id}/status")
+def api_node_status(node_id: str):
+    _valid_node(node_id)
+    info = status_monitor.status_for(node_id)
+
+    def _iso(ts: Optional[float]) -> Optional[str]:
+        if ts is None:
+            return None
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+    return {
+        "node": node_id,
+        "online": bool(info.get("online")),
+        "status": info.get("status"),
+        "last_ok": _iso(info.get("last_ok")),
+        "last_seen": _iso(info.get("last_seen")),
+        "timeout": status_monitor.timeout,
+        "now": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/api/admin/status")
 def api_admin_status(house_id: Optional[str] = None):
     snapshot = status_monitor.snapshot()
