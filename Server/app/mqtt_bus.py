@@ -1,5 +1,6 @@
 import threading
 import json
+import time
 from typing import Optional, List, Dict, Union
 import paho.mqtt.client as paho
 from .config import settings
@@ -8,14 +9,21 @@ from . import registry
 def topic_cmd(node_id: str, path: str) -> str:
     return f"ul/{node_id}/cmd/{path}"
 
+# Limit outbound command traffic per node to 5 Hz so firmware isn't flooded.
+NODE_COMMAND_RATE_HZ = 5.0
+NODE_COMMAND_INTERVAL = 1.0 / NODE_COMMAND_RATE_HZ
+
+
 class MqttBus:
-    def __init__(self):
-        self.client = paho.Client(paho.CallbackAPIVersion.VERSION2, client_id="ultralights-ui")
+    def __init__(self, client_id: str = "ultralights-ui"):
+        self.client = paho.Client(paho.CallbackAPIVersion.VERSION2, client_id=client_id)
         # Allow a larger number of QoS>0 messages to be in-flight before blocking
         self.client.max_inflight_messages_set(200)
         # Ensure queued messages are buffered rather than rejected when under load
         self.client.max_queued_messages_set(0)
         self.client.connect(settings.BROKER_HOST, settings.BROKER_PORT, keepalive=30)
+        self._rate_lock = threading.Lock()
+        self._node_next_publish: Dict[str, float] = {}
         self.thread = threading.Thread(target=self.client.loop_forever, daemon=True)
         self.thread.start()
 
@@ -28,7 +36,31 @@ class MqttBus:
         the last value is desirable so lights resume their previous state after
         reconnecting.
         """
+        self._apply_rate_limit(topic)
         self.client.publish(topic, payload=json.dumps(payload), qos=1, retain=retain)
+
+    def _apply_rate_limit(self, topic: str) -> None:
+        node_id = self._node_from_topic(topic)
+        if not node_id:
+            return
+        delay = 0.0
+        with self._rate_lock:
+            now = time.monotonic()
+            next_ready = self._node_next_publish.get(node_id, now)
+            if next_ready <= now:
+                self._node_next_publish[node_id] = now + NODE_COMMAND_INTERVAL
+            else:
+                delay = next_ready - now
+                self._node_next_publish[node_id] = next_ready + NODE_COMMAND_INTERVAL
+        if delay > 0:
+            time.sleep(delay)
+
+    @staticmethod
+    def _node_from_topic(topic: str) -> Optional[str]:
+        parts = topic.split("/")
+        if len(parts) >= 3 and parts[0] == "ul" and parts[2] == "cmd":
+            return parts[1]
+        return None
 
     # ---- WS strip commands ----
     def ws_set(
