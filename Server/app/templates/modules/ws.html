@@ -1,100 +1,228 @@
-<section class="glass rounded-2xl p-6">
-  <h3 class="text-lg font-semibold mb-3">Addressable Strip</h3>
-  <div class="mb-2">
-    <label class="text-xs opacity-70">Strip</label>
-    <select id="wsStrip" class="p-1 rounded bg-slate-900 border border-slate-700" disabled></select>
-  </div>
-  <div class="mb-3">
-    <label class="text-xs opacity-70">Effect</label>
-    <select id="wsEffect" class="w-full p-1 bg-slate-900 rounded border border-slate-700">
-      <option value="" disabled>Select effect</option>
-      {% for group in ws_effect_groups %}
-      <optgroup label="{{ group.label }}">
-        {% for eff in group.effects %}
-        <option value="{{ eff }}" data-tier="{{ group.key }}"{% if eff == 'color_swell' %} selected{% endif %}>{{ eff }}</option>
-        {% endfor %}
-      </optgroup>
-      {% endfor %}
-    </select>
-    <div id="wsParams" class="mt-2 space-y-2"></div>
-    <div class="flex items-center justify-between mt-2">
-      <label for="wsBri" class="text-xs opacity-70">Brightness</label>
-      <button id="wsBriLock" type="button" class="text-xl leading-none" title="Lock brightness" aria-pressed="false">🔓</button>
-    </div>
-    <input id="wsBri" type="range" min="0" max="255" value="255" class="w-full">
-  </div>
-  <div class="flex gap-2">
-    <button id="wsOn" class="px-4 py-2 pill bg-green-600 hover:bg-green-500 text-white">On</button>
-    <button id="wsOff" class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white">Off</button>
-  </div>
-  <p class="mt-3 text-sm text-slate-400 hidden" data-module-empty-message>No addressable strips reported.</p>
+<section class="glass rounded-2xl p-6" data-module-root>
+  <header class="mb-4">
+    <h3 class="text-lg font-semibold">Addressable Strips</h3>
+    <p class="mt-2 text-sm text-slate-400 hidden" data-module-empty-message>
+      No addressable strips reported.
+    </p>
+  </header>
+  <div class="flex flex-col gap-4" data-channel-list></div>
+  <template data-channel-template>
+    <article
+      class="rounded-xl border border-slate-800/60 bg-slate-900/40 p-4 space-y-4"
+      data-channel-card
+    >
+      <header class="flex items-center justify-between">
+        <h4 class="text-base font-semibold">
+          Strip <span data-role="channel-label"></span>
+        </h4>
+      </header>
+      <div class="space-y-2">
+        <label class="text-xs opacity-70">Effect</label>
+        <select
+          data-role="effect"
+          class="w-full p-1 bg-slate-900 rounded border border-slate-700"
+        ></select>
+      </div>
+      <div class="space-y-2" data-role="params"></div>
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <label class="text-xs opacity-70">Brightness</label>
+          <button
+            type="button"
+            class="text-xl leading-none"
+            data-role="lock"
+            title="Lock brightness"
+            aria-pressed="false"
+          >
+            🔓
+          </button>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="255"
+          value="255"
+          data-role="brightness"
+          class="w-full"
+        />
+      </div>
+      <div class="flex gap-2">
+        <button
+          type="button"
+          class="px-4 py-2 pill bg-green-600 hover:bg-green-500 text-white"
+          data-role="on"
+        >
+          On
+        </button>
+        <button
+          type="button"
+          class="px-4 py-2 pill bg-red-600 hover:bg-red-500 text-white"
+          data-role="off"
+        >
+          Off
+        </button>
+      </div>
+    </article>
+  </template>
 </section>
 <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
 <script type="module">
 import { renderParams, collectParams } from '/static/params.js';
-const WS_PARAM_DEFS = {{ ws_param_defs|tojson }};
-const MODULE_KEY = 'ws';
 
-function getParamDefs(eff) {
-  return WS_PARAM_DEFS[eff] || [];
+const WS_PARAM_DEFS = {{ ws_param_defs|tojson }};
+const WS_EFFECT_GROUPS = {{ ws_effect_groups|tojson }};
+const MODULE_KEY = 'ws';
+const NODE_ID = {{ node.id|tojson }};
+const MANAGER_REF = Symbol('ws-module-manager');
+
+function toChannelValue(channel) {
+  const num = Number(channel);
+  return Number.isNaN(num) ? String(channel) : num;
 }
 
-const moduleWrapper = document.querySelector('[data-module="ws"]');
-const stripEl = document.getElementById('wsStrip');
-const effectEl = document.getElementById('wsEffect');
-const briEl = document.getElementById('wsBri');
-const lockBtn = document.getElementById('wsBriLock');
-const paramsEl = document.getElementById('wsParams');
-const onBtn = document.getElementById('wsOn');
-const offBtn = document.getElementById('wsOff');
-const emptyMessage = moduleWrapper ? moduleWrapper.querySelector('[data-module-empty-message]') : null;
+function normalizeChannelId(value) {
+  if (value === null || value === undefined) return null;
+  const str = String(value).trim();
+  return str === '' ? null : str;
+}
 
-if (!stripEl || !effectEl || !briEl || !lockBtn || !paramsEl || !onBtn || !offBtn) {
-  console.warn('WS module UI not found');
-} else {
-  const moduleState = new Map();
-  let availableChannels = [];
-  let listenersBound = false;
-  let isInitializing = false;
-  let currentChannel = null;
-  let lastSend = 0;
-  let pendingSend = null;
-  const defaultEmptyMessage = emptyMessage ? emptyMessage.textContent : '';
+class WsModuleManager {
+  constructor(host) {
+    this.host = host;
+    this.listEl = host.querySelector('[data-channel-list]');
+    this.template = host.querySelector('template[data-channel-template]');
+    this.emptyMessage = host.querySelector('[data-module-empty-message]');
+    this.defaultEmptyMessage = this.emptyMessage ? this.emptyMessage.textContent : '';
+    this.controllers = new Map();
+    this.effectGroups = Array.isArray(WS_EFFECT_GROUPS) ? WS_EFFECT_GROUPS : [];
+    this.ready = Boolean(this.listEl && this.template);
+    if (!this.ready) {
+      console.warn('WS module template missing host container');
+    }
+  }
 
-  async function post(path, body) {
-    const res = await fetch(path, {
+  getDefaultEffect() {
+    for (const group of this.effectGroups) {
+      const effects = Array.isArray(group?.effects) ? group.effects : [];
+      for (const eff of effects) {
+        if (typeof eff === 'string' && eff.trim()) {
+          return eff.trim();
+        }
+      }
+    }
+    return 'color_swell';
+  }
+
+  getParamDefs(effect) {
+    return WS_PARAM_DEFS && WS_PARAM_DEFS[effect] ? WS_PARAM_DEFS[effect] : [];
+  }
+
+  post(path, body) {
+    return fetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+    }).then((res) => {
+      if (!res.ok) {
+        throw new Error(`Request failed with status ${res.status}`);
+      }
+      return res;
     });
-    if (!res.ok) {
-      throw new Error('Request failed');
-    }
-    return res;
   }
 
-  function getDefaultEffect() {
-    const options = Array.from(effectEl.options);
-    for (const option of options) {
-      if (option.disabled) continue;
-      if (!option.value) continue;
-      return option.value;
-    }
-    return '';
+  getLimit(channel) {
+    const data = window.nodeBrightnessLimits;
+    if (!data) return null;
+    const moduleData = data[MODULE_KEY];
+    if (!moduleData) return null;
+    const value = moduleData[String(channel)];
+    return typeof value === 'number' && !Number.isNaN(value) ? value : null;
   }
 
-  function ensureEffectOption(effect) {
-    if (!effect) return;
-    if (!Array.from(effectEl.options).some((opt) => opt.value === effect)) {
-      const option = document.createElement('option');
-      option.value = effect;
-      option.textContent = effect;
-      effectEl.appendChild(option);
+  cacheLimit(channel, limit) {
+    const data = window.nodeBrightnessLimits || (window.nodeBrightnessLimits = {});
+    const key = String(channel);
+    if (limit === null || limit === undefined) {
+      const moduleData = data[MODULE_KEY];
+      if (moduleData) {
+        delete moduleData[key];
+        if (Object.keys(moduleData).length === 0) {
+          delete data[MODULE_KEY];
+        }
+      }
+      return;
     }
-    effectEl.value = effect;
+    const moduleData = data[MODULE_KEY] || (data[MODULE_KEY] = {});
+    moduleData[key] = limit;
   }
 
-  function normalizeParams(values) {
+  async persistLimit(channel, limit) {
+    const payload = { channel: toChannelValue(channel), limit };
+    try {
+      const res = await this.post(`/api/node/${encodeURIComponent(NODE_ID)}/ws/brightness-limit`, payload);
+      let response = null;
+      try {
+        response = await res.json();
+      } catch (err) {
+        response = null;
+      }
+      if (response && response.limit !== undefined) {
+        const value = response.limit;
+        if (typeof value === 'number' && !Number.isNaN(value)) {
+          const clamped = Math.max(0, Math.min(255, Math.round(value)));
+          this.cacheLimit(channel, clamped);
+          return clamped;
+        }
+        this.cacheLimit(channel, null);
+        return null;
+      }
+      if (typeof limit === 'number' && !Number.isNaN(limit)) {
+        const clamped = Math.max(0, Math.min(255, Math.round(limit)));
+        this.cacheLimit(channel, clamped);
+        return clamped;
+      }
+      this.cacheLimit(channel, null);
+      return null;
+    } catch (err) {
+      console.error(err);
+      alert('Request failed');
+      return this.getLimit(channel);
+    }
+  }
+
+  createStateFromEntry(entry) {
+    const state = {
+      effect: this.getDefaultEffect(),
+      brightness: 255,
+      paramCache: {},
+    };
+    if (entry && typeof entry === 'object') {
+      if (typeof entry.effect === 'string' && entry.effect.trim()) {
+        state.effect = entry.effect.trim();
+      }
+      if (typeof entry.brightness === 'number' && !Number.isNaN(entry.brightness)) {
+        state.brightness = Math.max(0, Math.min(255, Math.round(entry.brightness)));
+      }
+      const params =
+        (Array.isArray(entry.params) && entry.params.length ? entry.params : null) ||
+        (Array.isArray(entry.color) && entry.color.length ? entry.color.slice(0, 3) : null);
+      if (params) {
+        const normalized = this.normalizeParams(params);
+        if (normalized && normalized.length) {
+          state.paramCache[state.effect] = normalized;
+        }
+      }
+    }
+    if (!state.effect) {
+      state.effect = this.getDefaultEffect();
+    }
+    if (!state.paramCache) {
+      state.paramCache = {};
+    }
+    return state;
+  }
+
+  normalizeParams(values) {
     if (!Array.isArray(values)) return undefined;
     const out = [];
     values.forEach((value) => {
@@ -113,481 +241,440 @@ if (!stripEl || !effectEl || !briEl || !lockBtn || !paramsEl || !onBtn || !offBt
     return out;
   }
 
-  function createStateFromEntry(entry) {
-    const state = {
-      effect: getDefaultEffect(),
-      brightness: 255,
-      paramCache: {},
-    };
-    if (entry && typeof entry === 'object') {
-      if (typeof entry.effect === 'string' && entry.effect.trim()) {
-        state.effect = entry.effect.trim();
-      }
-      if (typeof entry.brightness === 'number' && !Number.isNaN(entry.brightness)) {
-        const clamped = Math.max(0, Math.min(255, Math.round(entry.brightness)));
-        state.brightness = clamped;
-      }
-      const params =
-        (Array.isArray(entry.params) && entry.params.length ? entry.params : null) ||
-        (Array.isArray(entry.color) && entry.color.length ? entry.color.slice(0, 3) : null);
-      if (params && state.effect) {
-        const normalized = normalizeParams(params);
-        if (normalized && normalized.length) {
-          state.paramCache[state.effect] = normalized;
-        }
-      }
-      if (typeof entry.enabled === 'boolean') {
-        state.enabled = entry.enabled;
-      }
+  clearControllers() {
+    this.controllers.forEach((controller) => controller.destroy());
+    this.controllers.clear();
+    if (this.listEl) {
+      this.listEl.innerHTML = '';
     }
-    if (!state.effect) {
-      state.effect = getDefaultEffect();
-    }
-    if (!state.paramCache) {
-      state.paramCache = {};
-    }
-    return state;
   }
 
-  function ensureChannelState(channel) {
+  updateEmptyState(hasChannels, message) {
+    if (!this.emptyMessage) return;
+    const text = typeof message === 'string' && message.trim() ? message : this.defaultEmptyMessage;
+    this.emptyMessage.textContent = text;
+    this.emptyMessage.classList.toggle('hidden', hasChannels);
+  }
+
+  ensureController(channel) {
     const key = String(channel);
-    let state = moduleState.get(key);
-    if (!state) {
-      state = createStateFromEntry(null);
-      moduleState.set(key, state);
-    }
-    if (!state.paramCache) state.paramCache = {};
-    if (!state.effect) state.effect = getDefaultEffect();
-    return state;
-  }
-
-  function populateStripOptions(channelIds) {
-    const sorted = channelIds
-      .map((value) => String(value))
-      .filter((value) => value !== '')
-      .sort((a, b) => Number(a) - Number(b));
-    const previous = stripEl.value;
-    stripEl.innerHTML = '';
-    for (const id of sorted) {
-      const option = document.createElement('option');
-      option.value = id;
-      option.textContent = id;
-      stripEl.appendChild(option);
-    }
-    let selection = null;
-    if (sorted.length) {
-      if (previous && sorted.includes(previous)) {
-        selection = previous;
-      } else if (currentChannel !== null) {
-        const currentValue = String(currentChannel);
-        if (sorted.includes(currentValue)) {
-          selection = currentValue;
-        }
+    let controller = this.controllers.get(key);
+    if (!controller) {
+      controller = new WsChannelController(this, key);
+      if (controller.root) {
+        this.controllers.set(key, controller);
       }
-      if (!selection) {
-        selection = sorted[0];
-      }
-      stripEl.value = selection;
-      currentChannel = parseInt(selection, 10);
-    } else {
-      stripEl.value = '';
-      currentChannel = null;
     }
-    return sorted;
+    return controller;
   }
 
-  function setModuleEnabled(enabled) {
-    const controls = [stripEl, effectEl, briEl, lockBtn, onBtn, offBtn];
-    controls.forEach((el) => {
-      if (!el) return;
-      if ('disabled' in el) {
-        el.disabled = !enabled;
-      } else if (!enabled) {
-        el.setAttribute('aria-disabled', 'true');
-      } else {
-        el.removeAttribute('aria-disabled');
-      }
-    });
-    if (emptyMessage) {
-      emptyMessage.classList.toggle('hidden', !!enabled);
-    }
-    if (!enabled) {
-      paramsEl.innerHTML = '';
-    }
-  }
-
-  function activeStrip() {
-    if (!stripEl.value) return null;
-    const value = Number(stripEl.value);
-    return Number.isNaN(value) ? null : value;
-  }
-
-  function getLimit(channel) {
-    const data = window.nodeBrightnessLimits;
-    if (!data) return null;
-    const moduleData = data[MODULE_KEY];
-    if (!moduleData) return null;
-    const value = moduleData[String(channel)];
-    return typeof value === 'number' && !Number.isNaN(value) ? value : null;
-  }
-
-  function cacheLimit(channel, limit) {
-    const data = window.nodeBrightnessLimits || (window.nodeBrightnessLimits = {});
-    const key = String(channel);
-    if (limit === null || limit === undefined) {
-      const moduleData = data[MODULE_KEY];
-      if (moduleData) {
-        delete moduleData[key];
-        if (Object.keys(moduleData).length === 0) {
-          delete data[MODULE_KEY];
-        }
-      }
+  update(payload = {}) {
+    if (!this.ready) return;
+    if (payload.available === false) {
+      this.clearControllers();
+      this.updateEmptyState(false, payload.message);
       return;
     }
-    const moduleData = data[MODULE_KEY] || (data[MODULE_KEY] = {});
-    moduleData[key] = limit;
+    const stateEntries = payload.state && typeof payload.state === 'object' ? payload.state : {};
+    const providedChannels = Array.isArray(payload.channels) ? payload.channels : null;
+    const channelIds = providedChannels && providedChannels.length
+      ? providedChannels
+      : Object.keys(stateEntries || {});
+    const normalized = channelIds
+      .map(normalizeChannelId)
+      .filter((value) => value !== null);
+    const sorted = normalized.sort((a, b) => {
+      const numA = Number(a);
+      const numB = Number(b);
+      const aIsNum = !Number.isNaN(numA);
+      const bIsNum = !Number.isNaN(numB);
+      if (aIsNum && bIsNum) return numA - numB;
+      if (aIsNum) return -1;
+      if (bIsNum) return 1;
+      return a.localeCompare(b);
+    });
+    const seen = new Set();
+    sorted.forEach((channelId) => {
+      const controller = this.ensureController(channelId);
+      if (!controller) return;
+      seen.add(channelId);
+      const entry =
+        stateEntries[channelId] !== undefined
+          ? stateEntries[channelId]
+          : stateEntries[String(Number(channelId))];
+      controller.applyState(entry);
+      const limits = payload.limits && typeof payload.limits === 'object' ? payload.limits : {};
+      const limitValue = limits && limits[channelId] !== undefined ? limits[channelId] : limits[String(Number(channelId))];
+      controller.applyLimit(limitValue, { silent: true });
+      if (this.listEl) {
+        this.listEl.appendChild(controller.root);
+      }
+    });
+    Array.from(this.controllers.keys()).forEach((key) => {
+      if (!seen.has(key)) {
+        const controller = this.controllers.get(key);
+        if (controller) {
+          controller.destroy();
+        }
+        this.controllers.delete(key);
+      }
+    });
+    this.updateEmptyState(this.controllers.size > 0, payload.message);
+  }
+}
+
+class WsChannelController {
+  constructor(manager, channelId) {
+    this.manager = manager;
+    this.channelId = channelId;
+    this.state = manager.createStateFromEntry(null);
+    this.lastSend = 0;
+    this.pendingSend = null;
+    this.isInitializing = false;
+
+    const fragment = manager.template ? manager.template.content.cloneNode(true) : null;
+    this.root = fragment ? fragment.querySelector('[data-channel-card]') || fragment.firstElementChild : null;
+    if (!this.root) {
+      console.warn('WS channel template missing root element');
+      return;
+    }
+
+    this.labelEl = this.root.querySelector('[data-role="channel-label"]');
+    this.effectSelect = this.root.querySelector('[data-role="effect"]');
+    this.paramsEl = this.root.querySelector('[data-role="params"]');
+    this.brightnessInput = this.root.querySelector('[data-role="brightness"]');
+    this.lockBtn = this.root.querySelector('[data-role="lock"]');
+    this.onBtn = this.root.querySelector('[data-role="on"]');
+    this.offBtn = this.root.querySelector('[data-role="off"]');
+
+    if (this.labelEl) {
+      this.labelEl.textContent = this.channelId;
+    }
+
+    this.populateEffectOptions(this.state.effect);
+    this.bindListeners();
+    this.applyState(null);
   }
 
-  function clampBrightness(value) {
+  get channelValue() {
+    return toChannelValue(this.channelId);
+  }
+
+  bindListeners() {
+    if (this.effectSelect) {
+      this.effectSelect.addEventListener('change', () => this.handleEffectChange());
+    }
+    if (this.brightnessInput) {
+      this.brightnessInput.addEventListener('input', () => this.handleBrightnessInput());
+    }
+    if (this.lockBtn) {
+      this.lockBtn.addEventListener('click', () => this.handleLockClick());
+    }
+    if (this.onBtn) {
+      this.onBtn.addEventListener('click', () => this.handleOnClick());
+    }
+    if (this.offBtn) {
+      this.offBtn.addEventListener('click', () => this.handleOffClick());
+    }
+  }
+
+  populateEffectOptions(effect) {
+    if (!this.effectSelect) return '';
+    const existing = new Set();
+    this.effectSelect.innerHTML = '';
+    this.manager.effectGroups.forEach((group) => {
+      const effects = Array.isArray(group?.effects) ? group.effects : [];
+      if (group && typeof group.label === 'string' && group.label) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = group.label;
+        effects.forEach((eff) => {
+          if (!eff) return;
+          const opt = document.createElement('option');
+          opt.value = eff;
+          opt.textContent = eff;
+          if (group.key) {
+            opt.dataset.tier = group.key;
+          }
+          optgroup.appendChild(opt);
+          existing.add(eff);
+        });
+        if (optgroup.children.length) {
+          this.effectSelect.appendChild(optgroup);
+        }
+      } else {
+        effects.forEach((eff) => {
+          if (!eff) return;
+          const opt = document.createElement('option');
+          opt.value = eff;
+          opt.textContent = eff;
+          if (group && group.key) {
+            opt.dataset.tier = group.key;
+          }
+          this.effectSelect.appendChild(opt);
+          existing.add(eff);
+        });
+      }
+    });
+    if (effect && !existing.has(effect)) {
+      const opt = document.createElement('option');
+      opt.value = effect;
+      opt.textContent = effect;
+      opt.dataset.dynamic = 'true';
+      this.effectSelect.appendChild(opt);
+    }
+    if (effect) {
+      this.effectSelect.value = effect;
+    } else if (this.effectSelect.options.length) {
+      this.effectSelect.value = this.effectSelect.options[0].value;
+    }
+    return this.effectSelect.value;
+  }
+
+  renderParams(initialParams) {
+    if (!this.paramsEl) return;
+    const effect = this.effectSelect ? this.effectSelect.value.trim() : this.manager.getDefaultEffect();
+    const defs = this.manager.getParamDefs(effect);
+    renderParams(defs, this.paramsEl, () => this.scheduleSend(), initialParams);
+  }
+
+  applyState(entry) {
+    const previous = this.state || this.manager.createStateFromEntry(null);
+    const nextState = entry ? this.manager.createStateFromEntry(entry) : previous;
+    nextState.paramCache = { ...(previous.paramCache || {}), ...(nextState.paramCache || {}) };
+    if (!nextState.effect) {
+      nextState.effect = previous.effect || this.manager.getDefaultEffect();
+    }
+    this.state = nextState;
+    this.isInitializing = true;
+    try {
+      const selected = this.populateEffectOptions(nextState.effect || this.manager.getDefaultEffect());
+      const params = nextState.paramCache ? nextState.paramCache[selected] : undefined;
+      this.renderParams(Array.isArray(params) ? params : undefined);
+      const brightness =
+        typeof nextState.brightness === 'number' && !Number.isNaN(nextState.brightness)
+          ? Math.max(0, Math.min(255, Math.round(nextState.brightness)))
+          : 255;
+      if (this.brightnessInput) {
+        this.brightnessInput.value = String(brightness);
+      }
+      this.applyLimit(undefined, { silent: true });
+    } finally {
+      this.isInitializing = false;
+    }
+  }
+
+  clampBrightness(value) {
     let num = typeof value === 'number' ? value : Number(value);
     if (Number.isNaN(num)) return null;
-    const strip = activeStrip();
-    if (strip !== null) {
-      const limit = getLimit(strip);
-      if (typeof limit === 'number') {
-        num = Math.min(num, limit);
-      }
+    const limit = this.manager.getLimit(this.channelId);
+    if (typeof limit === 'number') {
+      num = Math.min(num, limit);
     }
     if (num < 0) num = 0;
     if (num > 255) num = 255;
     return Math.round(num);
   }
 
-  function applyBrightnessLimit() {
-    const strip = activeStrip();
-    const limit = strip === null ? null : getLimit(strip);
-    const hasLimit = typeof limit === 'number';
-    const maxValue = hasLimit ? limit : 255;
-    briEl.max = String(maxValue);
-    const current = Number(briEl.value);
-    let adjusted = Number.isNaN(current) ? maxValue : Math.max(0, Math.min(current, maxValue));
-    const changed = Number.isNaN(current) || adjusted !== current;
-    if (changed) {
-      briEl.value = String(adjusted);
+  applyLimit(explicitLimit, options = {}) {
+    const silent = Boolean(options.silent);
+    const limit =
+      explicitLimit !== undefined && explicitLimit !== null
+        ? Number(explicitLimit)
+        : this.manager.getLimit(this.channelId);
+    const hasLimit = typeof limit === 'number' && !Number.isNaN(limit);
+    const maxValue = hasLimit ? Math.max(0, Math.min(255, Math.round(limit))) : 255;
+    if (this.brightnessInput) {
+      this.brightnessInput.max = String(maxValue);
+      const current = Number(this.brightnessInput.value);
+      const adjusted = Number.isNaN(current) ? maxValue : Math.max(0, Math.min(current, maxValue));
+      if (Number.isNaN(current) || adjusted !== current) {
+        const prevInit = this.isInitializing;
+        this.isInitializing = true;
+        this.brightnessInput.value = String(adjusted);
+        this.isInitializing = prevInit;
+        if (!this.isInitializing && !silent) {
+          this.state.brightness = adjusted;
+          this.scheduleSend();
+        }
+      }
     }
-    lockBtn.textContent = hasLimit ? '🔒' : '🔓';
-    lockBtn.setAttribute('aria-pressed', hasLimit ? 'true' : 'false');
-    lockBtn.title = hasLimit ? `Unlock brightness limit (${maxValue})` : 'Lock brightness to current value';
-    if (changed && !isInitializing) {
-      scheduleSend();
+    if (this.lockBtn) {
+      this.lockBtn.textContent = hasLimit ? '🔒' : '🔓';
+      this.lockBtn.setAttribute('aria-pressed', hasLimit ? 'true' : 'false');
+      this.lockBtn.title = hasLimit
+        ? `Unlock brightness limit (${maxValue})`
+        : 'Lock brightness to current value';
     }
   }
 
-  function updateParams(initialParams) {
-    const eff = effectEl.value.trim();
-    const defs = getParamDefs(eff);
-    renderParams(defs, paramsEl, scheduleSend, initialParams);
+  collectParams(effect) {
+    const defs = this.manager.getParamDefs(effect);
+    const params = collectParams(defs, this.paramsEl || document.createElement('div')) || [];
+    return Array.isArray(params) ? params : [];
   }
 
-  function applyChannelState(channel) {
-    const key = String(channel);
-    const state = moduleState.get(key) || createStateFromEntry(null);
-    moduleState.set(key, state);
-    const effect = state.effect || getDefaultEffect();
-    ensureEffectOption(effect);
-    const cachedParams = state.paramCache ? state.paramCache[effect] : undefined;
-    updateParams(Array.isArray(cachedParams) ? cachedParams : undefined);
-    const brightness =
-      typeof state.brightness === 'number' && !Number.isNaN(state.brightness)
-        ? state.brightness
-        : 255;
-    briEl.value = String(Math.max(0, Math.min(255, Math.round(brightness))));
-    applyBrightnessLimit();
-  }
-
-  function scheduleSend() {
-    if (isInitializing) return;
+  scheduleSend() {
+    if (this.isInitializing) return;
     const now = Date.now();
-    const delay = 100 - (now - lastSend);
+    const delay = 100 - (now - this.lastSend);
     if (delay <= 0) {
-      lastSend = now;
-      sendCmd();
+      this.lastSend = now;
+      this.sendWs();
     } else {
-      clearTimeout(pendingSend);
-      pendingSend = setTimeout(() => {
-        lastSend = Date.now();
-        sendCmd();
+      clearTimeout(this.pendingSend);
+      this.pendingSend = setTimeout(() => {
+        this.lastSend = Date.now();
+        this.sendWs();
       }, delay);
     }
   }
 
-  function sendCmd(options = {}) {
-    if (isInitializing) return;
-    const strip = activeStrip();
-    if (strip === null) return;
-    let effect;
-    if (options.effect !== undefined) {
-      effect = String(options.effect).trim();
-    } else {
-      effect = effectEl.value.trim();
-    }
+  sendWs(options = {}) {
+    if (this.isInitializing) return;
+    const effect =
+      options.effect !== undefined
+        ? String(options.effect).trim()
+        : this.effectSelect
+        ? this.effectSelect.value.trim()
+        : this.state.effect || this.manager.getDefaultEffect();
     if (!effect) return;
     let brightness;
     if (options.brightness !== undefined) {
       brightness = Number(options.brightness);
+    } else if (this.brightnessInput) {
+      brightness = Number(this.brightnessInput.value);
     } else {
-      brightness = Number(briEl.value);
+      brightness = this.state.brightness;
     }
     if (Number.isNaN(brightness)) return;
-    const clamped = clampBrightness(brightness);
+    const clamped = this.clampBrightness(brightness);
     if (clamped === null) return;
     brightness = clamped;
-    if (options.updateSlider !== false) {
-      briEl.value = String(brightness);
+    if (options.updateSlider !== false && this.brightnessInput) {
+      this.brightnessInput.value = String(brightness);
     }
     let params;
     if (options.params !== undefined) {
-      params = Array.isArray(options.params)
-        ? options.params.slice()
-        : collectParams(getParamDefs(effect), paramsEl);
+      params = Array.isArray(options.params) ? options.params.slice() : [];
     } else {
-      params = collectParams(getParamDefs(effect), paramsEl);
+      params = this.collectParams(effect);
     }
     if (!Array.isArray(params)) {
       params = [];
     }
-    const message = { strip, effect, brightness, params };
-    post(`/api/node/{{ node.id }}/ws/set`, message).catch(() => {
-      alert('Request failed');
-    });
+    const message = { strip: this.channelValue, effect, brightness, params };
+    this.manager
+      .post(`/api/node/${encodeURIComponent(NODE_ID)}/ws/set`, message)
+      .catch(() => {
+        alert('Request failed');
+      });
     if (options.updateState !== false) {
-      const state = ensureChannelState(strip);
-      state.effect = effect;
-      state.brightness = brightness;
-      state.paramCache[effect] = params.slice();
+      this.state.effect = effect;
+      this.state.brightness = brightness;
+      if (!this.state.paramCache) this.state.paramCache = {};
+      this.state.paramCache[effect] = params.slice();
     }
   }
 
-  async function persistLimit(channel, limit) {
-    try {
-      const res = await post(`/api/node/{{ node.id }}/ws/brightness-limit`, { channel, limit });
-      let payload = null;
-      try {
-        payload = await res.json();
-      } catch (err) {
-        payload = null;
-      }
-      if (payload && payload.limit !== undefined) {
-        const value = payload.limit;
-        if (typeof value === 'number' && !Number.isNaN(value)) {
-          cacheLimit(channel, Math.max(0, Math.min(255, value)));
-        } else {
-          cacheLimit(channel, null);
-        }
-      } else if (typeof limit === 'number') {
-        cacheLimit(channel, limit);
-      } else {
-        cacheLimit(channel, null);
-      }
-      applyBrightnessLimit();
-    } catch (err) {
-      console.error(err);
-      alert('Request failed');
-      applyBrightnessLimit();
-    }
-  }
-
-  function handleStripChange() {
-    const strip = activeStrip();
-    currentChannel = strip;
-    if (strip === null) {
-      setModuleEnabled(false);
-      return;
-    }
-    ensureChannelState(strip);
-    const prevInit = isInitializing;
-    isInitializing = true;
-    try {
-      applyChannelState(strip);
-    } finally {
-      isInitializing = prevInit;
-    }
-    scheduleSend();
-  }
-
-  function handleEffectChange() {
-    const strip = activeStrip();
-    if (strip === null) return;
-    const effect = effectEl.value.trim() || getDefaultEffect();
-    const state = ensureChannelState(strip);
-    state.effect = effect;
-    const cached = state.paramCache ? state.paramCache[effect] : undefined;
-    const prevInit = isInitializing;
-    isInitializing = true;
-    try {
-      ensureEffectOption(effect);
-      updateParams(Array.isArray(cached) ? cached : undefined);
-    } finally {
-      isInitializing = prevInit;
-    }
-    scheduleSend();
-  }
-
-  function handleBrightnessInput() {
-    const clamped = clampBrightness(briEl.value);
-    if (clamped === null) return;
-    if (clamped !== Number(briEl.value)) {
-      const prevInit = isInitializing;
-      isInitializing = true;
-      briEl.value = String(clamped);
-      isInitializing = prevInit;
-    }
-    const strip = activeStrip();
-    if (strip !== null) {
-      const state = ensureChannelState(strip);
-      state.brightness = clamped;
-    }
-    scheduleSend();
-  }
-
-  function handleLockClick() {
-    const strip = activeStrip();
-    if (strip === null) {
-      alert('Invalid strip');
-      return;
-    }
-    const currentLimit = getLimit(strip);
+  async handleLockClick() {
+    const currentLimit = this.manager.getLimit(this.channelId);
     if (typeof currentLimit === 'number') {
-      persistLimit(strip, null);
+      await this.manager.persistLimit(this.channelId, null);
+      this.applyLimit(null, { silent: false });
       return;
     }
-    const brightness = clampBrightness(briEl.value);
-    if (brightness === null) {
+    const clamped = this.clampBrightness(this.brightnessInput ? this.brightnessInput.value : this.state.brightness);
+    if (clamped === null) {
       alert('Invalid brightness');
       return;
     }
-    persistLimit(strip, brightness);
+    const limit = await this.manager.persistLimit(this.channelId, clamped);
+    this.applyLimit(limit, { silent: false });
   }
 
-  function handleOnClick() {
-    const strip = activeStrip();
-    const limit = strip === null ? null : getLimit(strip);
-    const target = typeof limit === 'number' ? limit : 255;
-    briEl.value = String(target);
-    if (strip !== null) {
-      const state = ensureChannelState(strip);
-      state.brightness = target;
+  handleEffectChange() {
+    const effect = this.effectSelect ? this.effectSelect.value.trim() : '';
+    const target = effect || this.manager.getDefaultEffect();
+    if (!this.state.paramCache) this.state.paramCache = {};
+    const cached = this.state.paramCache[target];
+    const prevInit = this.isInitializing;
+    this.isInitializing = true;
+    try {
+      this.populateEffectOptions(target);
+      this.renderParams(Array.isArray(cached) ? cached : undefined);
+    } finally {
+      this.isInitializing = prevInit;
     }
-    sendCmd({ brightness: target });
+    this.state.effect = target;
+    this.scheduleSend();
   }
 
-  function handleOffClick() {
-    const strip = activeStrip();
-    if (strip === null) {
+  handleBrightnessInput() {
+    if (!this.brightnessInput) return;
+    const clamped = this.clampBrightness(this.brightnessInput.value);
+    if (clamped === null) return;
+    if (clamped !== Number(this.brightnessInput.value)) {
+      const prevInit = this.isInitializing;
+      this.isInitializing = true;
+      this.brightnessInput.value = String(clamped);
+      this.isInitializing = prevInit;
+    }
+    this.state.brightness = clamped;
+    this.scheduleSend();
+  }
+
+  handleOnClick() {
+    const limit = this.manager.getLimit(this.channelId);
+    const target = typeof limit === 'number' ? limit : 255;
+    if (this.brightnessInput) {
+      this.brightnessInput.value = String(target);
+    }
+    this.state.brightness = target;
+    this.sendWs({ brightness: target });
+  }
+
+  handleOffClick() {
+    const strip = this.channelValue;
+    if (strip === null || strip === undefined || strip === '') {
       alert('Invalid strip');
       return;
     }
-    post(`/api/node/{{ node.id }}/ws/set`, {
-      strip,
-      effect: 'solid',
-      brightness: 255,
-      params: [0, 0, 0],
-    }).catch(() => {
-      alert('Request failed');
-    });
+    this.manager
+      .post(`/api/node/${encodeURIComponent(NODE_ID)}/ws/set`, {
+        strip,
+        effect: 'solid',
+        brightness: 255,
+        params: [0, 0, 0],
+      })
+      .catch(() => {
+        alert('Request failed');
+      });
   }
 
-  function bindListeners() {
-    if (listenersBound) return;
-    listenersBound = true;
-    stripEl.addEventListener('change', handleStripChange);
-    effectEl.addEventListener('change', handleEffectChange);
-    briEl.addEventListener('input', handleBrightnessInput);
-    lockBtn.addEventListener('click', handleLockClick);
-    onBtn.addEventListener('click', handleOnClick);
-    offBtn.addEventListener('click', handleOffClick);
-  }
-
-  function init(payload = {}) {
-    bindListeners();
-    const stateEntries = payload.state || payload.entries || {};
-    const providedChannels = Array.isArray(payload.channels) ? payload.channels : null;
-    const channelIds =
-      providedChannels && providedChannels.length
-        ? providedChannels
-        : Object.keys(stateEntries || {});
-    if (emptyMessage) {
-      emptyMessage.textContent =
-        typeof payload.message === 'string' && payload.message.trim()
-          ? payload.message
-          : defaultEmptyMessage;
-    }
-    if (payload.available === false) {
-      availableChannels = [];
-      moduleState.clear();
-      setModuleEnabled(false);
-      stripEl.value = '';
-      currentChannel = null;
-      return;
-    }
-    const previousState = new Map(moduleState);
-    moduleState.clear();
-    availableChannels = populateStripOptions(channelIds);
-    availableChannels.forEach((id) => {
-      const key = String(id);
-      const entry =
-        stateEntries[key] ??
-        stateEntries[String(Number(key))];
-      const state = createStateFromEntry(entry);
-      const prior = previousState.get(key);
-      if (prior) {
-        if (!state.effect && prior.effect) {
-          state.effect = prior.effect;
-        }
-        if (typeof entry?.brightness !== 'number' && typeof prior.brightness === 'number') {
-          state.brightness = prior.brightness;
-        }
-        state.paramCache = { ...(prior.paramCache || {}), ...(state.paramCache || {}) };
-      }
-      moduleState.set(key, state);
-      if (entry && typeof entry.limit === 'number' && !Number.isNaN(entry.limit)) {
-        cacheLimit(Number(key), Math.max(0, Math.min(255, entry.limit)));
-      }
-    });
-    const hasChannels = availableChannels.length > 0;
-    setModuleEnabled(hasChannels);
-    if (!hasChannels) {
-      currentChannel = null;
-      return;
-    }
-    const selected = activeStrip();
-    let targetChannel = selected;
-    if (targetChannel === null) {
-      targetChannel = Number(availableChannels[0]);
-      stripEl.value = availableChannels[0];
-    }
-    currentChannel = targetChannel;
-    const state = ensureChannelState(targetChannel);
-    const initialParams =
-      state.paramCache && state.effect ? state.paramCache[state.effect] : undefined;
-    const prevInit = isInitializing;
-    isInitializing = true;
-    try {
-      ensureEffectOption(state.effect || getDefaultEffect());
-      updateParams(Array.isArray(initialParams) ? initialParams : undefined);
-      briEl.value = String(
-        typeof state.brightness === 'number' && !Number.isNaN(state.brightness)
-          ? Math.max(0, Math.min(255, Math.round(state.brightness)))
-          : 255,
-      );
-      applyBrightnessLimit();
-    } finally {
-      isInitializing = prevInit;
+  destroy() {
+    clearTimeout(this.pendingSend);
+    if (this.root && this.root.parentElement) {
+      this.root.parentElement.removeChild(this.root);
     }
   }
-
-  window.nodeModuleLoaders = window.nodeModuleLoaders || {};
-  window.nodeModuleLoaders.ws = init;
 }
-</script>
 
+function resolveHost(host) {
+  if (host && host.nodeType === 1) {
+    return host;
+  }
+  return document.querySelector('[data-module="ws"]');
+}
+
+window.nodeModuleLoaders = window.nodeModuleLoaders || {};
+window.nodeModuleLoaders.ws = function initWsModule(payload = {}, host) {
+  const wrapper = resolveHost(host);
+  if (!wrapper) return;
+  let manager = wrapper[MANAGER_REF];
+  if (!manager) {
+    manager = new WsModuleManager(wrapper);
+    wrapper[MANAGER_REF] = manager;
+  }
+  manager.update(payload);
+};
+</script>
