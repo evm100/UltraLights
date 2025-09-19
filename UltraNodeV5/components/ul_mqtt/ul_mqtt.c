@@ -159,11 +159,36 @@ static void publish_json(const char *topic, const char *json) {
   esp_mqtt_client_publish(s_client, topic, json, 0, 1, 0);
 }
 
+static cJSON *load_params_from_state(bool (*copy_fn)(int, char *, size_t),
+                                     int index, char *buffer,
+                                     size_t buffer_len) {
+  if (!buffer || buffer_len == 0)
+    return cJSON_CreateArray();
+
+  cJSON *dup = NULL;
+  if (copy_fn && copy_fn(index, buffer, buffer_len)) {
+    cJSON *saved = cJSON_Parse(buffer);
+    if (saved) {
+      cJSON *params = cJSON_GetObjectItem(saved, "params");
+      if (params && cJSON_IsArray(params)) {
+        dup = cJSON_Duplicate(params, true);
+      }
+      cJSON_Delete(saved);
+    }
+  }
+  if (!dup) {
+    dup = cJSON_CreateArray();
+  }
+  return dup;
+}
+
 // Build and publish status JSON snapshot
 static void publish_status_snapshot(void) {
   char topic[128];
+  char saved_payload[UL_STATE_MAX_JSON_LEN];
   snprintf(topic, sizeof(topic), "ul/%s/evt/status", ul_core_get_node_id());
   cJSON *root = cJSON_CreateObject();
+  cJSON_AddStringToObject(root, "event", "snapshot");
   cJSON_AddStringToObject(root, "node", ul_core_get_node_id());
 
   // uptime
@@ -179,6 +204,11 @@ static void publish_status_snapshot(void) {
       cJSON_AddBoolToObject(o, "enabled", st.enabled);
       cJSON_AddStringToObject(o, "effect", st.effect);
       cJSON_AddNumberToObject(o, "brightness", st.brightness);
+      cJSON *params_array =
+          load_params_from_state(ul_state_copy_ws, i, saved_payload,
+                                 sizeof(saved_payload));
+      if (params_array)
+        cJSON_AddItemToObject(o, "params", params_array);
       cJSON_AddNumberToObject(o, "pixels", st.pixels);
       cJSON_AddNumberToObject(o, "gpio", st.gpio);
       cJSON_AddNumberToObject(o, "fps", st.fps);
@@ -200,6 +230,11 @@ static void publish_status_snapshot(void) {
       cJSON_AddBoolToObject(o, "enabled", st.enabled);
       cJSON_AddStringToObject(o, "effect", st.effect);
       cJSON_AddNumberToObject(o, "brightness", st.brightness);
+      cJSON *params_array =
+          load_params_from_state(ul_state_copy_rgb, i, saved_payload,
+                                 sizeof(saved_payload));
+      if (params_array)
+        cJSON_AddItemToObject(o, "params", params_array);
       cJSON_AddNumberToObject(o, "pwm_hz", st.pwm_hz);
       cJSON *channels = cJSON_CreateArray();
       for (int c = 0; c < 3; ++c) {
@@ -227,6 +262,11 @@ static void publish_status_snapshot(void) {
       cJSON_AddBoolToObject(o, "enabled", st.enabled);
       cJSON_AddStringToObject(o, "effect", st.effect);
       cJSON_AddNumberToObject(o, "brightness", st.brightness);
+      cJSON *params_array =
+          load_params_from_state(ul_state_copy_white, i, saved_payload,
+                                 sizeof(saved_payload));
+      if (params_array)
+        cJSON_AddItemToObject(o, "params", params_array);
       cJSON_AddNumberToObject(o, "gpio", st.gpio);
       cJSON_AddNumberToObject(o, "pwm_hz", st.pwm_hz);
       cJSON_AddItemToArray(jw, o);
@@ -272,6 +312,7 @@ static void publish_ws_ack(int strip, const char *effect, cJSON *params,
   char topic[128];
   snprintf(topic, sizeof(topic), "ul/%s/evt/status", ul_core_get_node_id());
   cJSON *root = cJSON_CreateObject();
+  cJSON_AddStringToObject(root, "event", "ack");
   if (ok) {
     cJSON_AddStringToObject(root, "status", "ok");
     cJSON_AddNumberToObject(root, "strip", strip);
@@ -297,6 +338,7 @@ static void publish_rgb_ack(int strip, const char *effect, cJSON *params,
   char topic[128];
   snprintf(topic, sizeof(topic), "ul/%s/evt/status", ul_core_get_node_id());
   cJSON *root = cJSON_CreateObject();
+  cJSON_AddStringToObject(root, "event", "ack");
   if (ok) {
     cJSON_AddStringToObject(root, "status", "ok");
     cJSON_AddNumberToObject(root, "strip", strip);
@@ -461,15 +503,21 @@ static void on_message(esp_mqtt_event_handle_t event) {
       override_index_from_path(root, sub, "ws/set", "strip");
       int strip = 0;
       bool applied = handle_cmd_ws_set(root, &strip);
-      if (applied && event->data && event->data_len > 0) {
-        ul_state_record_ws(strip, event->data, event->data_len);
+      if (applied) {
+        if (event->data && event->data_len > 0) {
+          ul_state_record_ws(strip, event->data, event->data_len);
+        }
+        publish_status_snapshot();
       }
     } else if (starts_with(sub, "rgb/set")) {
       override_index_from_path(root, sub, "rgb/set", "strip");
       int strip = 0;
       bool applied = handle_cmd_rgb_set(root, &strip);
-      if (applied && event->data && event->data_len > 0) {
-        ul_state_record_rgb(strip, event->data, event->data_len);
+      if (applied) {
+        if (event->data && event->data_len > 0) {
+          ul_state_record_rgb(strip, event->data, event->data_len);
+        }
+        publish_status_snapshot();
       }
       ul_mqtt_publish_status();
     } else if (starts_with(sub, "ota/check")) {
@@ -481,8 +529,11 @@ static void on_message(esp_mqtt_event_handle_t event) {
       override_index_from_path(root, sub, "white/set", "channel");
       int channel = 0;
       bool applied = handle_cmd_white_set(root, &channel);
-      if (applied && event->data && event->data_len > 0) {
-        ul_state_record_white(channel, event->data, event->data_len);
+      if (applied) {
+        if (event->data && event->data_len > 0) {
+          ul_state_record_white(channel, event->data, event->data_len);
+        }
+        publish_status_snapshot();
       }
       ul_mqtt_publish_status();
     } else if (starts_with(sub, "status")) {
@@ -569,21 +620,33 @@ void ul_mqtt_run_local(const char *path, const char *json) {
   if (starts_with(path, "ws/set")) {
     override_index_from_path(root, path, "ws/set", "strip");
     int strip = 0;
-    if (handle_cmd_ws_set(root, &strip) && payload_len > 0) {
-      ul_state_record_ws(strip, json, payload_len);
+    bool applied = handle_cmd_ws_set(root, &strip);
+    if (applied) {
+      if (payload_len > 0) {
+        ul_state_record_ws(strip, json, payload_len);
+      }
+      publish_status_snapshot();
     }
   } else if (starts_with(path, "rgb/set")) {
     override_index_from_path(root, path, "rgb/set", "strip");
     int strip = 0;
-    if (handle_cmd_rgb_set(root, &strip) && payload_len > 0) {
-      ul_state_record_rgb(strip, json, payload_len);
+    bool applied = handle_cmd_rgb_set(root, &strip);
+    if (applied) {
+      if (payload_len > 0) {
+        ul_state_record_rgb(strip, json, payload_len);
+      }
+      publish_status_snapshot();
     }
     ul_mqtt_publish_status();
   } else if (starts_with(path, "white/set")) {
     override_index_from_path(root, path, "white/set", "channel");
     int channel = 0;
-    if (handle_cmd_white_set(root, &channel) && payload_len > 0) {
-      ul_state_record_white(channel, json, payload_len);
+    bool applied = handle_cmd_white_set(root, &channel);
+    if (applied) {
+      if (payload_len > 0) {
+        ul_state_record_white(channel, json, payload_len);
+      }
+      publish_status_snapshot();
     }
   }
   cJSON_Delete(root);
