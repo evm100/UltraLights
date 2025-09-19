@@ -1,9 +1,13 @@
+{% set node_api_id = api_node_id or node.id %}
+{% set _channels = node_module_channels or {} %}
+{% set ws_indexes = _channels.get('ws') %}
+{% set ws_options = (ws_indexes | sort) if ws_indexes else range(4) %}
 <section class="glass rounded-2xl p-6">
   <h3 class="text-lg font-semibold mb-3">Addressable Strip</h3>
   <div class="mb-2">
     <label class="text-xs opacity-70">Strip</label>
     <select id="wsStrip" class="p-1 rounded bg-slate-900 border border-slate-700">
-      {% for i in range(4) %}
+      {% for i in ws_options %}
       <option value="{{ i }}">{{ i }}</option>
       {% endfor %}
     </select>
@@ -172,12 +176,12 @@ function sendCmd(brightOverride){
   briEl.value=String(bri);
   const params=collectParams(getParamDefs(eff),paramsEl);
   const msg={strip,effect:eff,brightness:bri,params};
-  post(`/api/node/{{ node.id }}/ws/set`,msg).catch(()=>{alert('Request failed');});
+  post(`/api/node/{{ node_api_id }}/ws/set`,msg).catch(()=>{alert('Request failed');});
 }
 
 async function persistLimit(channel,limit){
   try{
-    const res=await post(`/api/node/{{ node.id }}/ws/brightness-limit`,{channel,limit});
+    const res=await post(`/api/node/{{ node_api_id }}/ws/brightness-limit`,{channel,limit});
     let payload=null;
     try{
       payload=await res.json();
@@ -228,7 +232,7 @@ document.getElementById('wsOff').onclick=async()=>{
   const s=activeStrip();
   if(s===null){alert('Invalid strip');return;}
   try{
-    await post(`/api/node/{{ node.id }}/ws/set`,{strip:s,effect:'solid',brightness:255,params:[0,0,0]});
+    await post(`/api/node/{{ node_api_id }}/ws/set`,{strip:s,effect:'solid',brightness:255,params:[0,0,0]});
   }catch(err){
     alert('Request failed');
   }

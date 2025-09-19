@@ -4,5 +4,6 @@
 </section>
 <script>
 async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
-document.getElementById('btnCheck').onclick=async()=>{await post(`/api/node/{{ node.id }}/ota/check`,{});};
+const nodeApiId={{ (api_node_id or node.id)|tojson }};
+document.getElementById('btnCheck').onclick=async()=>{await post(`/api/node/${nodeApiId}/ota/check`,{});};
 </script>

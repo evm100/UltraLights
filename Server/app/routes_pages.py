@@ -241,9 +241,10 @@ def node_page(request: Request, node_id: str):
     else:
         subtitle = None
 
+    node_identifier = node.get("id") or node_id
     fallback_modules = enabled_module_keys(node)
     capabilities = status_monitor.capabilities_for(
-        node["id"], fallback_modules=fallback_modules
+        node_identifier, fallback_modules=fallback_modules
     )
     node_modules = list(capabilities.modules)
 
@@ -269,7 +270,7 @@ def node_page(request: Request, node_id: str):
         )
     ]
 
-    status_info = status_monitor.status_for(node["id"])
+    status_info = status_monitor.status_for(node_identifier)
     status_initial_online = bool(status_info.get("online"))
 
     return templates.TemplateResponse(
@@ -277,6 +278,8 @@ def node_page(request: Request, node_id: str):
         {
             "request": request,
             "node": node,
+            "node_identifier": node_identifier,
+            "api_node_id": node_identifier,
             "title": title,
             "subtitle": subtitle,
             "ws_effects": WS_EFFECTS,
@@ -289,7 +292,7 @@ def node_page(request: Request, node_id: str):
             "rgb_param_defs": RGB_PARAM_DEFS,
             "status_timeout": status_monitor.timeout,
             "status_initial_online": status_initial_online,
-            "brightness_limits": brightness_limits.get_limits_for_node(node["id"]),
+            "brightness_limits": brightness_limits.get_limits_for_node(node_identifier),
             "node_modules": node_modules,
             "node_metadata_source": capabilities.source,
             "node_module_channels": {

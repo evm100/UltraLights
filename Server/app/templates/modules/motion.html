@@ -13,7 +13,8 @@
 const motion=document.getElementById('motion');
 const duration=document.getElementById('motionDuration');
 async function post(path, body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
-async function send(){await post(`/api/node/{{ node.id }}/motion`,{enabled:motion.checked,duration:parseInt(duration.value)});}
+const nodeApiId={{ (api_node_id or node.id)|tojson }};
+async function send(){await post(`/api/node/${nodeApiId}/motion`,{enabled:motion.checked,duration:parseInt(duration.value)});}
 motion.addEventListener('change',send);
 duration.addEventListener('change',send);
 </script>

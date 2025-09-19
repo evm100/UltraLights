@@ -29,8 +29,11 @@ def _valid_node(node_id: str) -> Dict[str, Any]:
 
 
 def _node_capabilities(node: Dict[str, Any]) -> NodeCapabilities:
+    node_identifier = node.get("id") or node.get("name")
+    if not node_identifier:
+        raise HTTPException(404, "Unknown node id")
     return status_monitor.capabilities_for(
-        node["id"], fallback_modules=enabled_module_keys(node)
+        str(node_identifier), fallback_modules=enabled_module_keys(node)
     )
 
 

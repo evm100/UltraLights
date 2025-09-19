@@ -93,6 +93,17 @@ class StatusMonitor:
                     signal = payload.get("signal_dbi")
                     if isinstance(signal, (int, float)):
                         signal_value = float(signal)
+                modules_data = None
+                module_channels_data = None
+                metadata_source = "registry"
+                capabilities = self._metadata.get(node_id)
+                if capabilities:
+                    modules_data = list(capabilities.modules)
+                    module_channels_data = {
+                        key: list(indexes)
+                        for key, indexes in capabilities.module_channels.items()
+                    }
+                    metadata_source = capabilities.source
                 data[node_id] = {
                     "online": bool(last_ok and now - last_ok <= self.timeout),
                     "last_seen": last_seen,
@@ -100,6 +111,9 @@ class StatusMonitor:
                     "status": status_value,
                     "signal_dbi": signal_value,
                     "payload": payload,
+                    "modules": modules_data,
+                    "module_channels": module_channels_data,
+                    "metadata_source": metadata_source,
                 }
         return data
 
@@ -115,6 +129,9 @@ class StatusMonitor:
                 "status": None,
                 "signal_dbi": None,
                 "payload": None,
+                "modules": None,
+                "module_channels": None,
+                "metadata_source": "registry",
             },
         )
 
@@ -149,9 +166,9 @@ class StatusMonitor:
 
         deadline = time.monotonic() + max(timeout, 0.0)
         while True:
-            info = self.status_for(node_id)
-            payload = info.get("payload")
-            last_seen = info.get("last_seen")
+            with self._lock:
+                payload = self._last_payload.get(node_id)
+                last_seen = self._last_seen.get(node_id)
             if payload is not None and isinstance(last_seen, (int, float)):
                 if after is None or last_seen > after:
                     return payload

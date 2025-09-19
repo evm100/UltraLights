@@ -1,9 +1,13 @@
+{% set node_api_id = api_node_id or node.id %}
+{% set _channels = node_module_channels or {} %}
+{% set white_indexes = _channels.get('white') or _channels.get('w') %}
+{% set white_options = (white_indexes | sort) if white_indexes else range(4) %}
 <section class="glass rounded-2xl p-6">
   <h3 class="text-lg font-semibold mb-3">White Channel</h3>
   <div class="mb-2">
     <label class="text-xs opacity-70">Channel</label>
     <select id="wChannel" class="p-1 rounded bg-slate-900 border border-slate-700">
-      {% for i in range(4) %}
+      {% for i in white_options %}
       <option value="{{ i }}">{{ i }}</option>
       {% endfor %}
     </select>
@@ -94,13 +98,13 @@ document.getElementById('wSet').onclick=async()=>{
   const params=collectParams();
   const msg={channel,effect,brightness};
   if(params.length)msg.params=params;
-  await post(`/api/node/{{ node.id }}/w/set`,msg);
+  await post(`/api/node/{{ node_api_id }}/w/set`,msg);
 };
 
 document.getElementById('wOn').onclick=async()=>{
-  const s=parseInt(chEl.value,10);if(Number.isNaN(s)){alert('Invalid channel');return;}await post(`/api/node/{{ node.id }}/w/power`,{channel:s,on:true});
+  const s=parseInt(chEl.value,10);if(Number.isNaN(s)){alert('Invalid channel');return;}await post(`/api/node/{{ node_api_id }}/w/power`,{channel:s,on:true});
 };
 document.getElementById('wOff').onclick=async()=>{
-  const s=parseInt(chEl.value,10);if(Number.isNaN(s)){alert('Invalid channel');return;}await post(`/api/node/{{ node.id }}/w/power`,{channel:s,on:false});
+  const s=parseInt(chEl.value,10);if(Number.isNaN(s)){alert('Invalid channel');return;}await post(`/api/node/{{ node_api_id }}/w/power`,{channel:s,on:false});
 };
 </script>

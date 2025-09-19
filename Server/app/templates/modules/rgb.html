@@ -1,9 +1,13 @@
+{% set node_api_id = api_node_id or node.id %}
+{% set _channels = node_module_channels or {} %}
+{% set rgb_indexes = _channels.get('rgb') %}
+{% set rgb_options = (rgb_indexes | sort) if rgb_indexes else range(4) %}
 <section class="glass rounded-2xl p-6">
   <h3 class="text-lg font-semibold mb-3">RGB Strip</h3>
   <div class="mb-2">
     <label class="text-xs opacity-70">Strip</label>
     <select id="rgbStrip" class="p-1 rounded bg-slate-900 border border-slate-700">
-      {% for i in range(4) %}
+      {% for i in rgb_options %}
       <option value="{{ i }}">{{ i }}</option>
       {% endfor %}
     </select>
@@ -158,12 +162,12 @@ function sendCmd(options={}){
     while(params.length<3){params.push(0);}
   }
   const msg={strip,effect:'solid',brightness,params};
-  post(`/api/node/{{ node.id }}/rgb/set`,msg).catch(()=>{alert('Request failed');});
+  post(`/api/node/{{ node_api_id }}/rgb/set`,msg).catch(()=>{alert('Request failed');});
 }
 
 async function persistLimit(channel,limit){
   try{
-    const res=await post(`/api/node/{{ node.id }}/rgb/brightness-limit`,{channel,limit});
+    const res=await post(`/api/node/{{ node_api_id }}/rgb/brightness-limit`,{channel,limit});
     let payload=null;
     try{
       payload=await res.json();

@@ -10,9 +10,21 @@
     style="background-color: #ef4444; box-shadow: 0 0 12px rgba(239,68,68,0.6);"
   ></span>
 </div>
-<h2 class="text-2xl font-semibold mb-4">{{ node.name }}</h2>
+<h2 class="text-2xl font-semibold mb-1">{{ node.name }}</h2>
+{% if node_metadata_source == 'status' %}
+<p class="text-xs opacity-70 mb-4">
+  Module metadata loaded from the latest MQTT status snapshot.
+</p>
+{% else %}
+<p class="text-xs opacity-70 mb-4">
+  Module metadata is using the registry fallback. Trigger a status refresh to
+  discover live modules.
+</p>
+{% endif %}
 <script>
   window.nodeBrightnessLimits = {{ brightness_limits|default({})|tojson }};
+  window.nodeModuleChannels = {{ node_module_channels|default({})|tojson }};
+  window.nodeMetadataSource = {{ node_metadata_source|default('registry')|tojson }};
 </script>
 {% if node_modules %}
 <div class="grid md:grid-cols-2 gap-6">
@@ -28,7 +40,7 @@
 {% endif %}
 
 <script>
-const STATUS_NODE_ID = {{ node.id|tojson }};
+const STATUS_NODE_ID = {{ node_identifier|default(node.id)|tojson }};
 const STATUS_TIMEOUT = {{ status_timeout|tojson }};
 const STATUS_URL = `/api/node/${encodeURIComponent(STATUS_NODE_ID)}/status`;
 const statusDot = document.getElementById('nodeStatusDot');

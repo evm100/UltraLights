@@ -14,13 +14,35 @@ _DEFAULT_INDEXES: dict[str, Tuple[int, ...]] = {
     "white": tuple(range(4)),
 }
 
-_PAYLOAD_INDEX_FIELDS: dict[str, str] = {
-    "ws": "strip",
-    "rgb": "strip",
-    "white": "channel",
+_INDEX_FIELDS: tuple[str, ...] = ("strip", "channel", "index")
+
+_IGNORED_PAYLOAD_KEYS: set[str] = {
+    "status",
+    "node",
+    "uptime_s",
+    "signal_dbi",
+    "last_ok",
+    "last_seen",
+    "online",
+    "params",
+    "strip",
+    "effect",
+    "brightness",
+    "error",
+    "now",
+    "timeout",
+    "motion_on_channel",
+    "pir_motion_time",
+    "state0",
+    "state1",
+    "state2",
+    "state3",
+    "modules",
+    "module_channels",
+    "detail",
 }
 
-_PAYLOAD_SIMPLE_MODULES: tuple[str, ...] = ("ota", "sensor", "motion")
+_SEQUENCE_SCALAR_TYPES = (str, bytes, bytearray)
 
 
 def _normalize_module_key(value: Any) -> str:
@@ -120,19 +142,47 @@ def _clean_indexes(indexes: Iterable[Any]) -> list[int]:
     return result
 
 
-def _extract_indexes(entries: Any, field: str) -> list[int]:
-    if not isinstance(entries, list):
+def _extract_index_from_mapping(entry: Mapping[str, Any]) -> int | None:
+    for field in _INDEX_FIELDS:
+        raw = entry.get(field)
+        try:
+            return int(raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _collect_payload_indexes(value: Any) -> list[int]:
+    if isinstance(value, Mapping):
+        for key in ("indexes", "indices", "channels", "strips"):
+            nested = value.get(key)
+            if nested is not None:
+                indexes = _collect_payload_indexes(nested)
+                if indexes:
+                    return indexes
         return []
-    collected: list[int] = []
-    for item in entries:
-        if isinstance(item, Mapping):
-            raw = item.get(field)
-            try:
-                index = int(raw)  # type: ignore[arg-type]
-            except (TypeError, ValueError):
-                continue
-            collected.append(index)
-    return _clean_indexes(collected)
+
+    if isinstance(value, Sequence) and not isinstance(value, _SEQUENCE_SCALAR_TYPES):
+        collected: list[int] = []
+        for item in value:
+            if isinstance(item, Mapping):
+                index = _extract_index_from_mapping(item)
+                if index is None:
+                    continue
+                collected.append(index)
+            elif isinstance(item, (int, float)):
+                collected.append(int(item))
+        return _clean_indexes(collected)
+
+    return []
+
+
+def _payload_declares_module(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        return bool(value)
+    if isinstance(value, Sequence) and not isinstance(value, _SEQUENCE_SCALAR_TYPES):
+        return any(isinstance(item, Mapping) for item in value)
+    return False
 
 
 @dataclass(frozen=True)
@@ -183,24 +233,24 @@ class NodeCapabilities:
 
         modules: list[str] = []
         channels: dict[str, Tuple[int, ...]] = {}
-        found = False
 
-        for module_key, index_field in _PAYLOAD_INDEX_FIELDS.items():
-            if module_key not in payload:
+        for raw_key, value in payload.items():
+            key = _normalize_module_key(raw_key)
+            if not key or key in _IGNORED_PAYLOAD_KEYS:
                 continue
-            found = True
-            modules.append(module_key)
-            entries = payload.get(module_key)
-            indexes = _extract_indexes(entries, index_field)
+
+            indexes = _collect_payload_indexes(value)
             if indexes:
-                channels[module_key] = tuple(indexes)
+                if key not in modules:
+                    modules.append(key)
+                channels[key] = tuple(indexes)
+                continue
 
-        for module_key in _PAYLOAD_SIMPLE_MODULES:
-            if module_key in payload and module_key not in modules:
-                modules.append(module_key)
-                found = True
+            if _payload_declares_module(value):
+                if key not in modules:
+                    modules.append(key)
 
-        if not found:
+        if not modules:
             return None
 
         return cls(tuple(modules), channels, source="status")

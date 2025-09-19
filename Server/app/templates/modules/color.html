@@ -19,5 +19,6 @@ function syncFromPicker(){const [R,G,B]=hexToRgb(colorPicker.value);r.value=R;g.
 function syncFromSliders(){colorPicker.value=rgbToHex(parseInt(r.value),parseInt(g.value),parseInt(b.value));}
 colorPicker.addEventListener('input', syncFromPicker);[r,g,b].forEach(el=>el.addEventListener('input', syncFromSliders));
 async function post(path, body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
-document.getElementById('btnColor').onclick=async()=>{await post(`/api/node/{{ node.id }}/color`,{r:parseInt(r.value),g:parseInt(g.value),b:parseInt(b.value)});};
+const nodeApiId={{ (api_node_id or node.id)|tojson }};
+document.getElementById('btnColor').onclick=async()=>{await post(`/api/node/${nodeApiId}/color`,{r:parseInt(r.value),g:parseInt(g.value),b:parseInt(b.value)});};
 </script>
