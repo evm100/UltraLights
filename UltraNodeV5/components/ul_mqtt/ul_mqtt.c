@@ -507,7 +507,6 @@ static void on_message(esp_mqtt_event_handle_t event) {
         if (event->data && event->data_len > 0) {
           ul_state_record_ws(strip, event->data, event->data_len);
         }
-        publish_status_snapshot();
       }
     } else if (starts_with(sub, "rgb/set")) {
       override_index_from_path(root, sub, "rgb/set", "strip");
@@ -517,9 +516,7 @@ static void on_message(esp_mqtt_event_handle_t event) {
         if (event->data && event->data_len > 0) {
           ul_state_record_rgb(strip, event->data, event->data_len);
         }
-        publish_status_snapshot();
       }
-      ul_mqtt_publish_status();
     } else if (starts_with(sub, "ota/check")) {
       ul_mqtt_publish_status();
       ul_ota_check_now(true);
@@ -533,9 +530,7 @@ static void on_message(esp_mqtt_event_handle_t event) {
         if (event->data && event->data_len > 0) {
           ul_state_record_white(channel, event->data, event->data_len);
         }
-        publish_status_snapshot();
       }
-      ul_mqtt_publish_status();
     } else if (starts_with(sub, "status")) {
       ul_mqtt_publish_status_now();
     } else {
@@ -625,7 +620,6 @@ void ul_mqtt_run_local(const char *path, const char *json) {
       if (payload_len > 0) {
         ul_state_record_ws(strip, json, payload_len);
       }
-      publish_status_snapshot();
     }
   } else if (starts_with(path, "rgb/set")) {
     override_index_from_path(root, path, "rgb/set", "strip");
@@ -635,9 +629,7 @@ void ul_mqtt_run_local(const char *path, const char *json) {
       if (payload_len > 0) {
         ul_state_record_rgb(strip, json, payload_len);
       }
-      publish_status_snapshot();
     }
-    ul_mqtt_publish_status();
   } else if (starts_with(path, "white/set")) {
     override_index_from_path(root, path, "white/set", "channel");
     int channel = 0;
@@ -646,7 +638,6 @@ void ul_mqtt_run_local(const char *path, const char *json) {
       if (payload_len > 0) {
         ul_state_record_white(channel, json, payload_len);
       }
-      publish_status_snapshot();
     }
   }
   cJSON_Delete(root);
