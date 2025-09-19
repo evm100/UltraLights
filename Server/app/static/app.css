@@ -198,6 +198,45 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
 }
 .motion-button:hover { filter: brightness(1.08); }
 .motion-button:active { transform: translateY(1px); }
+
+.preset-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.preset-delete {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  border: 1px solid rgba(248, 250, 252, 0.45);
+  background: rgba(15, 23, 42, 0.85);
+  color: rgba(248, 113, 113, 0.95);
+  font-size: 0.75rem;
+  line-height: 1;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform .12s ease, filter .15s ease;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.45);
+  z-index: 2;
+}
+
+.preset-delete:hover {
+  filter: brightness(1.15);
+}
+
+.preset-delete:active {
+  transform: translateY(1px);
+}
+
+.preset-item[data-custom="true"] .preset-delete {
+  display: inline-flex;
+}
 .motion-button--primary {
   background: linear-gradient(180deg, rgba(129,140,248,.85), rgba(99,102,241,.75));
   border-color: rgba(129,140,248,.6);
