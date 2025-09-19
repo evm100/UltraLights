@@ -1,9 +1,11 @@
+{% set ws_meta = (module_metadata | default({})).get('ws', {}) %}
+{% set ws_indices = ws_meta.get('indices', []) %}
 <section class="glass rounded-2xl p-6">
   <h3 class="text-lg font-semibold mb-3">Addressable Strip</h3>
   <div class="mb-2">
     <label class="text-xs opacity-70">Strip</label>
     <select id="wsStrip" class="p-1 rounded bg-slate-900 border border-slate-700">
-      {% for i in range(4) %}
+      {% for i in ws_indices %}
       <option value="{{ i }}">{{ i }}</option>
       {% endfor %}
     </select>
@@ -37,6 +39,7 @@
 import {renderParams,collectParams} from '/static/params.js';
 const WS_PARAM_DEFS={{ ws_param_defs|tojson }};
 const MODULE_KEY='ws';
+const AVAILABLE_STRIPS={{ ws_indices|tojson }};
 
 function getParamDefs(eff){
   return WS_PARAM_DEFS[eff]||[];
@@ -53,13 +56,37 @@ const effectEl=document.getElementById('wsEffect');
 const briEl=document.getElementById('wsBri');
 const lockBtn=document.getElementById('wsBriLock');
 const paramsEl=document.getElementById('wsParams');
+const onBtn=document.getElementById('wsOn');
+const offBtn=document.getElementById('wsOff');
+
+function isValidStrip(strip){
+  return Number.isInteger(strip)&&AVAILABLE_STRIPS.includes(strip);
+}
+
+function ensureStripSelection(){
+  const hasStrips=AVAILABLE_STRIPS.length>0;
+  stripEl.disabled=!hasStrips;
+  briEl.disabled=!hasStrips;
+  lockBtn.disabled=!hasStrips;
+  if(onBtn)onBtn.disabled=!hasStrips;
+  if(offBtn)offBtn.disabled=!hasStrips;
+  if(!hasStrips){
+    return;
+  }
+  const current=parseInt(stripEl.value,10);
+  if(Number.isNaN(current)||!AVAILABLE_STRIPS.includes(current)){
+    stripEl.value=String(AVAILABLE_STRIPS[0]);
+  }
+}
 
 function activeStrip(){
   const value=parseInt(stripEl.value,10);
-  return Number.isNaN(value)?null:value;
+  if(Number.isNaN(value))return null;
+  return isValidStrip(value)?value:null;
 }
 
 function getLimit(channel){
+  if(!isValidStrip(channel))return null;
   const data=window.nodeBrightnessLimits;
   if(!data)return null;
   const moduleData=data[MODULE_KEY];
@@ -69,6 +96,7 @@ function getLimit(channel){
 }
 
 function cacheLimit(channel,limit){
+  if(!isValidStrip(channel))return;
   const data=window.nodeBrightnessLimits||(window.nodeBrightnessLimits={});
   const key=String(channel);
   if(limit===null||limit===undefined){
@@ -147,7 +175,7 @@ function updateParams(){
 }
 
 effectEl.onchange=()=>{updateParams();scheduleSend();};
-stripEl.onchange=()=>{applyBrightnessLimit();scheduleSend();};
+stripEl.onchange=()=>{ensureStripSelection();applyBrightnessLimit();scheduleSend();};
 briEl.addEventListener('input',()=>{
   const clamped=clampBrightness(briEl.value);
   if(clamped===null)return;
@@ -157,11 +185,13 @@ briEl.addEventListener('input',()=>{
   scheduleSend();
 });
 if(effectEl.value)updateParams();
+ensureStripSelection();
 applyBrightnessLimit();
 
 function sendCmd(brightOverride){
   const strip=activeStrip();
   if(strip===null)return;
+  if(!isValidStrip(strip))return;
   const eff=effectEl.value.trim();
   if(!eff)return;
   let bri=brightOverride!==undefined?brightOverride:parseInt(briEl.value,10);
@@ -176,6 +206,7 @@ function sendCmd(brightOverride){
 }
 
 async function persistLimit(channel,limit){
+  if(!isValidStrip(channel)){alert('Invalid strip');return;}
   try{
     const res=await post(`/api/node/{{ node.id }}/ws/brightness-limit`,{channel,limit});
     let payload=null;
@@ -206,7 +237,7 @@ async function persistLimit(channel,limit){
 
 lockBtn.addEventListener('click',()=>{
   const strip=activeStrip();
-  if(strip===null){alert('Invalid strip');return;}
+  if(strip===null||!isValidStrip(strip)){alert('Invalid strip');return;}
   const currentLimit=getLimit(strip);
   if(currentLimit!==null){
     persistLimit(strip,null);
@@ -217,21 +248,26 @@ lockBtn.addEventListener('click',()=>{
   persistLimit(strip,brightness);
 });
 
-document.getElementById('wsOn').onclick=()=>{
+if(onBtn){
+onBtn.onclick=()=>{
   const strip=activeStrip();
+  if(strip===null||!isValidStrip(strip)){alert('Invalid strip');return;}
   const limit=strip===null?null:getLimit(strip);
   const target=limit!==null?limit:255;
   briEl.value=String(target);
   sendCmd(target);
 };
-document.getElementById('wsOff').onclick=async()=>{
+}
+if(offBtn){
+offBtn.onclick=async()=>{
   const s=activeStrip();
-  if(s===null){alert('Invalid strip');return;}
+  if(s===null||!isValidStrip(s)){alert('Invalid strip');return;}
   try{
     await post(`/api/node/{{ node.id }}/ws/set`,{strip:s,effect:'solid',brightness:255,params:[0,0,0]});
   }catch(err){
     alert('Request failed');
   }
 };
+}
 </script>
 

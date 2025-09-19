@@ -117,6 +117,65 @@ def _enabled_module_keys(node: dict[str, Any]) -> list[str]:
     return []
 
 
+_MODULE_INDEX_KEYS = {
+    "ws": "strip",
+    "rgb": "strip",
+    "white": "channel",
+}
+
+_DEFAULT_MODULE_INDICES = {
+    "ws": (0, 1, 2, 3),
+    "rgb": (0, 1, 2, 3),
+    "white": (0, 1, 2, 3),
+}
+
+
+def _module_status_metadata(
+    module_keys: list[str], status_payload: Any
+) -> dict[str, dict[str, Any]]:
+    """Build metadata describing available indices for each module."""
+
+    payload_dict = status_payload if isinstance(status_payload, dict) else {}
+    metadata: dict[str, dict[str, Any]] = {}
+
+    for key in module_keys:
+        info: dict[str, Any] = {}
+        index_field = _MODULE_INDEX_KEYS.get(key)
+        entries_data = payload_dict.get(key) if isinstance(payload_dict, dict) else None
+        indices: list[int] = []
+        entries: list[dict[str, Any]] = []
+
+        if index_field and isinstance(entries_data, list):
+            seen: set[int] = set()
+            for entry in entries_data:
+                if not isinstance(entry, dict):
+                    continue
+                idx = entry.get(index_field)
+                if not isinstance(idx, int):
+                    continue
+                enabled = entry.get("enabled")
+                if enabled is not None and not _coerce_enabled(enabled):
+                    continue
+                if idx in seen:
+                    continue
+                seen.add(idx)
+                indices.append(idx)
+                entries.append(entry)
+
+        if indices:
+            info["indices"] = indices
+            info["has_live_data"] = True
+        else:
+            fallback = list(_DEFAULT_MODULE_INDICES.get(key, ()))
+            info["indices"] = fallback
+            info["has_live_data"] = False
+        if entries:
+            info["status"] = entries
+        metadata[key] = info
+
+    return metadata
+
+
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
     houses = settings.DEVICE_REGISTRY
@@ -354,6 +413,9 @@ def node_page(request: Request, node_id: str):
 
     status_info = status_monitor.status_for(node["id"])
     status_initial_online = bool(status_info.get("online"))
+    module_metadata = _module_status_metadata(
+        enabled_modules, status_info.get("payload")
+    )
 
     return templates.TemplateResponse(
         "node.html",
@@ -374,5 +436,6 @@ def node_page(request: Request, node_id: str):
             "status_initial_online": status_initial_online,
             "brightness_limits": brightness_limits.get_limits_for_node(node["id"]),
             "node_modules": enabled_modules,
+            "module_metadata": module_metadata,
         },
     )
