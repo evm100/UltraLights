@@ -1,5 +1,6 @@
 #include "ul_mqtt.h"
 #include "cJSON.h"
+#include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
@@ -19,10 +20,13 @@
 static const char *TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
+static esp_timer_handle_t s_snapshot_timer = NULL;
 
 #define UL_WS_MAX_STRIPS 2
 #define UL_RGB_MAX_STRIPS 4
 #define UL_WHITE_MAX_CHANNELS 4
+
+#define SNAPSHOT_PERIOD_US (300ULL * 1000000ULL)
 
 static uint8_t s_ws_saved_bri[UL_WS_MAX_STRIPS];
 static bool s_ws_saved_valid[UL_WS_MAX_STRIPS];
@@ -169,8 +173,13 @@ static void publish_status_snapshot(void) {
   // uptime
   cJSON_AddNumberToObject(root, "uptime_s", esp_timer_get_time() / 1000000);
 
+  cJSON *modules = cJSON_CreateObject();
+
   // WS strips
   cJSON *jws = cJSON_CreateArray();
+  cJSON *ws_summary = cJSON_CreateObject();
+  cJSON *ws_indices = cJSON_CreateArray();
+  bool ws_enabled = false;
   for (int i = 0; i < 2; i++) {
     ul_ws_strip_status_t st;
     if (ul_ws_get_status(i, &st)) {
@@ -186,12 +195,26 @@ static void publish_status_snapshot(void) {
           (int[]){st.color[0], st.color[1], st.color[2]}, 3);
       cJSON_AddItemToObject(o, "color", col);
       cJSON_AddItemToArray(jws, o);
+      cJSON_AddItemToArray(ws_indices, cJSON_CreateNumber(i));
+      if (st.enabled)
+        ws_enabled = true;
     }
   }
   cJSON_AddItemToObject(root, "ws", jws);
+  if (ws_summary && modules) {
+    cJSON_AddBoolToObject(ws_summary, "enabled", ws_enabled);
+    cJSON_AddItemToObject(ws_summary, "strips", ws_indices);
+    cJSON_AddItemToObject(modules, "ws", ws_summary);
+  } else {
+    cJSON_Delete(ws_summary);
+    cJSON_Delete(ws_indices);
+  }
 
   // RGB strips
   cJSON *jrgb = cJSON_CreateArray();
+  cJSON *rgb_summary = cJSON_CreateObject();
+  cJSON *rgb_indices = cJSON_CreateArray();
+  bool rgb_enabled = false;
   for (int i = 0; i < 4; i++) {
     ul_rgb_strip_status_t st;
     if (ul_rgb_get_status(i, &st)) {
@@ -213,12 +236,26 @@ static void publish_status_snapshot(void) {
       int color[3] = {st.color[0], st.color[1], st.color[2]};
       cJSON_AddItemToObject(o, "color", cJSON_CreateIntArray(color, 3));
       cJSON_AddItemToArray(jrgb, o);
+      cJSON_AddItemToArray(rgb_indices, cJSON_CreateNumber(i));
+      if (st.enabled)
+        rgb_enabled = true;
     }
   }
   cJSON_AddItemToObject(root, "rgb", jrgb);
+  if (rgb_summary && modules) {
+    cJSON_AddBoolToObject(rgb_summary, "enabled", rgb_enabled);
+    cJSON_AddItemToObject(rgb_summary, "strips", rgb_indices);
+    cJSON_AddItemToObject(modules, "rgb", rgb_summary);
+  } else {
+    cJSON_Delete(rgb_summary);
+    cJSON_Delete(rgb_indices);
+  }
 
   // White channels
   cJSON *jw = cJSON_CreateArray();
+  cJSON *white_summary = cJSON_CreateObject();
+  cJSON *white_indices = cJSON_CreateArray();
+  bool white_enabled = false;
   for (int i = 0; i < 4; i++) {
     ul_white_ch_status_t st;
     if (ul_white_get_status(i, &st)) {
@@ -230,19 +267,79 @@ static void publish_status_snapshot(void) {
       cJSON_AddNumberToObject(o, "gpio", st.gpio);
       cJSON_AddNumberToObject(o, "pwm_hz", st.pwm_hz);
       cJSON_AddItemToArray(jw, o);
+      cJSON_AddItemToArray(white_indices, cJSON_CreateNumber(i));
+      if (st.enabled)
+        white_enabled = true;
     }
   }
   cJSON_AddItemToObject(root, "white", jw);
+  if (white_summary && modules) {
+    cJSON_AddBoolToObject(white_summary, "enabled", white_enabled);
+    cJSON_AddItemToObject(white_summary, "channels", white_indices);
+    cJSON_AddItemToObject(modules, "white", white_summary);
+  } else {
+    cJSON_Delete(white_summary);
+    cJSON_Delete(white_indices);
+  }
 
   // OTA (static fields from Kconfig)
   cJSON *jota = cJSON_CreateObject();
   cJSON_AddStringToObject(jota, "manifest_url", CONFIG_UL_OTA_MANIFEST_URL);
   cJSON_AddItemToObject(root, "ota", jota);
 
+  if (modules)
+    cJSON_AddItemToObject(root, "modules", modules);
+
   char *json = cJSON_PrintUnformatted(root);
   publish_json(topic, json);
   cJSON_free(json);
   cJSON_Delete(root);
+}
+
+static void snapshot_timer_callback(void *arg) {
+  (void)arg;
+  if (s_ready)
+    publish_status_snapshot();
+}
+
+static void start_snapshot_timer(void) {
+  if (!SNAPSHOT_PERIOD_US)
+    return;
+
+  if (!s_snapshot_timer) {
+    const esp_timer_create_args_t args = {
+        .callback = snapshot_timer_callback,
+        .arg = NULL,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "mqtt_snapshot",
+    };
+    esp_err_t err = esp_timer_create(&args, &s_snapshot_timer);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to create snapshot timer: %s",
+               esp_err_to_name(err));
+      return;
+    }
+  }
+
+  if (s_snapshot_timer) {
+    esp_err_t err = esp_timer_stop(s_snapshot_timer);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+      ESP_LOGW(TAG, "Failed to stop snapshot timer: %s", esp_err_to_name(err));
+    }
+    err = esp_timer_start_periodic(s_snapshot_timer, SNAPSHOT_PERIOD_US);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to start snapshot timer: %s", esp_err_to_name(err));
+    }
+  }
+}
+
+static void stop_snapshot_timer(void) {
+  if (!s_snapshot_timer)
+    return;
+  esp_err_t err = esp_timer_stop(s_snapshot_timer);
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+    ESP_LOGW(TAG, "Failed to stop snapshot timer: %s", esp_err_to_name(err));
+  }
 }
 
 void ul_mqtt_publish_status(void) {
@@ -509,11 +606,14 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
       // Also allow broadcast to any node if you publish to ul/+/cmd/#
       esp_mqtt_client_subscribe(s_client, "ul/+/cmd/#", 0);
     }
+    publish_status_snapshot();
+    start_snapshot_timer();
     break;
   }
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGW(TAG, "MQTT disconnected");
     s_ready = false;
+    stop_snapshot_timer();
     dim_all_lights();
     break;
   case MQTT_EVENT_DATA:
@@ -545,12 +645,20 @@ void ul_mqtt_start(void) {
 }
 
 void ul_mqtt_stop(void) {
-  if (!s_client)
-    return;
-  esp_mqtt_client_stop(s_client);
-  esp_mqtt_client_destroy(s_client);
-  s_client = NULL;
+  if (s_client) {
+    esp_mqtt_client_stop(s_client);
+    esp_mqtt_client_destroy(s_client);
+    s_client = NULL;
+  }
   s_ready = false;
+  stop_snapshot_timer();
+  if (s_snapshot_timer) {
+    esp_err_t err = esp_timer_delete(s_snapshot_timer);
+    if (err != ESP_OK) {
+      ESP_LOGW(TAG, "Failed to delete snapshot timer: %s", esp_err_to_name(err));
+    }
+    s_snapshot_timer = NULL;
+  }
 }
 
 bool ul_mqtt_is_connected(void) { return s_ready; }
