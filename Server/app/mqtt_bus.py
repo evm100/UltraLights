@@ -1,7 +1,7 @@
 import threading
 import json
 import time
-from typing import Optional, List, Dict, Union
+from typing import Optional, List, Dict, Union, Tuple
 import paho.mqtt.client as paho
 from .config import settings
 from . import registry
@@ -14,6 +14,9 @@ NODE_COMMAND_RATE_HZ = 5.0
 NODE_COMMAND_INTERVAL = 1.0 / NODE_COMMAND_RATE_HZ
 
 
+PendingCommand = Tuple[str, str, bool]
+
+
 class MqttBus:
     def __init__(self, client_id: str = "ultralights-ui"):
         self.client = paho.Client(paho.CallbackAPIVersion.VERSION2, client_id=client_id)
@@ -22,9 +25,13 @@ class MqttBus:
         # Ensure queued messages are buffered rather than rejected when under load
         self.client.max_queued_messages_set(0)
         self.client.connect(settings.BROKER_HOST, settings.BROKER_PORT, keepalive=30)
-        self._rate_lock = threading.Lock()
         self._node_next_publish: Dict[str, float] = {}
+        self._pending_commands: Dict[str, PendingCommand] = {}
+        self._rate_condition = threading.Condition()
+        self._shutdown = False
+        self._rate_thread = threading.Thread(target=self._rate_worker, daemon=True)
         self.thread = threading.Thread(target=self.client.loop_forever, daemon=True)
+        self._rate_thread.start()
         self.thread.start()
 
     def pub(self, topic: str, payload: Dict[str, object], retain: bool = False):
@@ -36,24 +43,50 @@ class MqttBus:
         the last value is desirable so lights resume their previous state after
         reconnecting.
         """
-        self._apply_rate_limit(topic)
-        self.client.publish(topic, payload=json.dumps(payload), qos=1, retain=retain)
-
-    def _apply_rate_limit(self, topic: str) -> None:
         node_id = self._node_from_topic(topic)
+        payload_json = json.dumps(payload)
         if not node_id:
+            self.client.publish(topic, payload=payload_json, qos=1, retain=retain)
             return
-        delay = 0.0
-        with self._rate_lock:
-            now = time.monotonic()
-            next_ready = self._node_next_publish.get(node_id, now)
-            if next_ready <= now:
-                self._node_next_publish[node_id] = now + NODE_COMMAND_INTERVAL
-            else:
-                delay = next_ready - now
-                self._node_next_publish[node_id] = next_ready + NODE_COMMAND_INTERVAL
-        if delay > 0:
-            time.sleep(delay)
+        with self._rate_condition:
+            self._pending_commands[node_id] = (topic, payload_json, retain)
+            self._rate_condition.notify()
+
+    def _rate_worker(self) -> None:
+        while True:
+            command: Optional[PendingCommand] = None
+            with self._rate_condition:
+                while not self._shutdown and command is None:
+                    now = time.monotonic()
+                    ready_node: Optional[str] = None
+                    next_ready_time: Optional[float] = None
+                    for node_id in self._pending_commands:
+                        node_ready = self._node_next_publish.get(node_id, 0.0)
+                        if node_ready <= now:
+                            ready_node = node_id
+                            break
+                        if next_ready_time is None or node_ready < next_ready_time:
+                            next_ready_time = node_ready
+                    if ready_node is not None:
+                        command = self._pending_commands.pop(ready_node)
+                        self._node_next_publish[ready_node] = now + NODE_COMMAND_INTERVAL
+                        break
+                    if not self._pending_commands:
+                        self._rate_condition.wait()
+                    else:
+                        wait_time = NODE_COMMAND_INTERVAL
+                        if next_ready_time is not None:
+                            wait_time = min(
+                                NODE_COMMAND_INTERVAL,
+                                max(0.0, next_ready_time - now),
+                            )
+                        self._rate_condition.wait(timeout=wait_time)
+                if self._shutdown:
+                    return
+            if command is None:
+                continue
+            topic, payload, retain = command
+            self.client.publish(topic, payload=payload, qos=1, retain=retain)
 
     @staticmethod
     def _node_from_topic(topic: str) -> Optional[str]:
@@ -61,6 +94,14 @@ class MqttBus:
         if len(parts) >= 3 and parts[0] == "ul" and parts[2] == "cmd":
             return parts[1]
         return None
+
+    def shutdown(self) -> None:
+        with self._rate_condition:
+            self._shutdown = True
+            self._rate_condition.notify_all()
+        self.client.disconnect()
+        self._rate_thread.join(timeout=5.0)
+        self.thread.join(timeout=5.0)
 
     # ---- WS strip commands ----
     def ws_set(
