@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "ul_core.h"
+#include "ul_state.h"
 #include "ul_mqtt.h"
 #include "ul_task.h"
 #include "ul_white_engine.h"
@@ -65,6 +66,7 @@ void app_main(void) {
   ESP_LOGI(TAG, "UltraLights boot");
 
   ESP_ERROR_CHECK(nvs_flash_init());
+  ul_state_init();
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
