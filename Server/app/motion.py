@@ -3,8 +3,8 @@ from typing import Dict, Any
 
 import paho.mqtt.client as mqtt
 from .config import settings
-from .mqtt_bus import MqttBus
-from .presets import get_preset, apply_preset, reverse_preset
+from .mqtt_bus import MqttBus, topic_cmd
+from .presets import get_preset, apply_preset
 from .motion_schedule import motion_schedule
 from . import registry
 
@@ -121,10 +121,19 @@ class MotionManager:
         if not entry:
             return
         house_id = entry["house_id"]
-        preset_on_id = entry.get("preset_on")
-        preset_on = get_preset(house_id, room_id, preset_on_id) if preset_on_id else None
-        if preset_on:
-            apply_preset(self.bus, reverse_preset(preset_on))
+        special = SPECIAL_ROOM_PRESETS.get((house_id, room_id))
+        preset_off = None
+        off_hint = None
+        node_id = None
+        if special:
+            node_id = special.get("node")
+            off_hint = special.get("off")
+            if off_hint:
+                preset_off = get_preset(house_id, room_id, off_hint)
+        if preset_off:
+            apply_preset(self.bus, preset_off)
+        elif node_id and off_hint:
+            self.bus.pub(topic_cmd(node_id, "motion/hint"), {"hint": off_hint})
         self.active.pop(room_id, None)
 
     def _clear_sensor(self, room_id: str, sensor: str) -> None:
