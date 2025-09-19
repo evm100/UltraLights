@@ -26,7 +26,10 @@
       <div class="flex items-center gap-2">
         <span class="inline-block w-3 h-3 rounded-full" data-node-status="{{ node.id }}"></span>
         <div class="text-xs leading-tight">
-          <div data-node-status-text="{{ node.id }}" class="font-semibold opacity-80">No data</div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <div data-node-status-text="{{ node.id }}" class="font-semibold opacity-80">No data</div>
+            <div data-node-signal="{{ node.id }}" class="opacity-60 whitespace-nowrap">Signal: —</div>
+          </div>
           <div data-node-last="{{ node.id }}" class="opacity-60">Never seen</div>
         </div>
       </div>
@@ -76,6 +79,18 @@ function formatDelta(seconds) {
   return `${hours}h ago`;
 }
 
+function formatSignal(value) {
+  if (value === null || value === undefined) {
+    return 'Signal: —';
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 'Signal: —';
+  }
+  const rounded = Math.round(numeric);
+  return `Signal: ${rounded} dBi`;
+}
+
 function updateEmptyState() {
   if (!nodesGrid) return;
   const hasCards = nodesGrid.querySelector('[data-node-card]');
@@ -115,9 +130,13 @@ async function refreshStatuses() {
       const online = Boolean(info.online);
       setDot(dot, online);
       const statusEl = document.querySelector(`[data-node-status-text="${nodeId}"]`);
+      const signalEl = document.querySelector(`[data-node-signal="${nodeId}"]`);
       const lastEl = document.querySelector(`[data-node-last="${nodeId}"]`);
       if (statusEl) {
         statusEl.textContent = info.status || (online ? 'OK' : 'No data');
+      }
+      if (signalEl) {
+        signalEl.textContent = formatSignal(info.signal_dbi);
       }
       if (lastEl) {
         const lastOk = info.last_ok ? Date.parse(info.last_ok) : null;

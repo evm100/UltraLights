@@ -2,6 +2,7 @@
 #include "cJSON.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_wifi.h"
 #include "mqtt_client.h"
 #include "sdkconfig.h"
 #include "ul_core.h"
@@ -141,7 +142,22 @@ static void publish_status_snapshot(void) {
 void ul_mqtt_publish_status(void) {
   char topic[128];
   snprintf(topic, sizeof(topic), "ul/%s/evt/status", ul_core_get_node_id());
-  publish_json(topic, "{\"status\":\"ok\"}");
+  cJSON *root = cJSON_CreateObject();
+  if (!root)
+    return;
+  cJSON_AddStringToObject(root, "status", "ok");
+
+  wifi_ap_record_t ap_info = {0};
+  if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+    cJSON_AddNumberToObject(root, "signal_dbi", ap_info.rssi);
+  }
+
+  char *json = cJSON_PrintUnformatted(root);
+  if (json) {
+    publish_json(topic, json);
+    cJSON_free(json);
+  }
+  cJSON_Delete(root);
 }
 
 // Publish confirmation for ws/set including echo of effect parameters

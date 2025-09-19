@@ -80,13 +80,18 @@ class StatusMonitor:
                 last_ok = self._last_ok.get(node_id)
                 payload = self._last_payload.get(node_id)
                 status_value = None
+                signal_value = None
                 if isinstance(payload, dict):
                     status_value = payload.get("status")
+                    signal = payload.get("signal_dbi")
+                    if isinstance(signal, (int, float)):
+                        signal_value = float(signal)
                 data[node_id] = {
                     "online": bool(last_ok and now - last_ok <= self.timeout),
                     "last_seen": last_seen,
                     "last_ok": last_ok,
                     "status": status_value,
+                    "signal_dbi": signal_value,
                     "payload": payload,
                 }
         return data
@@ -96,7 +101,14 @@ class StatusMonitor:
         snapshot = self.snapshot()
         return snapshot.get(
             node_id,
-            {"online": False, "last_seen": None, "last_ok": None, "status": None, "payload": None},
+            {
+                "online": False,
+                "last_seen": None,
+                "last_ok": None,
+                "status": None,
+                "signal_dbi": None,
+                "payload": None,
+            },
         )
 
     def forget(self, node_id: str) -> None:

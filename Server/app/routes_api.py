@@ -248,12 +248,18 @@ def api_node_status(node_id: str):
             return None
         return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
 
+    signal_value: Optional[float] = None
+    signal = info.get("signal_dbi")
+    if isinstance(signal, (int, float)):
+        signal_value = float(signal)
+
     return {
         "node": node_id,
         "online": bool(info.get("online")),
         "status": info.get("status"),
         "last_ok": _iso(info.get("last_ok")),
         "last_seen": _iso(info.get("last_seen")),
+        "signal_dbi": signal_value,
         "timeout": status_monitor.timeout,
         "now": datetime.now(timezone.utc).isoformat(),
     }
@@ -276,11 +282,16 @@ def api_admin_status(house_id: Optional[str] = None):
             continue
         node_id = node["id"]
         info = snapshot.get(node_id, {})
+        signal_value: Optional[float] = None
+        signal = info.get("signal_dbi")
+        if isinstance(signal, (int, float)):
+            signal_value = float(signal)
         nodes[node_id] = {
             "online": bool(info.get("online")),
             "last_ok": _iso(info.get("last_ok")),
             "last_seen": _iso(info.get("last_seen")),
             "status": info.get("status"),
+            "signal_dbi": signal_value,
         }
     now = datetime.now(timezone.utc).isoformat()
     return {"now": now, "timeout": status_monitor.timeout, "nodes": nodes}
