@@ -360,6 +360,33 @@ static void publish_rgb_ack(int strip, const char *effect, cJSON *params,
   cJSON_Delete(root);
 }
 
+static void publish_white_ack(int channel, const char *effect, cJSON *params,
+                              int brightness, bool ok) {
+  char topic[128];
+  snprintf(topic, sizeof(topic), "ul/%s/evt/status", ul_core_get_node_id());
+  cJSON *root = cJSON_CreateObject();
+  cJSON_AddStringToObject(root, "event", "ack");
+  if (ok) {
+    cJSON_AddStringToObject(root, "status", "ok");
+    cJSON_AddNumberToObject(root, "channel", channel);
+    cJSON_AddNumberToObject(root, "brightness", brightness);
+    if (effect)
+      cJSON_AddStringToObject(root, "effect", effect);
+    if (params && cJSON_IsArray(params)) {
+      cJSON_AddItemToObject(root, "params", cJSON_Duplicate(params, true));
+    } else {
+      cJSON_AddItemToObject(root, "params", cJSON_CreateArray());
+    }
+  } else {
+    cJSON_AddStringToObject(root, "status", "error");
+    cJSON_AddStringToObject(root, "error", "invalid effect");
+  }
+  char *json = cJSON_PrintUnformatted(root);
+  publish_json(topic, json);
+  cJSON_free(json);
+  cJSON_Delete(root);
+}
+
 void ul_mqtt_publish_motion(const char *sensor, const char *state) {
   char topic[128];
   char payload[64];
@@ -455,8 +482,32 @@ static bool handle_cmd_white_set(cJSON *root, int *out_channel) {
   if (out_channel)
     *out_channel = channel;
 
+  int brightness = 255;
+  cJSON *jbri = cJSON_GetObjectItem(root, "brightness");
+  if (jbri && cJSON_IsNumber(jbri))
+    brightness = jbri->valueint;
+
+  const char *effect = NULL;
+  cJSON *jeffect = cJSON_GetObjectItem(root, "effect");
+  if (jeffect && cJSON_IsString(jeffect))
+    effect = jeffect->valuestring;
+
+  cJSON *params = cJSON_GetObjectItem(root, "params");
+
   ul_white_apply_json(root);
-  return true;
+
+  ul_white_ch_status_t st;
+  bool have_status = ul_white_get_status(channel, &st);
+  if (have_status)
+    brightness = st.brightness;
+
+  bool ok = have_status;
+  if (effect && have_status)
+    ok = strcmp(st.effect, effect) == 0;
+
+  publish_white_ack(channel, effect, params, brightness, ok);
+
+  return (!effect || ok);
 }
 static void on_message(esp_mqtt_event_handle_t event) {
   // topic expected: ul/<node>/cmd/...
