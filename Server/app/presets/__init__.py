@@ -6,20 +6,19 @@ from typing import Any, Dict, List, Optional
 
 from ..config import settings
 from ..mqtt_bus import MqttBus
-from .action_registry import ActionDict, action_registry, register_action
 from .custom_store import CustomPresetStore
 
 
 _custom_presets = CustomPresetStore(settings.CUSTOM_PRESET_FILE)
 
+ActionDict = Dict[str, Any]
+
 __all__ = [
-    "action_registry",
     "apply_preset",
     "delete_custom_preset",
     "get_preset",
     "get_room_presets",
     "list_custom_presets",
-    "register_action",
     "save_custom_preset",
     "snapshot_to_actions",
 ]
