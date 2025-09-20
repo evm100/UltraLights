@@ -110,6 +110,12 @@ def _build_motion_config(
         if preset_id and preset_id not in preset_colors:
             preset_colors[preset_id] = palette[len(preset_colors) % len(palette)]
             preset_names.setdefault(preset_id, preset_id)
+    stored_colors = motion_schedule.get_room_colors(house_id, room_id)
+    for preset_id, color in stored_colors.items():
+        if not color:
+            continue
+        preset_colors[preset_id] = color
+        preset_names.setdefault(preset_id, preset_id)
     legend = [
         {
             "id": preset_id,
