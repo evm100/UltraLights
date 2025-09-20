@@ -2,6 +2,7 @@ const container = document.getElementById('presetList');
 if (container) {
   const statusEl = document.getElementById('presetStatus');
   const saveButton = document.getElementById('presetSaveButton');
+  const editButton = document.getElementById('presetEditButton');
   const baseUrl = container.dataset.apiBase || '';
   const presetsUrl = baseUrl ? `${baseUrl}/presets` : '';
   const applyUrlFor = (id) => `${baseUrl}/preset/${encodeURIComponent(id)}`;
@@ -79,6 +80,115 @@ if (container) {
   }
   const initialPresets = normalizePresets(initialRaw);
   let presets = initialPresets;
+  let editing = false;
+
+  const dragState = { id: null, index: -1 };
+  let currentDropTarget = null;
+  let currentDropPosition = null;
+
+  const resetDragState = () => {
+    dragState.id = null;
+    dragState.index = -1;
+  };
+
+  const clearDropIndicators = () => {
+    if (currentDropTarget) {
+      currentDropTarget.classList.remove('drop-target-before', 'drop-target-after');
+    }
+    currentDropTarget = null;
+    currentDropPosition = null;
+  };
+
+  const setDropIndicator = (target, position) => {
+    if (currentDropTarget === target && currentDropPosition === position) {
+      return;
+    }
+    clearDropIndicators();
+    if (target && position) {
+      const cls = position === 'after' ? 'drop-target-after' : 'drop-target-before';
+      target.classList.add(cls);
+      currentDropTarget = target;
+      currentDropPosition = position;
+    }
+  };
+
+  const findPresetIndex = (id) => presets.findIndex((entry) => entry.id === id);
+
+  const dropPositionForEvent = (event, element) => {
+    if (!element) return 'after';
+    const rect = element.getBoundingClientRect();
+    const horizontal = rect.width >= rect.height;
+    if (horizontal) {
+      return event.clientX - rect.left > rect.width / 2 ? 'after' : 'before';
+    }
+    return event.clientY - rect.top > rect.height / 2 ? 'after' : 'before';
+  };
+
+  const movePreset = (fromIndex, toIndex) => {
+    if (fromIndex < 0 || fromIndex >= presets.length) {
+      return false;
+    }
+    if (toIndex < 0) {
+      toIndex = 0;
+    }
+    if (toIndex > presets.length) {
+      toIndex = presets.length;
+    }
+    if (fromIndex === toIndex || (fromIndex + 1 === toIndex && fromIndex < toIndex)) {
+      return false;
+    }
+    const [moved] = presets.splice(fromIndex, 1);
+    let insertIndex = toIndex;
+    if (fromIndex < toIndex) {
+      insertIndex -= 1;
+    }
+    if (insertIndex < 0) {
+      insertIndex = 0;
+    }
+    if (insertIndex > presets.length) {
+      insertIndex = presets.length;
+    }
+    presets.splice(insertIndex, 0, moved);
+    return insertIndex !== fromIndex;
+  };
+
+  const updateEditingUI = () => {
+    container.dataset.editing = editing ? 'true' : 'false';
+    if (editing) {
+      container.classList.add('is-editing');
+    } else {
+      container.classList.remove('is-editing');
+    }
+    const deleteButtons = container.querySelectorAll('button.preset-delete');
+    deleteButtons.forEach((button) => {
+      if (editing) {
+        button.removeAttribute('aria-hidden');
+        button.removeAttribute('tabindex');
+      } else {
+        button.setAttribute('aria-hidden', 'true');
+        button.setAttribute('tabindex', '-1');
+      }
+    });
+    const presetItems = container.querySelectorAll('.preset-item');
+    presetItems.forEach((item) => {
+      if (editing) {
+        item.setAttribute('draggable', 'true');
+        item.classList.add('is-draggable');
+      } else {
+        item.removeAttribute('draggable');
+        item.classList.remove('is-draggable', 'is-dragging', 'drop-target-before', 'drop-target-after');
+      }
+    });
+    if (!editing) {
+      clearDropIndicators();
+      resetDragState();
+    }
+    if (editButton) {
+      editButton.textContent = editing ? 'Done' : 'Edit';
+      editButton.setAttribute('aria-pressed', editing ? 'true' : 'false');
+      editButton.title = editing ? 'Finish editing presets' : 'Edit presets';
+    }
+  };
 
   const isCustomPreset = (preset) => preset && String(preset.source || '').toLowerCase() === 'custom';
 
@@ -142,9 +252,111 @@ if (container) {
     if (data && Array.isArray(data.presets)) {
       presets = normalizePresets(data.presets);
       renderPresets();
+      updateEditingUI();
       sharePresets(presets);
     }
   };
+
+  container.addEventListener('dragstart', (event) => {
+    const item = event.target.closest('.preset-item');
+    if (!item) {
+      return;
+    }
+    if (!editing) {
+      event.preventDefault();
+      return;
+    }
+    const id = item.dataset.presetId;
+    if (!id) {
+      event.preventDefault();
+      return;
+    }
+    const index = findPresetIndex(id);
+    if (index === -1) {
+      event.preventDefault();
+      return;
+    }
+    dragState.id = id;
+    dragState.index = index;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', id);
+    }
+    window.requestAnimationFrame(() => {
+      item.classList.add('is-dragging');
+    });
+  });
+
+  container.addEventListener('dragend', (event) => {
+    const item = event.target.closest('.preset-item');
+    if (item) {
+      item.classList.remove('is-dragging');
+    }
+    clearDropIndicators();
+    resetDragState();
+  });
+
+  container.addEventListener('dragover', (event) => {
+    if (!editing || !dragState.id) {
+      return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+    const item = event.target.closest('.preset-item');
+    if (!item || item.dataset.presetId === dragState.id) {
+      clearDropIndicators();
+      return;
+    }
+    const position = dropPositionForEvent(event, item);
+    setDropIndicator(item, position);
+  });
+
+  container.addEventListener('dragleave', (event) => {
+    if (!editing || !dragState.id) {
+      return;
+    }
+    const related = event.relatedTarget;
+    if (!related || !container.contains(related)) {
+      clearDropIndicators();
+    }
+  });
+
+  container.addEventListener('drop', (event) => {
+    if (!editing || !dragState.id) {
+      return;
+    }
+    event.preventDefault();
+    const fromIndex = dragState.index;
+    if (fromIndex === -1) {
+      clearDropIndicators();
+      resetDragState();
+      return;
+    }
+    const activeItem = container.querySelector('.preset-item.is-dragging');
+    if (activeItem) {
+      activeItem.classList.remove('is-dragging');
+    }
+    const target = event.target.closest('.preset-item');
+    let toIndex = presets.length;
+    if (target) {
+      const targetId = target.dataset.presetId;
+      const targetIndex = targetId ? findPresetIndex(targetId) : -1;
+      if (targetIndex !== -1) {
+        const position = dropPositionForEvent(event, target);
+        toIndex = position === 'after' ? targetIndex + 1 : targetIndex;
+      }
+    }
+    const moved = movePreset(fromIndex, toIndex);
+    clearDropIndicators();
+    resetDragState();
+    if (moved) {
+      renderPresets();
+      updateEditingUI();
+      sharePresets(presets);
+    }
+  });
 
   const handleApply = async (id, button) => {
     if (!id || !baseUrl) {
@@ -224,6 +436,9 @@ if (container) {
   container.addEventListener('click', (event) => {
     const deleteButton = event.target.closest('button.preset-delete');
     if (deleteButton) {
+      if (!editing) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       const id = deleteButton.dataset.presetId;
@@ -241,6 +456,14 @@ if (container) {
     }
   });
 
+  if (editButton) {
+    editButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      editing = !editing;
+      updateEditingUI();
+    });
+  }
+
   if (saveButton) {
     saveButton.addEventListener('click', (event) => {
       event.preventDefault();
@@ -249,6 +472,7 @@ if (container) {
   }
 
   renderPresets();
+  updateEditingUI();
   setStatus('', 'base');
   sharePresets(presets);
 }

@@ -16,7 +16,10 @@
 <div class="mt-8" id="presetSection">
   <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
     <h2 class="text-2xl font-semibold">Presets</h2>
-    <button id="presetSaveButton" type="button" class="glass px-4 py-2 rounded-lg text-sm font-semibold tracking-wide uppercase hover:ring-2 hover:ring-indigo-400">Save Preset</button>
+    <div class="flex items-center gap-2">
+      <button id="presetSaveButton" type="button" class="glass px-4 py-2 rounded-lg text-sm font-semibold tracking-wide uppercase hover:ring-2 hover:ring-indigo-400">Save Preset</button>
+      <button id="presetEditButton" type="button" class="glass px-4 py-2 rounded-lg text-sm font-semibold tracking-wide uppercase hover:ring-2 hover:ring-indigo-400" aria-pressed="false" aria-controls="presetList">Edit</button>
+    </div>
   </div>
   <div id="presetStatus" class="text-sm mb-3 opacity-80" role="status" aria-live="polite"></div>
   <div id="presetList" class="flex flex-wrap gap-2" data-house-id="{{ house.id }}" data-room-id="{{ room.id }}" data-api-base="/api/house/{{ house.id }}/room/{{ room.id }}" data-initial-presets='{{ presets|tojson }}'>

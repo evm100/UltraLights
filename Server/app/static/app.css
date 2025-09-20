@@ -205,6 +205,42 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
   align-items: center;
 }
 
+#presetList.is-editing .preset-item.is-draggable,
+#presetList[data-editing="true"] .preset-item.is-draggable {
+  cursor: grab;
+}
+
+#presetList.is-editing .preset-item.is-draggable.is-dragging,
+#presetList[data-editing="true"] .preset-item.is-draggable.is-dragging {
+  cursor: grabbing;
+  opacity: 0.7;
+}
+
+#presetList.is-editing .preset-item.drop-target-before::before,
+#presetList.is-editing .preset-item.drop-target-after::after,
+#presetList[data-editing="true"] .preset-item.drop-target-before::before,
+#presetList[data-editing="true"] .preset-item.drop-target-after::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  width: 4px;
+  border-radius: 9999px;
+  background: rgba(129, 140, 248, 0.85);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.55);
+  z-index: 1;
+}
+
+#presetList.is-editing .preset-item.drop-target-before::before,
+#presetList[data-editing="true"] .preset-item.drop-target-before::before {
+  left: -6px;
+}
+
+#presetList.is-editing .preset-item.drop-target-after::after,
+#presetList[data-editing="true"] .preset-item.drop-target-after::after {
+  right: -6px;
+}
+
 .preset-delete {
   position: absolute;
   top: -8px;
@@ -234,7 +270,8 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
   transform: translateY(1px);
 }
 
-.preset-item[data-custom="true"] .preset-delete {
+#presetList.is-editing .preset-item[data-custom="true"] .preset-delete,
+#presetList[data-editing="true"] .preset-item[data-custom="true"] .preset-delete {
   display: inline-flex;
 }
 .motion-button--primary {
