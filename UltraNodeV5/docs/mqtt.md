@@ -43,6 +43,7 @@ The contents of `params` depend on the chosen effect:
 
 * `rainbow` – one integer `[wavelength]` controlling the color cycle in pixels
 * `solid` – RGB `[r,g,b]` values
+* `color_swell` – RGB `[r,g,b]` base colour that swells from 0 to the configured brightness over 3 000 ms before holding steady
 * `triple_wave` – fifteen numbers defining three sine waves `[r1,g1,b1,w1,f1,r2,g2,b2,w2,f2,r3,g3,b3,w3,f3]`
 * `spacewaves` – nine integers specifying three RGB waves `[r1,g1,b1,r2,g2,b2,r3,g3,b3]`
 * `fire` – intensity and colour gradient `[intensity,r1,g1,b1,r2,g2,b2]`. Values above `10` are treated as percentages (the web UI sends `0-200` for convenience). Requires PSRAM-enabled firmware.
@@ -124,10 +125,13 @@ RGB parameters `[0, 0, 0]`.
 }
 ```
 
-Analog strips expose three PWM channels and currently ship with a single
-`solid` effect that accepts RGB parameters `[r, g, b]`.  Publish with
-`brightness: 0` to turn a strip off while preserving its colour for the next
-command.
+Analog strips expose three PWM channels and support two effects:
+
+* `solid` – static RGB `[r, g, b]` output.
+* `color_swell` – RGB `[r, g, b]` base colour that swells from 0 to the master brightness over 3 000 ms, then holds that level.
+
+Publish with `brightness: 0` to turn a strip off while preserving its colour for
+the next command.
 
 ### White PWM channels (`white`)
 
@@ -150,7 +154,8 @@ separately.
 Registered effects: `solid`, `breathe`, and `swell`.
 * `solid` – static output with no parameters.
 * `breathe` – optional params: `[period_ms]` to control the breath cycle length.
-* `swell` – params `[x, y, t_ms]` fade from brightness `x` to `y` over `t_ms` milliseconds then hold at `y`.
+* `swell` – no parameters. Brightens from 0 to full output over 3 000 ms and then holds the final level. The master brightness
+  scales the curve so a brightness of 128 yields a 0→128 swell.
 
 ### Sensor and OTA commands
 
