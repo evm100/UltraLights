@@ -1,14 +1,18 @@
-import asyncio, signal
+import asyncio
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any, AsyncIterator, Optional
+
 from fastapi import FastAPI
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+
 from .config import settings
+from .motion import motion_manager
+from .ota import router as ota_router
 from .routes_api import router as api_router
 from .routes_pages import router as pages_router
-from .ota import router as ota_router
-from .motion import motion_manager
 from .status_monitor import status_monitor
-from fastapi.responses import FileResponse, Response
-from pathlib import Path
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -19,37 +23,52 @@ try:
 except Exception:
     HBMQTT_AVAILABLE = False
 
-app = FastAPI(title="UltraLights Hub", version="2.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    broker: Optional[Any] = None
+    broker_task: Optional[asyncio.Task[Any]] = None
+
+    if settings.EMBED_BROKER:
+        if not HBMQTT_AVAILABLE:
+            raise RuntimeError("EMBED_BROKER=1 but 'hbmqtt' not installed")
+        broker = Broker(
+            {
+                "listeners": {
+                    "default": {
+                        "type": "tcp",
+                        "bind": f"{settings.BROKER_HOST}:{settings.BROKER_PORT}",
+                    }
+                },
+                "auth": {"allow-anonymous": True},
+                "topic-check": {"enabled": False},
+            }
+        )
+        broker_task = asyncio.create_task(broker.start())
+        await asyncio.sleep(0.6)
+
+    motion_manager.start()
+    status_monitor.start()
+
+    try:
+        yield
+    finally:
+        if broker:
+            await broker.shutdown()
+        if broker_task:
+            try:
+                await broker_task
+            except asyncio.CancelledError:
+                pass
+        motion_manager.stop()
+        status_monitor.stop()
+
+
+app = FastAPI(title="UltraLights Hub", version="2.0", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(pages_router)
 app.include_router(api_router)
 app.include_router(ota_router)
-
-BROKER = None
-
-@app.on_event("startup")
-async def on_start():
-    global BROKER
-    if settings.EMBED_BROKER:
-        if not HBMQTT_AVAILABLE:
-            raise RuntimeError("EMBED_BROKER=1 but 'hbmqtt' not installed")
-        BROKER = Broker({
-            "listeners": {"default": {"type":"tcp","bind": f"{settings.BROKER_HOST}:{settings.BROKER_PORT}"}},
-            "auth": {"allow-anonymous": True},
-            "topic-check": {"enabled": False}
-        })
-        asyncio.create_task(BROKER.start())
-        await asyncio.sleep(0.6)
-    motion_manager.start()
-    status_monitor.start()
-
-@app.on_event("shutdown")
-async def on_stop():
-    if BROKER:
-        await BROKER.shutdown()
-    motion_manager.stop()
-    status_monitor.stop()
 
 
 @app.get("/favicon.ico", include_in_schema=False)
