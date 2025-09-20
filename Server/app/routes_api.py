@@ -375,6 +375,8 @@ def api_add_node(house_id: str, room_id: str, payload: Dict[str, Any]):
         node = registry.add_node(house_id, room_id, name, kind, modules)
     except KeyError:
         raise HTTPException(404, "Unknown room")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     return {"ok": True, "node": node}
 
 
