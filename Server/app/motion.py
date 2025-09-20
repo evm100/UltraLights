@@ -1,17 +1,19 @@
 import json
 import threading
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import paho.mqtt.client as mqtt
 from .config import settings
 from .mqtt_bus import MqttBus
-from .presets import get_preset, apply_preset, reverse_preset
+from .presets import get_preset, apply_preset
 from .motion_schedule import motion_schedule
 from .motion_prefs import motion_preferences
 from . import registry
 
 MOTION_STATUS_REQUEST_INTERVAL = 30.0
+# Matches the firmware's fade duration when clearing motion presets.
+MOTION_OFF_FADE_MS = 5000
 
 class MotionManager:
     def __init__(self) -> None:
@@ -187,12 +189,78 @@ class MotionManager:
         preset = get_preset(house_id, room_id, preset_id)
         if not preset:
             return
-        reversed_preset = reverse_preset(preset)
-        if not reversed_preset:
+        nodes = self._eligible_motion_nodes(house_id, room_id, preset)
+        if not nodes:
             return
-        self._apply_motion_preset(house_id, room_id, reversed_preset)
+        for node_id in nodes:
+            self.bus.motion_off(
+                node_id, {"fade": {"duration_ms": MOTION_OFF_FADE_MS}}
+            )
 
     # Internal helpers -----------------------------------------------
+    def _eligible_motion_nodes(
+        self, house_id: str, room_id: str, preset: Dict[str, Any]
+    ) -> List[str]:
+        actions = preset.get("actions")
+        if not isinstance(actions, list):
+            return []
+
+        immune_nodes = {
+            node_id
+            for node_id in self.motion_preferences.get_room_immune_nodes(
+                house_id, room_id
+            )
+            if node_id
+        }
+        room_nodes = self._room_node_ids(house_id, room_id)
+        seen: Set[str] = set()
+        eligible: List[str] = []
+
+        for action in actions:
+            if not isinstance(action, dict):
+                continue
+            node_raw = action.get("node")
+            module_raw = action.get("module")
+            node_id = str(node_raw).strip() if node_raw is not None else ""
+            if not node_id or node_id in immune_nodes:
+                continue
+            module = str(module_raw).strip().lower() if module_raw is not None else ""
+            if module not in {"ws", "rgb", "white"}:
+                continue
+            if room_nodes and node_id not in room_nodes:
+                continue
+            if node_id in seen:
+                continue
+            seen.add(node_id)
+            eligible.append(node_id)
+
+        return eligible
+
+    def _room_node_ids(self, house_id: str, room_id: str) -> Set[str]:
+        nodes: Set[str] = set()
+        entry = self.room_sensors.get((house_id, room_id))
+        if isinstance(entry, dict):
+            node_entries = entry.get("nodes")
+            if isinstance(node_entries, dict):
+                for node_id in node_entries.keys():
+                    text = str(node_id).strip()
+                    if text:
+                        nodes.add(text)
+
+        _, room = registry.find_room(house_id, room_id)
+        if room and isinstance(room.get("nodes"), list):
+            for node in room.get("nodes", []):
+                if not isinstance(node, dict):
+                    continue
+                node_id = node.get("id")
+                if node_id is None:
+                    continue
+                text = str(node_id).strip()
+                if text:
+                    nodes.add(text)
+
+        return nodes
+
     def _request_motion_status(self, node_id: str, *, force: bool = False) -> None:
         if not node_id:
             return

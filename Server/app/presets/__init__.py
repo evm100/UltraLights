@@ -6,13 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from ..config import settings
 from ..mqtt_bus import MqttBus
-from .action_registry import (
-    ActionDict,
-    action_registry,
-    register_action,
-    reverse_action,
-    with_action_type,
-)
+from .action_registry import ActionDict, action_registry, register_action
 from .custom_store import CustomPresetStore
 
 
@@ -26,10 +20,8 @@ __all__ = [
     "get_room_presets",
     "list_custom_presets",
     "register_action",
-    "reverse_preset",
     "save_custom_preset",
     "snapshot_to_actions",
-    "with_action_type",
 ]
 
 
@@ -71,23 +63,6 @@ def get_preset(house_id: str, room_id: str, preset_id: str) -> Optional[Dict[str
         if preset.get("id") == preset_id:
             return preset
     return None
-
-
-def reverse_preset(preset: Dict[str, Any]) -> Dict[str, Any]:
-    """Return a deep-copied ``preset`` with each action reversed."""
-
-    reversed_preset = deepcopy(preset)
-    reversed_actions: List[Dict[str, Any]] = []
-
-    for action in preset.get("actions", []):
-        try:
-            reversed_action = reverse_action(action)
-        except (KeyError, TypeError, ValueError):
-            reversed_action = deepcopy(action)
-        reversed_actions.append(reversed_action)
-
-    reversed_preset["actions"] = reversed_actions
-    return reversed_preset
 
 
 def _coerce_int(value: Any, default: int = 0) -> int:
