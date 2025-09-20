@@ -572,6 +572,35 @@ def api_set_motion_schedule(house_id: str, room_id: str, payload: Dict[str, Any]
     stored = motion_schedule.set_schedule(house_id, room_id, clean)
     return {"ok": True, "schedule": stored}
 
+
+@router.post("/api/house/{house_id}/room/{room_id}/motion-schedule/color")
+def api_set_motion_schedule_color(house_id: str, room_id: str, payload: Dict[str, Any]):
+    if (house_id, room_id) not in motion_manager.room_sensors:
+        raise HTTPException(404, "Motion schedule not supported for this room")
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "invalid payload")
+    preset_id = payload.get("preset")
+    if not isinstance(preset_id, str) or not preset_id.strip():
+        raise HTTPException(400, "invalid preset")
+    preset_key = preset_id.strip()
+    color_value = payload.get("color")
+    if not isinstance(color_value, str) or not color_value.strip():
+        raise HTTPException(400, "invalid color")
+    valid_presets = {
+        str(p.get("id"))
+        for p in get_room_presets(house_id, room_id)
+        if p.get("id") is not None
+    }
+    if preset_key not in valid_presets:
+        raise HTTPException(404, f"unknown preset: {preset_key}")
+    try:
+        stored = motion_schedule.set_preset_color(
+            house_id, room_id, preset_key, color_value
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True, "preset": preset_key, "color": stored}
+
 # ---- Node command APIs -------------------------------------------------
 
 @router.post("/api/node/{node_id}/ws/set")

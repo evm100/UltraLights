@@ -109,32 +109,40 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
 }
 
 .motion-schedule-grid {
+  --motion-schedule-columns: 2;
   display: grid;
-  grid-template-columns: repeat(24, minmax(56px, 1fr));
-  gap: .5rem;
-  min-width: 960px;
+  grid-template-columns: repeat(var(--motion-schedule-columns), minmax(0, 1fr));
+  gap: 1rem;
+  width: 100%;
 }
+
+.motion-schedule-column {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
 .motion-schedule-slot {
   background: var(--slot-color, rgba(148,163,184,.25));
   color: var(--slot-text, #e2e8f0);
-  border-radius: 14px;
-  padding: .75rem .5rem;
-  text-align: center;
+  border-radius: 16px;
+  padding: .9rem .95rem;
+  text-align: left;
   font-weight: 600;
-  font-size: .75rem;
-  letter-spacing: .05em;
+  font-size: .8rem;
+  letter-spacing: .03em;
   box-shadow: inset 0 0 0 1px rgba(15,23,42,.18);
   transition: transform .12s ease, box-shadow .12s ease;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  gap: .35rem;
-  line-height: 1.2;
+  gap: .5rem;
+  line-height: 1.35;
 }
 .motion-schedule-slot:hover {
   transform: translateY(-2px);
-  box-shadow: inset 0 0 0 1px rgba(15,23,42,.24), 0 12px 28px rgba(15,23,42,.35);
+  box-shadow: inset 0 0 0 1px rgba(15,23,42,.24), 0 14px 28px rgba(15,23,42,.35);
 }
 .motion-schedule-slot--selected {
   box-shadow: inset 0 0 0 1px rgba(15,23,42,.28), 0 0 0 2px rgba(59,130,246,.65), 0 14px 32px rgba(59,130,246,.25);
@@ -145,21 +153,46 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
 }
 .motion-schedule-hour {
   text-transform: uppercase;
-  font-size: .65rem;
+  font-size: .72rem;
   letter-spacing: .08em;
+  opacity: .85;
 }
 
 .motion-schedule-label {
-  font-size: .8rem;
+  font-size: .92rem;
   font-weight: 600;
-  letter-spacing: .02em;
+  letter-spacing: .01em;
   text-transform: none;
   word-break: break-word;
 }
 
 .motion-schedule-slot--empty .motion-schedule-label {
-  opacity: .85;
+  opacity: .82;
   font-weight: 500;
+}
+
+@media (max-width: 900px) {
+  .motion-schedule-grid {
+    gap: .75rem;
+  }
+  .motion-schedule-column {
+    gap: .65rem;
+  }
+  .motion-schedule-slot {
+    padding: .8rem .85rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .motion-schedule-grid {
+    gap: .6rem;
+  }
+  .motion-schedule-slot {
+    padding: .7rem .78rem;
+  }
+  .motion-schedule-label {
+    font-size: .88rem;
+  }
 }
 .motion-field {
   display: flex;
@@ -286,14 +319,46 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
   cursor: not-allowed;
   pointer-events: none;
 }
+
 .motion-legend-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: .5rem;
-  padding: .4rem .75rem;
+  gap: .55rem;
+  padding: .45rem .9rem;
   border-radius: 9999px;
   background: rgba(15,23,42,.55);
+  border: 1px solid rgba(148,163,184,.28);
+  color: #e2e8f0;
 }
+
+button.motion-legend-item {
+  font: inherit;
+}
+
+.motion-legend-item--editable {
+  cursor: pointer;
+  background: linear-gradient(180deg, rgba(30,41,59,.82), rgba(15,23,42,.7));
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  box-shadow: 0 6px 18px rgba(15,23,42,.4);
+}
+
+.motion-legend-item--editable:hover {
+  transform: translateY(-1px);
+  border-color: rgba(148,163,184,.55);
+  box-shadow: 0 12px 26px rgba(15,23,42,.45);
+}
+
+.motion-legend-item--editable:focus-visible {
+  outline: none;
+  border-color: rgba(99,102,241,.75);
+  box-shadow: 0 0 0 3px rgba(99,102,241,.45), 0 12px 26px rgba(15,23,42,.45);
+}
+
+.motion-legend-item--editable:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 18px rgba(15,23,42,.4);
+}
+
 .motion-legend-swatch {
   width: 16px;
   height: 16px;
@@ -301,14 +366,19 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
   background: var(--swatch-color, rgba(148,163,184,.35));
   box-shadow: 0 0 0 3px rgba(15,23,42,.55);
 }
+
 .motion-legend-label {
-  font-size: .75rem;
+  font-size: .78rem;
   font-weight: 600;
+  letter-spacing: .02em;
 }
 
-@media (max-width: 900px) {
-  .motion-schedule-grid {
-    min-width: 720px;
-    gap: .4rem;
-  }
+.motion-legend-color-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  border: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
 }
