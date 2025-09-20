@@ -22,12 +22,12 @@
     </div>
   </div>
   <div id="presetStatus" class="text-sm mb-3 opacity-80" role="status" aria-live="polite"></div>
-  <div id="presetList" class="flex flex-wrap gap-2" data-house-id="{{ house.id }}" data-room-id="{{ room.id }}" data-api-base="/api/house/{{ house.id }}/room/{{ room.id }}" data-initial-presets='{{ presets|tojson }}'>
+  <div id="presetList" class="flex flex-wrap gap-2" data-editing="false" data-house-id="{{ house.id }}" data-room-id="{{ room.id }}" data-api-base="/api/house/{{ house.id }}/room/{{ room.id }}" data-initial-presets='{{ presets|tojson }}'>
     {% for p in presets %}
     <div class="preset-item" data-preset-id="{{ p.id }}" data-custom="{{ 'true' if p.source == 'custom' else 'false' }}">
       <button class="preset preset-button glass px-4 py-2 rounded-lg hover:ring-2 hover:ring-indigo-400" type="button" data-preset-id="{{ p.id }}">{{ p.name or p.id }}</button>
       {% if p.source == 'custom' %}
-      <button class="preset-delete" type="button" aria-label="Delete preset {{ p.name or p.id }}" data-preset-id="{{ p.id }}">✕</button>
+      <button class="preset-delete" type="button" aria-hidden="true" tabindex="-1" hidden aria-label="Delete preset {{ p.name or p.id }}" data-preset-id="{{ p.id }}">✕</button>
       {% endif %}
     </div>
     {% else %}

@@ -161,6 +161,7 @@ if (container) {
     }
     const deleteButtons = container.querySelectorAll('button.preset-delete');
     deleteButtons.forEach((button) => {
+      button.hidden = !editing;
       if (editing) {
         button.removeAttribute('aria-hidden');
         button.removeAttribute('tabindex');
@@ -224,6 +225,14 @@ if (container) {
         removeButton.dataset.presetId = id;
         removeButton.setAttribute('aria-label', `Delete preset ${name}`);
         removeButton.textContent = '✕';
+        removeButton.hidden = !editing;
+        if (editing) {
+          removeButton.removeAttribute('aria-hidden');
+          removeButton.removeAttribute('tabindex');
+        } else {
+          removeButton.setAttribute('aria-hidden', 'true');
+          removeButton.setAttribute('tabindex', '-1');
+        }
         wrapper.appendChild(removeButton);
       }
       fragment.appendChild(wrapper);
