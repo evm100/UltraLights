@@ -252,6 +252,31 @@ def test_api_add_node_duplicate_name(monkeypatch, tmp_path):
     assert "already exists" in str(excinfo.value.detail)
 
 
+def test_api_add_node_rejects_long_id(monkeypatch, tmp_path):
+    import app.routes_api as routes_api
+    from app.config import settings
+    from fastapi import HTTPException
+
+    test_registry = [
+        {
+            "id": "del-sur",
+            "name": "Del Sur",
+            "rooms": [
+                {"id": "kitchen", "name": "Kitchen", "nodes": []},
+            ],
+        }
+    ]
+
+    monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
+    monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
+
+    with pytest.raises(HTTPException) as excinfo:
+        routes_api.api_add_node("del-sur", "kitchen", {"name": "x" * 50})
+
+    assert excinfo.value.status_code == 400
+    assert str(excinfo.value.detail) == "node id too long (max 31 characters)"
+
+
 def test_api_set_node_name(monkeypatch, tmp_path):
     import app.routes_api as routes_api
     from app.config import settings
