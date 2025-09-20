@@ -127,9 +127,6 @@ WS_PARAM_DEFS = {
     ],
     "color_swell": [
         {"type": "color", "label": "Base Color"},
-        {"type": "slider", "label": "Start Brightness", "min": 0, "max": 255, "value": 0},
-        {"type": "slider", "label": "End Brightness", "min": 0, "max": 255, "value": 255},
-        {"type": "slider", "label": "Time (ms)", "min": 0, "max": 10000, "value": 1000},
     ],
 }
 
@@ -137,11 +134,7 @@ WHITE_PARAM_DEFS = {
     "breathe": [
         {"type": "slider", "label": "Period (ms)", "min": 100, "max": 5000, "value": 1000},
     ],
-    "swell": [
-        {"type": "slider", "label": "Start Brightness", "min": 0, "max": 255, "value": 0},
-        {"type": "slider", "label": "End Brightness", "min": 0, "max": 255, "value": 255},
-        {"type": "slider", "label": "Time (ms)", "min": 0, "max": 10000, "value": 1000},
-    ],
+    "swell": [],
 }
 
 # ``solid`` is fundamental and must always exist for the web interface. Ensure
@@ -154,9 +147,6 @@ RGB_PARAM_DEFS = {
     ],
     "color_swell": [
         {"type": "color", "label": "Base Color"},
-        {"type": "slider", "label": "Start Brightness", "min": 0, "max": 255, "value": 0},
-        {"type": "slider", "label": "End Brightness", "min": 0, "max": 255, "value": 255},
-        {"type": "slider", "label": "Time (ms)", "min": 0, "max": 10000, "value": 1000},
     ],
 }
 

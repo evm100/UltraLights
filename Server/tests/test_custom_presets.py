@@ -134,8 +134,8 @@ class CustomPresetRoundTripTests(unittest.TestCase):
                     "channel": 0,
                     "effect": "swell",
                     "brightness": "200",
-                    "params": [10, "200", 1500],
-                    "ms": "1500",
+                    "params": [],
+                    "ms": "3000",
                 },
                 {
                     "channel": "1",
@@ -202,7 +202,7 @@ class CustomPresetRoundTripTests(unittest.TestCase):
                 self.assertEqual(
                     bus.white_calls,
                     [
-                        ("node-1", 0, "swell", 200, [10, "200", 1500], False),
+                        ("node-1", 0, "swell", 200, [], False),
                         ("node-1", 1, "solid", 0, [], False),
                     ],
                 )
