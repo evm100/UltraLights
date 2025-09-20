@@ -110,16 +110,19 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
 
 .motion-schedule-grid {
   --motion-schedule-columns: 2;
-  display: grid;
-  grid-template-columns: repeat(var(--motion-schedule-columns), minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
   width: 100%;
+  align-items: stretch;
 }
 
 .motion-schedule-column {
   display: flex;
   flex-direction: column;
   gap: .75rem;
+  flex: 1 1 calc(100% / var(--motion-schedule-columns));
+  min-width: 0;
 }
 
 .motion-schedule-slot {
