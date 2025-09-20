@@ -30,7 +30,8 @@ MQTT during playback.
 ``custom_presets.json`` bundles a few seeded presets that mirror the original
 catalog.  The entry below shows how a snapshot that swells all white channels can
 be represented.  Triggering this preset causes each node's white channels (0–3)
-to fade from brightness 0 to 100 in five seconds and hold that final level.
+to brighten from off to their configured master brightness over three seconds
+before holding that output level.
 
 ```json
 {
@@ -41,21 +42,21 @@ to fade from brightness 0 to 100 in five seconds and hold that final level.
         "name": "White Swell 0→100",
         "actions": [
           {"module": "white", "node": "del-sur-room-1-node1", "channel": 0,
-           "effect": "swell", "brightness": 255, "params": [0, 255, 5000]},
+           "effect": "swell", "brightness": 255, "params": []},
           {"module": "white", "node": "del-sur-room-1-node1", "channel": 1,
-           "effect": "swell", "brightness": 255, "params": [0, 255, 5000]},
+           "effect": "swell", "brightness": 255, "params": []},
           {"module": "white", "node": "del-sur-room-1-node1", "channel": 2,
-           "effect": "swell", "brightness": 255, "params": [0, 255, 5000]},
+           "effect": "swell", "brightness": 255, "params": []},
           {"module": "white", "node": "del-sur-room-1-node1", "channel": 3,
-           "effect": "swell", "brightness": 255, "params": [0, 255, 5000]},
+           "effect": "swell", "brightness": 255, "params": []},
           {"module": "white", "node": "node", "channel": 0,
-           "effect": "swell", "brightness": 255, "params": [0, 255, 5000]},
+           "effect": "swell", "brightness": 255, "params": []},
           {"module": "white", "node": "node", "channel": 1,
-           "effect": "swell", "brightness": 255, "params": [0, 255, 5000]},
+           "effect": "swell", "brightness": 255, "params": []},
           {"module": "white", "node": "node", "channel": 2,
-           "effect": "swell", "brightness": 255, "params": [0, 255, 5000]},
+           "effect": "swell", "brightness": 255, "params": []},
           {"module": "white", "node": "node", "channel": 3,
-           "effect": "swell", "brightness": 255, "params": [0, 255, 5000]}
+           "effect": "swell", "brightness": 255, "params": []}
         ],
         "source": "seed"
       }
@@ -69,11 +70,12 @@ to fade from brightness 0 to 100 in five seconds and hold that final level.
 Both houses include a ``kitchen`` room with several predefined presets showcasing
 more targeted swells:
 
-* **Swell On** – channels 0‑2 swell from 0 to 100 over five seconds.
-* **Midnight Snack** – channel 0 swells 0→10 and channel 1 swells 0→50.
-* **Kitchen's Closed** – channel 2 swells 100→255 while channels 0 and 1 dim
-  from 100 to 0.
-* **Normal** – channels 0‑2 swell from 0 to 150 over five seconds.
+* **Swell On** – channels 0‑2 swell from off to full brightness.
+* **Midnight Snack** – channel 0 swells from off to a night-light level while
+  channel 1 remains dim.
+* **Kitchen's Closed** – channel 2 swells to full while channels 0 and 1 stay
+  off.
+* **Normal** – channels 0‑2 swell from off to a comfortable mid-level.
 
 These definitions live in ``custom_presets.json`` exactly as the UI captured
 them.  Operators can overwrite them at any time by saving new presets through
