@@ -1,17 +1,16 @@
 # Preset architecture
 
-The ``Server/app/presets`` package turns the monolithic ``presets.py`` module
-into a collection of small, composable pieces:
+The ``Server/app/presets`` package is responsible for loading, saving and
+applying room-level presets.  A preset is a list of raw MQTT actions captured
+from the admin UI or API; the payload is persisted unchanged so that the server
+can replay the exact snapshot that was saved by an operator.
+
+## Package layout
 
 ```
 presets/
 ├── __init__.py            # Public API used by the rest of the application
 ├── README.md              # You are here
-├── action_registry.py     # Keeps track of action types and their reversers
-├── actions/               # Reusable "lego" blocks that build action payloads
-│   ├── __init__.py
-│   ├── color.py
-│   └── white.py
 └── custom_store.py        # JSON-backed storage for room-level presets
 ```
 
@@ -22,61 +21,27 @@ file ships with a handful of seeded presets (marked with ``"source": "seed"``)
 so that rooms have sensible defaults out of the box, but operators can add or
 replace entries entirely through the web UI/API.
 
-## Building reusable actions
+## Raw snapshot workflow
 
-Every effect/action is defined by a small builder function in ``actions/``. A
-builder returns the payload that will eventually be sent to ``MqttBus``. Each
-builder is registered with the central :class:`~presets.action_registry.ActionRegistry`
-via the :func:`~presets.register_action` decorator, which automatically adds the
-``_action_type`` metadata required for reversal when it is needed.
+The preset pipeline keeps snapshots verbatim from capture through playback:
 
-```python
-from .presets import register_action, reverse_action
+1. The admin UI records device state for a node and calls
+   :func:`~presets.snapshot_to_actions` to normalize the snapshot into per-module
+   MQTT actions tagged with the target ``node``.  The helper filters out invalid
+   entries (for example, missing ``strip``/``channel`` identifiers) but otherwise
+   leaves the payload untouched.
+2. The resulting actions, along with preset metadata such as ``id`` and
+   ``name``, are saved via :func:`~presets.save_custom_preset`.  The
+   :class:`~presets.custom_store.CustomPresetStore` persists the list to
+   ``custom_presets.json``.
+3. When a preset is triggered, :func:`~presets.apply_preset` walks each stored
+   action and sends it directly to :class:`~app.mqtt_bus.MqttBus` using the
+   module-specific publish helpers (``ws_set``, ``rgb_set`` or ``white_set``).
 
-
-def _reverse_fade(action: dict[str, object]) -> dict[str, object]:
-    action["params"] = list(reversed(action["params"]))
-    return action
-
-
-@register_action("my-module.fade", reverser=_reverse_fade)
-def fade_action(node: str, channel: int, start: int, end: int) -> dict[str, object]:
-    return {
-        "node": node,
-        "module": "my-module",
-        "channel": channel,
-        "effect": "fade",
-        "params": [start, end],
-    }
-
-
-# Later, if the UI needs to undo the change:
-reversed_payload = reverse_action(fade_action("node-1", 0, 0, 255))
-```
-
-The decorator stores both the builder and the ``_reverse_fade`` callback. If a
-preset action is created manually (without the decorator), use
-:func:`~presets.with_action_type` to attach metadata::
-
-```python
-manual_action = with_action_type("my-module.fade", {...})
-```
-
-If an action lacks metadata or no reverser is registered, ``reverse_action``
-falls back to copying the original payload unchanged.
-
-### Reversing custom actions
-
-Reversers receive a deep copy of the action dictionary and must return a new
-payload. They may inspect custom metadata to decide how to reverse. For example
-``actions/color.py`` stores ``_reverse_meta`` with the target color so that
-calling :func:`~presets.reverse_action` swaps between the active color and the
-fallback (by default, full black).
-
-When a reverser changes fields that future reversals depend on, it should also
-update any metadata accordingly so the operation remains symmetric. The existing
-``solid_color_action`` implementation demonstrates this by preserving the
-previous color inside ``_reverse_meta``.
+Because the payloads mirror the captured snapshot, no translation step is
+required during playback.  Any fields that were present when the preset was
+saved—effect identifiers, brightness levels or additional parameters—are sent
+through exactly as they were recorded.
 
 ## Motion automation and shutdown
 
@@ -119,18 +84,18 @@ presets saved through the UI will overwrite existing entries with matching IDs.
 
 ## Quick reference
 
-* ``presets.actions`` – reusable action builders such as
-  :func:`~presets.actions.white.white_swell_action`,
-  :func:`~presets.actions.color.ws_swell_action`,
-  :func:`~presets.actions.color.rgb_swell_action` and
-  :func:`~presets.actions.color.solid_color_action`.
-* ``presets.action_registry`` – the registry instance plus helper functions
-  (:func:`~presets.register_action`, :func:`~presets.reverse_action`,
-  :func:`~presets.with_action_type`).
-* ``custom_presets.json`` – JSON payload loaded by
-  :class:`~presets.custom_store.CustomPresetStore` and exposed via
-  :func:`~presets.get_room_presets`.
+* :func:`~presets.get_room_presets` – return the presets configured for a
+  ``house_id``/``room_id``.
+* :func:`~presets.list_custom_presets` – list custom presets for the provided
+  identifiers.
+* :func:`~presets.save_custom_preset` – normalize and persist a preset
+  definition.
+* :func:`~presets.delete_custom_preset` – remove a stored preset.
+* :func:`~presets.apply_preset` – replay the stored actions through
+  :class:`~app.mqtt_bus.MqttBus`.
+* :func:`~presets.snapshot_to_actions` – translate a node snapshot into action
+  payloads suitable for saving in a preset.
 
-This modular layout keeps effect builders isolated, makes reversibility explicit
-when it is required and allows new presets to be added by composing small,
-well-documented pieces.
+This modular layout keeps preset handling focused on the high-level lifecycle:
+capturing raw device snapshots, storing them safely and replaying them through a
+shared MQTT bus.
