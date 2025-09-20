@@ -5,24 +5,11 @@ from typing import Any, Dict, Optional, Tuple
 
 import paho.mqtt.client as mqtt
 from .config import settings
-from .mqtt_bus import MqttBus, topic_cmd
-from .presets import get_preset, apply_preset
+from .mqtt_bus import MqttBus
+from .presets import get_preset, apply_preset, reverse_preset
 from .motion_schedule import motion_schedule
 from .motion_prefs import motion_preferences
 from . import registry
-
-SPECIAL_ROOM_PRESETS = {
-    ("del-sur", "kitchen"): {
-        "node": "kitchen",
-        "on": "on",
-        "off": "off",
-    },
-    ("del-sur", "master"): {
-        "node": "master-closet",
-        "on": "on",
-        "off": "off",
-    },
-}
 
 MOTION_STATUS_REQUEST_INTERVAL = 30.0
 
@@ -33,8 +20,7 @@ class MotionManager:
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         # room_id -> {"house_id": str, "current": str|None, "timers": {sensor: Timer}}
-        # Special-case entries may also include keys like "timer", "on",
-        # "preset_on".
+        # Entries may also track the active preset identifier in ``preset_on``.
         self.active: Dict[str, Dict[str, Any]] = {}
         self.config: Dict[str, Dict[str, Any]] = {}
         # (house_id, room_id) -> {"house_id": str, "room_id": str,
@@ -56,10 +42,10 @@ class MotionManager:
         self.client.disconnect()
         for info in list(self.active.values()):
             for t in info.get("timers", {}).values():
-                t.cancel()
-            timer = info.get("timer")
-            if timer:
-                timer.cancel()
+                try:
+                    t.cancel()
+                except Exception:
+                    pass
         self.active.clear()
 
     def configure_node(self, node_id: str, enabled: bool, duration: int) -> None:
@@ -101,13 +87,6 @@ class MotionManager:
                     timer.cancel()
                 except Exception:
                     pass
-
-        timer = entry.get("timer")
-        if timer:
-            try:
-                timer.cancel()
-            except Exception:
-                pass
 
     def ensure_room_loaded(self, house_id: str, room_id: str) -> None:
         house, room = registry.find_room(house_id, room_id)
@@ -159,41 +138,14 @@ class MotionManager:
         if not room or not house:
             return
         room_id = room["id"]
-        special = SPECIAL_ROOM_PRESETS.get((house["id"], room_id))
-        if special:
-            preset_on = motion_schedule.active_preset(
-                house["id"], room_id, default=special.get("on")
-            )
-            if not preset_on:
-                return
-            entry = self.active.get(room_id)
-            duration = int(cfg.get("duration", 30))
-            if entry and entry.get("timer"):
-                entry["timer"].cancel()
-            else:
-                entry = {
-                    "house_id": house["id"],
-                    "timer": None,
-                    "on": False,
-                    "preset_on": preset_on,
-                }
-                self.active[room_id] = entry
-            entry["preset_on"] = preset_on
-            timer = threading.Timer(duration, self._turn_off_special, args=(room_id,))
-            timer.start()
-            entry["timer"] = timer
-            if not entry.get("on"):
-                preset = get_preset(house["id"], room_id, preset_on)
-                if preset:
-                    applied = self._apply_motion_preset(
-                        house["id"], room_id, preset
-                    )
-                    if applied:
-                        entry["on"] = True
-            return
-
         entry = self.active.setdefault(
-            room_id, {"house_id": house["id"], "current": None, "timers": {}}
+            room_id,
+            {
+                "house_id": house["id"],
+                "current": None,
+                "timers": {},
+                "preset_on": None,
+            },
         )
         timers = entry["timers"]
         repeat = sensor in timers
@@ -204,39 +156,18 @@ class MotionManager:
         timer.start()
         timers[sensor] = timer
         entry["current"] = "pir"
-        preset_id = "motion-far" + ("-repeat" if repeat else "")
-        preset = get_preset(entry["house_id"], room_id, preset_id)
-        if preset:
-            self._apply_motion_preset(entry["house_id"], room_id, preset)
-
-    def _turn_off_special(self, room_id: str) -> None:
-        entry = self.active.get(room_id)
-        if not entry:
+        preset_id = motion_schedule.active_preset(entry["house_id"], room_id)
+        if not preset_id:
             return
-        house_id = entry["house_id"]
-        special = SPECIAL_ROOM_PRESETS.get((house_id, room_id))
-        preset_off = None
-        off_hint = None
-        node_id = None
-        if special:
-            node_id = special.get("node")
-            off_hint = special.get("off")
-            if off_hint:
-                preset_off = get_preset(house_id, room_id, off_hint)
-        applied = False
-        if preset_off:
-            applied = self._apply_motion_preset(house_id, room_id, preset_off)
-        immune_nodes = self.motion_preferences.get_room_immune_nodes(
-            house_id, room_id
-        )
-        if (
-            not applied
-            and node_id
-            and off_hint
-            and node_id not in immune_nodes
-        ):
-            self.bus.pub(topic_cmd(node_id, "motion/hint"), {"hint": off_hint})
-        self.active.pop(room_id, None)
+        previous = entry.get("preset_on")
+        if previous == preset_id:
+            return
+        preset = get_preset(entry["house_id"], room_id, preset_id)
+        if not preset:
+            return
+        applied = self._apply_motion_preset(entry["house_id"], room_id, preset)
+        if applied:
+            entry["preset_on"] = preset_id
 
     def _clear_sensor(self, room_id: str, sensor: str) -> None:
         entry = self.active.get(room_id)
@@ -247,12 +178,19 @@ class MotionManager:
         house_id = entry["house_id"]
         if sensor == "pir" and entry.get("current") == "pir":
             entry["current"] = None
-            preset_id = "motion-far-off"
-            preset = get_preset(house_id, room_id, preset_id)
-            if preset:
-                self._apply_motion_preset(house_id, room_id, preset)
-        if not timers:
-            self.active.pop(room_id, None)
+        if timers:
+            return
+        preset_id = entry.get("preset_on")
+        self.active.pop(room_id, None)
+        if not preset_id:
+            return
+        preset = get_preset(house_id, room_id, preset_id)
+        if not preset:
+            return
+        reversed_preset = reverse_preset(preset)
+        if not reversed_preset:
+            return
+        self._apply_motion_preset(house_id, room_id, reversed_preset)
 
     # Internal helpers -----------------------------------------------
     def _request_motion_status(self, node_id: str, *, force: bool = False) -> None:

@@ -12,7 +12,7 @@ from .presets import (
     delete_custom_preset,
     snapshot_to_actions,
 )
-from .motion import motion_manager, SPECIAL_ROOM_PRESETS
+from .motion import motion_manager
 from .motion_schedule import motion_schedule
 from .motion_prefs import motion_preferences
 from .status_monitor import status_monitor
@@ -521,9 +521,6 @@ def api_set_motion_schedule(house_id: str, room_id: str, payload: Dict[str, Any]
     if len(schedule) != motion_schedule.slot_count:
         raise HTTPException(400, "invalid schedule length")
     valid_presets = {p["id"] for p in get_room_presets(house_id, room_id)}
-    default_preset = SPECIAL_ROOM_PRESETS.get((house_id, room_id), {}).get("on")
-    if default_preset:
-        valid_presets.add(default_preset)
     clean: List[Optional[str]] = []
     for value in schedule:
         if value in (None, "", "none"):

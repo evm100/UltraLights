@@ -13,14 +13,12 @@ from .action_registry import (
     reverse_action,
     with_action_type,
 )
-from .catalog import ROOM_PRESETS
 from .custom_store import CustomPresetStore
 
 
 _custom_presets = CustomPresetStore(settings.CUSTOM_PRESET_FILE)
 
 __all__ = [
-    "ROOM_PRESETS",
     "action_registry",
     "apply_preset",
     "delete_custom_preset",
@@ -38,19 +36,7 @@ __all__ = [
 def get_room_presets(house_id: str, room_id: str) -> List[Dict[str, Any]]:
     """Return presets defined for ``house_id``/``room_id``."""
 
-    house_key = str(house_id)
-    room_key = str(room_id)
-
-    presets: List[Dict[str, Any]] = []
-    catalog_presets = ROOM_PRESETS.get(house_key, {}).get(room_key, [])
-    if catalog_presets:
-        presets.extend(deepcopy(catalog_presets))
-
-    custom_presets = _custom_presets.list_presets(house_key, room_key)
-    if custom_presets:
-        presets.extend(custom_presets)
-
-    return presets
+    return _custom_presets.list_presets(str(house_id), str(room_id))
 
 
 def list_custom_presets(house_id: str, room_id: str) -> List[Dict[str, Any]]:

@@ -203,48 +203,7 @@ def test_apply_motion_preset_filters_actions(monkeypatch: pytest.MonkeyPatch, mo
     assert applied is False
     assert captured == []
 
-def test_turn_off_special_prefers_off_preset(monkeypatch: pytest.MonkeyPatch, motion_module):
-    manager = _build_manager(motion_module)
-    room_id = "kitchen"
-    manager.active[room_id] = {"house_id": "del-sur", "preset_on": "on"}
-
-    preset_off = {"id": "off", "actions": []}
-
-    def fake_get_preset(house_id: str, rid: str, preset_id: str):
-        if (house_id, rid, preset_id) == ("del-sur", room_id, "off"):
-            return preset_off
-        return None
-
-    applied: List[Dict[str, Any]] = []
-
-    monkeypatch.setattr(motion_module, "get_preset", fake_get_preset)
-    monkeypatch.setattr(motion_module, "apply_preset", lambda bus, preset: applied.append(preset))
-
-    manager._turn_off_special(room_id)
-
-    assert applied == [preset_off]
-    assert manager.bus.published == []
-    assert room_id not in manager.active
-
-
-def test_turn_off_special_falls_back_to_hint(monkeypatch: pytest.MonkeyPatch, motion_module):
-    manager = _build_manager(motion_module)
-    room_id = "kitchen"
-    manager.active[room_id] = {"house_id": "del-sur", "preset_on": "on"}
-
-    monkeypatch.setattr(motion_module, "get_preset", lambda *args, **kwargs: None)
-    applied: List[Dict[str, Any]] = []
-    monkeypatch.setattr(motion_module, "apply_preset", lambda bus, preset: applied.append(preset))
-
-    manager._turn_off_special(room_id)
-
-    expected_topic = motion_module.topic_cmd("kitchen", "motion/hint")
-    assert applied == []
-    assert manager.bus.published == [(expected_topic, {"hint": "off"}, False)]
-    assert room_id not in manager.active
-
-
-def test_kitchen_motion_event_triggers_on_preset(
+def test_motion_event_applies_scheduled_preset(
     monkeypatch: pytest.MonkeyPatch, motion_module
 ) -> None:
     manager = _build_manager(motion_module)
@@ -269,7 +228,7 @@ def test_kitchen_motion_event_triggers_on_preset(
     monkeypatch.setattr(
         motion_module.motion_schedule,
         "active_preset",
-        lambda h, r, default=None, when=None: default,
+        lambda h, r, when=None: "on" if (h, r) == ("del-sur", "kitchen") else None,
     )
 
     requested: List[Tuple[str, str, str]] = []
@@ -315,7 +274,59 @@ def test_kitchen_motion_event_triggers_on_preset(
     assert "kitchen" in manager.active
     entry = manager.active["kitchen"]
     assert entry["preset_on"] == "on"
-    assert entry["on"] is True
+    timer = entry["timers"].get("pir")
+    assert isinstance(timer, DummyTimer)
+    assert timer.started is True
+
+
+def test_clear_sensor_reverses_active_preset(
+    monkeypatch: pytest.MonkeyPatch, motion_module
+) -> None:
+    manager = _build_manager(motion_module)
+    house_id = "house"
+    room_id = "room"
+    preset_id = "evening"
+    original_preset = {
+        "id": preset_id,
+        "actions": [{"module": "white", "node": "node-1"}],
+    }
+    reversed_preset = {
+        "id": f"{preset_id}-reverse",
+        "actions": [{"module": "white", "node": "node-1"}],
+    }
+
+    manager.active[room_id] = {
+        "house_id": house_id,
+        "current": "pir",
+        "timers": {"pir": object()},
+        "preset_on": preset_id,
+    }
+
+    applied: List[Dict[str, Any]] = []
+    seen: List[Dict[str, Any]] = []
+
+    def fake_get_preset(house: str, room: str, preset: str):
+        if (house, room, preset) == (house_id, room_id, preset_id):
+            return original_preset
+        return None
+
+    def fake_reverse(preset: Dict[str, Any]) -> Dict[str, Any]:
+        seen.append(preset)
+        return reversed_preset
+
+    monkeypatch.setattr(motion_module, "get_preset", fake_get_preset)
+    monkeypatch.setattr(motion_module, "reverse_preset", fake_reverse)
+    monkeypatch.setattr(
+        motion_module,
+        "apply_preset",
+        lambda bus, payload: applied.append(payload),
+    )
+
+    manager._clear_sensor(room_id, "pir")
+
+    assert room_id not in manager.active
+    assert seen == [original_preset]
+    assert applied == [reversed_preset]
 
 
 def test_motion_event_skips_immune_nodes(monkeypatch: pytest.MonkeyPatch, motion_module):
@@ -339,13 +350,14 @@ def test_motion_event_skips_immune_nodes(monkeypatch: pytest.MonkeyPatch, motion
 
     applied: List[Dict[str, Any]] = []
 
+    monkeypatch.setattr(
+        motion_module.motion_schedule,
+        "active_preset",
+        lambda h, r, when=None: "motion-far" if (h, r) == ("house-1", "room-1") else None,
+    )
+
     def fake_get_preset(house_id: str, room_id: str, preset_id: str):
         if (house_id, room_id, preset_id) == ("house-1", "room-1", "motion-far"):
-            return {
-                "id": preset_id,
-                "actions": [{"module": "white", "node": "node-1"}],
-            }
-        if (house_id, room_id, preset_id) == ("house-1", "room-1", "motion-far-off"):
             return {
                 "id": preset_id,
                 "actions": [{"module": "white", "node": "node-1"}],

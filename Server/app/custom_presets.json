@@ -1,0 +1,822 @@
+{
+  "del-sur": {
+    "room-1": [
+      {
+        "id": "white-swell-100",
+        "name": "White Swell 0\u2192100",
+        "actions": [
+          {
+            "node": "del-sur-room-1-node1",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              5000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "del-sur-room-1-node1",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              5000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "del-sur-room-1-node1",
+            "module": "white",
+            "channel": 2,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              5000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "del-sur-room-1-node1",
+            "module": "white",
+            "channel": 3,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              5000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "node",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              5000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "node",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              5000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "node",
+            "module": "white",
+            "channel": 2,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              5000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "node",
+            "module": "white",
+            "channel": 3,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              5000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      }
+    ],
+    "kitchen": [
+      {
+        "id": "on",
+        "name": "On \ud83d\udfe2",
+        "actions": [
+          {
+            "node": "kitchen",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "kitchen",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "sala",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "medium",
+        "name": "Medium \ud83d\udfe1",
+        "actions": [
+          {
+            "node": "kitchen",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              150,
+              3000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "kitchen",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              150,
+              3000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "sala",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              150,
+              3000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "off",
+        "name": "Off \ud83d\udd34",
+        "actions": [
+          {
+            "node": "kitchen",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              255,
+              0,
+              1000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "kitchen",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              255,
+              0,
+              1000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "sala",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              255,
+              0,
+              1000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "midnight-snack",
+        "name": "Midnight Snack \ud83c\udf20",
+        "actions": [
+          {
+            "node": "kitchen",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              4,
+              2000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "kitchen",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              0,
+              2000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      }
+    ],
+    "master": [
+      {
+        "id": "on",
+        "name": "On \ud83d\udfe2",
+        "actions": [
+          {
+            "node": "master-closet",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "master-closet",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "off",
+        "name": "Off \ud83d\udd34",
+        "actions": [
+          {
+            "node": "master-closet",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              0,
+              1000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "master-closet",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              0,
+              1000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "half-bright",
+        "name": "Half Bright \ud83c\udf17",
+        "actions": [
+          {
+            "node": "master-closet",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              50,
+              2000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "master-closet",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              50,
+              2000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "floor",
+        "name": "Floor \u25fb\ufe0f",
+        "actions": [
+          {
+            "node": "master-closet",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              100,
+              2000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "master-closet",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              5,
+              1000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "nightlight",
+        "name": "Night Light \ud83c\udf19",
+        "actions": [
+          {
+            "node": "master-closet",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              4,
+              2000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      }
+    ],
+    "edgar": [
+      {
+        "id": "swell-on",
+        "name": "On",
+        "actions": [
+          {
+            "node": "amp-lights",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "amp-lights",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "blue",
+        "name": "Blue",
+        "actions": [
+          {
+            "node": "amp-lights",
+            "module": "ws",
+            "strip": 0,
+            "effect": "color_swell",
+            "brightness": 255,
+            "params": [
+              20.0,
+              0.0,
+              255.0,
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "ws.color_swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "guitar",
+        "name": "Guitar",
+        "actions": [
+          {
+            "node": "amp-lights",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "amp-lights",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              6,
+              3000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "guitar-no-amp",
+        "name": "Guitar No Amp",
+        "actions": [
+          {
+            "node": "amp-lights",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "amp-lights",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              0,
+              3000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "nightlight",
+        "name": "Night Light",
+        "actions": [
+          {
+            "node": "amp-lights",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              50,
+              2000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "amp-lights",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              0,
+              2000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "all-off",
+        "name": "Off",
+        "actions": [
+          {
+            "node": "amp-lights",
+            "module": "ws",
+            "strip": 0,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "_action_type": "ws.solid"
+          },
+          {
+            "node": "amp-lights",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              0,
+              2000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "amp-lights",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              0,
+              2000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      }
+    ]
+  },
+  "sdsu": {
+    "kitchen": [
+      {
+        "id": "on",
+        "name": "On \ud83d\udfe2",
+        "actions": [
+          {
+            "node": "sdsu-kitchen-node1",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "sdsu-kitchen-node1",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "sala",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              255,
+              3000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "medium",
+        "name": "Medium \ud83d\udfe1",
+        "actions": [
+          {
+            "node": "sdsu-kitchen-node1",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              150,
+              3000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "sdsu-kitchen-node1",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              150,
+              3000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "sala",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              150,
+              3000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "off",
+        "name": "Off \ud83d\udd34",
+        "actions": [
+          {
+            "node": "sdsu-kitchen-node1",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              255,
+              0,
+              1000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "sdsu-kitchen-node1",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              255,
+              0,
+              1000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "sala",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              255,
+              0,
+              1000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      },
+      {
+        "id": "midnight-snack",
+        "name": "Midnight Snack \ud83c\udf20",
+        "actions": [
+          {
+            "node": "sdsu-kitchen-node1",
+            "module": "white",
+            "channel": 0,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              4,
+              2000
+            ],
+            "_action_type": "white.swell"
+          },
+          {
+            "node": "sdsu-kitchen-node1",
+            "module": "white",
+            "channel": 1,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [
+              0,
+              0,
+              2000
+            ],
+            "_action_type": "white.swell"
+          }
+        ],
+        "source": "seed"
+      }
+    ]
+  }
+}
