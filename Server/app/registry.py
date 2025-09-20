@@ -151,6 +151,29 @@ def add_node(
     return node
 
 
+def set_node_name(node_id: str, name: str) -> Node:
+    """Update the display name for ``node_id`` and persist the registry."""
+
+    for house in settings.DEVICE_REGISTRY:
+        rooms = house.get("rooms")
+        if not isinstance(rooms, list):
+            continue
+        for room in rooms:
+            if not isinstance(room, dict):
+                continue
+            nodes = room.get("nodes")
+            if not isinstance(nodes, list):
+                continue
+            for node in nodes:
+                if not isinstance(node, dict):
+                    continue
+                if node.get("id") == node_id:
+                    node["name"] = name
+                    save_registry()
+                    return node
+    raise KeyError("node not found")
+
+
 def remove_node(node_id: str) -> Node:
     """Remove the node identified by ``node_id`` from the registry."""
     for house in settings.DEVICE_REGISTRY:

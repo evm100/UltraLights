@@ -25,6 +25,7 @@ BUS: Optional[MqttBus] = None
 
 DEFAULT_SNAPSHOT_TIMEOUT = 3.0
 MAX_CUSTOM_PRESET_NAME_LENGTH = 64
+MAX_NODE_NAME_LENGTH = 120
 
 def get_bus() -> MqttBus:
     global BUS
@@ -272,6 +273,27 @@ def api_remove_node(node_id: str):
     motion_manager.forget_node(node_id)
     status_monitor.forget(node_id)
     return {"ok": True, "node": removed}
+
+
+@router.post("/api/node/{node_id}/name")
+def api_set_node_name(node_id: str, payload: Dict[str, Any]):
+    _valid_node(node_id)
+    raw_name = payload.get("name")
+    if raw_name is None:
+        raise HTTPException(400, "missing name")
+    if not isinstance(raw_name, str):
+        raise HTTPException(400, "invalid name")
+    clean_name = raw_name.strip()
+    if not clean_name:
+        raise HTTPException(400, "invalid name")
+    if len(clean_name) > MAX_NODE_NAME_LENGTH:
+        raise HTTPException(400, "name too long")
+    try:
+        node = registry.set_node_name(node_id, clean_name)
+    except KeyError:
+        raise HTTPException(404, "Unknown node id")
+    motion_manager.update_node_name(node_id, clean_name)
+    return {"ok": True, "node": node}
 
 
 @router.post("/api/all-off")
