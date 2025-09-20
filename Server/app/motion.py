@@ -14,13 +14,13 @@ from . import registry
 SPECIAL_ROOM_PRESETS = {
     ("del-sur", "kitchen"): {
         "node": "kitchen",
-        "on": "swell-on",
-        "off": "swell-off",
+        "on": "on",
+        "off": "off",
     },
     ("del-sur", "master"): {
         "node": "master-closet",
-        "on": "swell-on",
-        "off": "swell-off",
+        "on": "on",
+        "off": "off",
     },
 }
 

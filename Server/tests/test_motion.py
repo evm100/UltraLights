@@ -206,12 +206,12 @@ def test_apply_motion_preset_filters_actions(monkeypatch: pytest.MonkeyPatch, mo
 def test_turn_off_special_prefers_off_preset(monkeypatch: pytest.MonkeyPatch, motion_module):
     manager = _build_manager(motion_module)
     room_id = "kitchen"
-    manager.active[room_id] = {"house_id": "del-sur", "preset_on": "swell-on"}
+    manager.active[room_id] = {"house_id": "del-sur", "preset_on": "on"}
 
-    preset_off = {"id": "swell-off", "actions": []}
+    preset_off = {"id": "off", "actions": []}
 
     def fake_get_preset(house_id: str, rid: str, preset_id: str):
-        if (house_id, rid, preset_id) == ("del-sur", room_id, "swell-off"):
+        if (house_id, rid, preset_id) == ("del-sur", room_id, "off"):
             return preset_off
         return None
 
@@ -230,7 +230,7 @@ def test_turn_off_special_prefers_off_preset(monkeypatch: pytest.MonkeyPatch, mo
 def test_turn_off_special_falls_back_to_hint(monkeypatch: pytest.MonkeyPatch, motion_module):
     manager = _build_manager(motion_module)
     room_id = "kitchen"
-    manager.active[room_id] = {"house_id": "del-sur", "preset_on": "swell-on"}
+    manager.active[room_id] = {"house_id": "del-sur", "preset_on": "on"}
 
     monkeypatch.setattr(motion_module, "get_preset", lambda *args, **kwargs: None)
     applied: List[Dict[str, Any]] = []
@@ -240,8 +240,82 @@ def test_turn_off_special_falls_back_to_hint(monkeypatch: pytest.MonkeyPatch, mo
 
     expected_topic = motion_module.topic_cmd("kitchen", "motion/hint")
     assert applied == []
-    assert manager.bus.published == [(expected_topic, {"hint": "swell-off"}, False)]
+    assert manager.bus.published == [(expected_topic, {"hint": "off"}, False)]
     assert room_id not in manager.active
+
+
+def test_kitchen_motion_event_triggers_on_preset(
+    monkeypatch: pytest.MonkeyPatch, motion_module
+) -> None:
+    manager = _build_manager(motion_module)
+    house = {"id": "del-sur", "name": "Del Sur"}
+    room = {
+        "id": "kitchen",
+        "name": "Kitchen",
+        "nodes": [{"id": "kitchen", "name": "Kitchen Node"}],
+    }
+    node = room["nodes"][0]
+
+    manager.config["kitchen"] = {"enabled": True, "duration": 45}
+
+    monkeypatch.setattr(
+        motion_module.registry,
+        "find_node",
+        lambda node_id: (house, room, node)
+        if node_id == "kitchen"
+        else (None, None, None),
+    )
+
+    monkeypatch.setattr(
+        motion_module.motion_schedule,
+        "active_preset",
+        lambda h, r, default=None, when=None: default,
+    )
+
+    requested: List[Tuple[str, str, str]] = []
+    preset_payload = {"id": "on", "actions": [{"module": "white", "node": "kitchen"}]}
+
+    def fake_get_preset(house_id: str, room_id: str, preset_id: str):
+        requested.append((house_id, room_id, preset_id))
+        if (house_id, room_id, preset_id) == ("del-sur", "kitchen", "on"):
+            return preset_payload
+        return None
+
+    monkeypatch.setattr(motion_module, "get_preset", fake_get_preset)
+
+    applied: List[Dict[str, Any]] = []
+    monkeypatch.setattr(motion_module, "apply_preset", lambda bus, preset: applied.append(preset))
+
+    class DummyTimer:
+        def __init__(self, interval, func, args=None, kwargs=None):
+            self.interval = interval
+            self.func = func
+            self.args = args or ()
+            self.kwargs = kwargs or {}
+            self.started = False
+
+        def start(self) -> None:
+            self.started = True
+
+        def cancel(self) -> None:  # pragma: no cover - trivial stub
+            pass
+
+    monkeypatch.setattr(motion_module.threading, "Timer", DummyTimer)
+
+    message = types.SimpleNamespace(
+        topic="ul/kitchen/evt/pir/motion",
+        payload=b'{"state": true}',
+    )
+
+    manager._on_message(None, None, message)
+
+    assert requested
+    assert requested[-1] == ("del-sur", "kitchen", "on")
+    assert applied == [preset_payload]
+    assert "kitchen" in manager.active
+    entry = manager.active["kitchen"]
+    assert entry["preset_on"] == "on"
+    assert entry["on"] is True
 
 
 def test_motion_event_skips_immune_nodes(monkeypatch: pytest.MonkeyPatch, motion_module):
