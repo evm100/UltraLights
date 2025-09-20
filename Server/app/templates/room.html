@@ -36,17 +36,10 @@
   </div>
 </div>
 {% if motion_config %}
-<div class="mt-8" id="motionSchedule" data-save-url="/api/house/{{ house.id }}/room/{{ room.id }}/motion-schedule" data-slot-minutes="{{ motion_config.slot_minutes|default(60) }}">
+<div class="mt-8" id="motionSchedule" data-save-url="/api/house/{{ house.id }}/room/{{ room.id }}/motion-schedule" data-slot-minutes="{{ motion_config.slot_minutes|default(60) }}" data-color-url="/api/house/{{ house.id }}/room/{{ room.id }}/motion-schedule/color">
   <h2 class="text-2xl font-semibold mb-4">Motion Schedule</h2>
-  <div class="glass rounded-xl p-4 overflow-x-auto">
-    <div class="motion-schedule-grid" id="motionScheduleGrid">
-      {% for slot in motion_config.schedule %}
-      <div class="motion-schedule-slot" data-slot="{{ loop.index0 }}">
-        <span class="motion-schedule-hour"></span>
-        <span class="motion-schedule-label"></span>
-      </div>
-      {% endfor %}
-    </div>
+  <div class="glass rounded-xl p-4">
+    <div class="motion-schedule-grid" id="motionScheduleGrid"></div>
   </div>
   <div class="glass rounded-xl p-4 mt-4">
     <div class="flex flex-wrap gap-4 items-end">
@@ -80,10 +73,15 @@
         <span class="motion-legend-label">No Motion</span>
       </div>
       {% for entry in motion_config.legend %}
-      <div class="motion-legend-item">
+      <button type="button"
+              class="motion-legend-item motion-legend-item--editable"
+              data-preset-id="{{ entry.id }}"
+              data-color="{{ entry.color }}"
+              title="Change color for preset {{ entry.name|e }}"
+              aria-label="Change color for preset {{ entry.name|e }}">
         <span class="motion-legend-swatch" style="--swatch-color: {{ entry.color }}"></span>
         <span class="motion-legend-label">{{ entry.name }}</span>
-      </div>
+      </button>
       {% endfor %}
     </div>
   </div>
@@ -151,11 +149,34 @@
 <script>
 document.getElementById('addNode').onclick = async () => {
   const name = prompt('New node name');
-  if(!name) return;
-  const res = await fetch('/api/house/{{ house.id }}/room/{{ room.id }}/nodes', {
-    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name})
-  });
-  if(res.ok) location.reload(); else alert('Failed to add node');
+  if (!name) {
+    return;
+  }
+  let res;
+  try {
+    res = await fetch('/api/house/{{ house.id }}/room/{{ room.id }}/nodes', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name}),
+    });
+  } catch (error) {
+    alert('Failed to add node');
+    return;
+  }
+  if (res.ok) {
+    location.reload();
+    return;
+  }
+  let message = 'Failed to add node';
+  try {
+    const data = await res.json();
+    if (data && typeof data.detail === 'string' && data.detail.trim()) {
+      message = data.detail;
+    }
+  } catch (error) {
+    // ignore JSON parse errors
+  }
+  alert(message);
 };
 {% if motion_config %}
 (function(){
@@ -185,6 +206,7 @@ document.getElementById('addNode').onclick = async () => {
     let presetColors = {{ motion_config.preset_colors|tojson }};
     const noMotionColor = "{{ motion_config.no_motion_color }}";
     const slotMinutes = parseInt(scheduleContainer.dataset.slotMinutes || "60", 10) || 60;
+    const colorUrl = scheduleContainer.dataset.colorUrl || '';
     const startSelect = document.getElementById('motionScheduleStart');
     const endSelect = document.getElementById('motionScheduleEnd');
     const presetSelect = document.getElementById('motionSchedulePreset');
@@ -192,8 +214,9 @@ document.getElementById('addNode').onclick = async () => {
     const saveButton = document.getElementById('motionScheduleSave');
     const statusEl = document.getElementById('motionScheduleStatus');
     const saveUrl = scheduleContainer.dataset.saveUrl;
-    let slots = scheduleGrid ? Array.from(scheduleGrid.querySelectorAll('.motion-schedule-slot')) : [];
+    const legendItems = Array.from(scheduleContainer.querySelectorAll('.motion-legend-item--editable'));
     const slotCount = scheduleData.length;
+    let slots = [];
     let statusTimeout = null;
     let dirty = false;
     let selectedSlot = 0;
@@ -203,35 +226,106 @@ document.getElementById('addNode').onclick = async () => {
     };
 
     presetNames[''] = 'No Motion';
+    const buildSlotElement = (index) => {
+      const slot = document.createElement('div');
+      slot.className = 'motion-schedule-slot';
+      slot.dataset.slot = String(index);
+      const hour = document.createElement('div');
+      hour.className = 'motion-schedule-hour';
+      slot.appendChild(hour);
+      const label = document.createElement('div');
+      label.className = 'motion-schedule-label';
+      slot.appendChild(label);
+      return slot;
+    };
 
-    if (scheduleGrid && slots.length < slotCount) {
-      for (let i = slots.length; i < slotCount; i++) {
-        const slot = document.createElement('div');
-        slot.className = 'motion-schedule-slot';
-        slot.dataset.slot = String(i);
-        const hour = document.createElement('span');
-        hour.className = 'motion-schedule-hour';
-        slot.appendChild(hour);
-        const label = document.createElement('span');
-        label.className = 'motion-schedule-label';
-        slot.appendChild(label);
-        scheduleGrid.appendChild(slot);
+    const rebuildScheduleGrid = () => {
+      if (!scheduleGrid) {
+        return [];
       }
-      slots = Array.from(scheduleGrid.querySelectorAll('.motion-schedule-slot'));
-    }
+      const columnCount = slotCount > 1 ? 2 : 1;
+      const rowsPerColumn = Math.ceil(slotCount / columnCount) || 1;
+      scheduleGrid.innerHTML = '';
+      scheduleGrid.style.setProperty('--motion-schedule-columns', String(columnCount));
+      const columnElements = [];
+      for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {
+        const columnEl = document.createElement('div');
+        columnEl.className = 'motion-schedule-column';
+        columnEl.dataset.column = String(columnIndex);
+        scheduleGrid.appendChild(columnEl);
+        columnElements.push(columnEl);
+      }
+      for (let idx = 0; idx < slotCount; idx++) {
+        const slot = buildSlotElement(idx);
+        const columnIndex = Math.min(Math.floor(idx / rowsPerColumn), columnElements.length - 1);
+        columnElements[columnIndex].appendChild(slot);
+      }
+      return Array.from(scheduleGrid.querySelectorAll('.motion-schedule-slot'));
+    };
 
-    slots.forEach((slot) => {
-      if (!slot.querySelector('.motion-schedule-hour')) {
-        const hour = document.createElement('span');
-        hour.className = 'motion-schedule-hour';
-        slot.appendChild(hour);
+    slots = rebuildScheduleGrid();
+
+    const colorPicker = document.createElement('input');
+    colorPicker.type = 'color';
+    colorPicker.className = 'motion-legend-color-input';
+    colorPicker.setAttribute('aria-hidden', 'true');
+    colorPicker.tabIndex = -1;
+    colorPicker.style.position = 'fixed';
+    colorPicker.style.left = '-9999px';
+    colorPicker.style.bottom = '0';
+    colorPicker.style.opacity = '0';
+    colorPicker.style.pointerEvents = 'none';
+    document.body.appendChild(colorPicker);
+    let activeLegendPreset = null;
+    let activeLegendPrevious = null;
+
+    const normalizeHexColor = (value) => {
+      if (typeof value !== 'string') {
+        return null;
       }
-      if (!slot.querySelector('.motion-schedule-label')) {
-        const label = document.createElement('span');
-        label.className = 'motion-schedule-label';
-        slot.appendChild(label);
+      let text = value.trim();
+      if (!text) {
+        return null;
       }
-    });
+      if (!text.startsWith('#')) {
+        text = `#${text}`;
+      }
+      if (text.length === 4) {
+        const shorthand = text.slice(1);
+        if (!/^[0-9a-fA-F]{3}$/.test(shorthand)) {
+          return null;
+        }
+        text = `#${shorthand
+          .split('')
+          .map((ch) => `${ch}${ch}`)
+          .join('')}`;
+      }
+      if (!/^#[0-9a-fA-F]{6}$/.test(text)) {
+        return null;
+      }
+      return `#${text.slice(1).toUpperCase()}`;
+    };
+
+    const updateLegendSwatches = () => {
+      legendItems.forEach((item) => {
+        const presetId = item.dataset.presetId || '';
+        if (!presetId) {
+          return;
+        }
+        const normalized = normalizeHexColor(presetColors[presetId] || '');
+        if (normalized) {
+          presetColors[presetId] = normalized;
+        }
+        const color = normalized || noMotionColor;
+        item.dataset.color = color;
+        const swatch = item.querySelector('.motion-legend-swatch');
+        if (swatch) {
+          swatch.style.setProperty('--swatch-color', color);
+        }
+      });
+    };
+
+    updateLegendSwatches();
 
     const minutesForIndex = (index) => {
       const normalized = ((index % slotCount) + slotCount) % slotCount;
@@ -302,6 +396,80 @@ document.getElementById('addNode').onclick = async () => {
       });
       updateSlotHighlight();
     };
+
+    if (legendItems.length) {
+      legendItems.forEach((item) => {
+        item.addEventListener('click', (event) => {
+          event.preventDefault();
+          const presetId = item.dataset.presetId || '';
+          if (!presetId) {
+            return;
+          }
+          const currentColor = normalizeHexColor(presetColors[presetId] || '') || '#38BDF8';
+          activeLegendPreset = presetId;
+          activeLegendPrevious = presetColors[presetId] || '';
+          colorPicker.value = currentColor;
+          colorPicker.click();
+        });
+      });
+    }
+
+    colorPicker.addEventListener('change', async () => {
+      const presetId = activeLegendPreset;
+      const previousColor = activeLegendPrevious;
+      activeLegendPreset = null;
+      activeLegendPrevious = null;
+      const selected = normalizeHexColor(colorPicker.value || '');
+      if (!presetId || !selected) {
+        return;
+      }
+      const previousNormalized = normalizeHexColor(previousColor || '');
+      if (previousNormalized && previousNormalized === selected) {
+        return;
+      }
+      const originalColor = presetColors[presetId];
+      presetColors[presetId] = selected;
+      updateLegendSwatches();
+      renderSchedule();
+      if (!colorUrl) {
+        presetColors[presetId] = originalColor;
+        updateLegendSwatches();
+        renderSchedule();
+        showError('Saving colors is not available.');
+        return;
+      }
+      try {
+        const response = await fetch(colorUrl, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({preset: presetId, color: selected}),
+        });
+        let data = null;
+        try {
+          data = await response.json();
+        } catch (err) {
+          data = null;
+        }
+        if (!response.ok) {
+          const detail = data && (data.detail || data.error || data.message || data.reason);
+          throw new Error(detail || 'Failed to update color.');
+        }
+        if (data && data.color) {
+          const normalized = normalizeHexColor(data.color);
+          if (normalized) {
+            presetColors[presetId] = normalized;
+            updateLegendSwatches();
+            renderSchedule();
+          }
+        }
+      } catch (err) {
+        presetColors[presetId] = originalColor;
+        updateLegendSwatches();
+        renderSchedule();
+        const message = err instanceof Error ? err.message : 'Failed to update color.';
+        showError(message);
+      }
+    });
 
     const updateSaveState = () => {
       if (!saveButton) return;
@@ -458,6 +626,7 @@ document.getElementById('addNode').onclick = async () => {
       });
       presetNames = newNames;
       presetColors = newColors;
+      updateLegendSwatches();
       rebuildPresetSelectOptions(normalized);
       renderSchedule();
       updateSelection(selectedSlot);
