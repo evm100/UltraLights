@@ -36,6 +36,9 @@ class _NoopBus:
     def ota_check(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - noop
         pass
 
+    def motion_off(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - noop
+        pass
+
     def all_off(self) -> None:  # pragma: no cover - noop
         pass
 
@@ -105,12 +108,16 @@ class _RecordingBus:
     def __init__(self) -> None:
         self.published: List[Tuple[str, Dict[str, Any], bool]] = []
         self.motion_status_requested: List[str] = []
+        self.motion_off_commands: List[Tuple[str, Dict[str, Any]]] = []
 
     def pub(self, topic: str, payload: Dict[str, Any], retain: bool = False) -> None:
         self.published.append((topic, payload, retain))
 
     def motion_status_request(self, node_id: str) -> None:
         self.motion_status_requested.append(node_id)
+
+    def motion_off(self, node_id: str, payload: Dict[str, Any]) -> None:
+        self.motion_off_commands.append((node_id, payload))
 
 
 def _build_manager(module):
@@ -279,21 +286,14 @@ def test_motion_event_applies_scheduled_preset(
     assert timer.started is True
 
 
-def test_clear_sensor_reverses_active_preset(
+def test_clear_sensor_sends_motion_off_commands(
     monkeypatch: pytest.MonkeyPatch, motion_module
 ) -> None:
     manager = _build_manager(motion_module)
     house_id = "house"
     room_id = "room"
     preset_id = "evening"
-    original_preset = {
-        "id": preset_id,
-        "actions": [{"module": "white", "node": "node-1"}],
-    }
-    reversed_preset = {
-        "id": f"{preset_id}-reverse",
-        "actions": [{"module": "white", "node": "node-1"}],
-    }
+    manager.motion_preferences.set_room_immune_nodes(house_id, room_id, ["immune-node"])
 
     manager.active[room_id] = {
         "house_id": house_id,
@@ -302,31 +302,34 @@ def test_clear_sensor_reverses_active_preset(
         "preset_on": preset_id,
     }
 
-    applied: List[Dict[str, Any]] = []
-    seen: List[Dict[str, Any]] = []
+    preset_payload = {
+        "id": preset_id,
+        "actions": [
+            {"module": "white", "node": "node-1"},
+            {"module": "white", "node": "node-1", "channel": 1},
+            {"module": "rgb", "node": "node-2"},
+            {"module": "ws", "node": "immune-node"},
+            {"module": "white"},
+            {"module": "other", "node": "node-3"},
+        ],
+    }
 
-    def fake_get_preset(house: str, room: str, preset: str):
-        if (house, room, preset) == (house_id, room_id, preset_id):
-            return original_preset
-        return None
-
-    def fake_reverse(preset: Dict[str, Any]) -> Dict[str, Any]:
-        seen.append(preset)
-        return reversed_preset
-
-    monkeypatch.setattr(motion_module, "get_preset", fake_get_preset)
-    monkeypatch.setattr(motion_module, "reverse_preset", fake_reverse)
     monkeypatch.setattr(
         motion_module,
-        "apply_preset",
-        lambda bus, payload: applied.append(payload),
+        "get_preset",
+        lambda house, room, preset: preset_payload
+        if (house, room, preset) == (house_id, room_id, preset_id)
+        else None,
     )
 
     manager._clear_sensor(room_id, "pir")
 
     assert room_id not in manager.active
-    assert seen == [original_preset]
-    assert applied == [reversed_preset]
+    expected_payload = {"fade": {"duration_ms": motion_module.MOTION_OFF_FADE_MS}}
+    assert manager.bus.motion_off_commands == [
+        ("node-1", expected_payload),
+        ("node-2", expected_payload),
+    ]
 
 
 def test_motion_event_skips_immune_nodes(monkeypatch: pytest.MonkeyPatch, motion_module):

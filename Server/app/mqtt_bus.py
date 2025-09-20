@@ -207,6 +207,16 @@ class MqttBus:
             rate_limited=rate_limited,
         )
 
+    def motion_off(self, node_id: str, payload: Dict[str, object]) -> None:
+        """Publish a motion clear command for ``node_id`` without rate limiting."""
+
+        self.pub(
+            topic_cmd(node_id, "motion/off"),
+            payload,
+            retain=False,
+            rate_limited=False,
+        )
+
     def status_request(self, node_id: str) -> None:
         """Request a full status snapshot from ``node_id``."""
         self.pub(topic_cmd(node_id, "status"), {}, retain=False)
