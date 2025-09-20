@@ -185,6 +185,30 @@ node responds on `ul/<node-id>/evt/motion/status` with:
 `pir_enabled` reports whether the firmware was built with the PIR task enabled
 and ready to publish motion events.
 
+`ul/<node-id>/cmd/motion/off` – request a fade-out of the active motion preset.
+
+```json
+{
+  "fade": {
+    "duration_ms": <int>,
+    "steps": <int>
+  }
+}
+```
+
+The `fade` object is optional; when omitted the node falls back to an
+eight-step ramp spread across roughly two seconds (2 000 ms). Any explicitly
+provided `duration_ms` or `steps` values override those defaults, and values
+≤ 0 switch to an immediate turn-off. When the command is accepted, the node
+captures the current brightness of every active WS, RGB, and white channel and
+walks them down evenly toward zero on each timer tick. If fresh motion activity
+arrives (`motion/on` followed by new preset commands), the fade is cancelled so
+the new scene can take over without fighting the ramp-down.
+
+Motion immunity is honoured by omission: controllers exclude immune fixtures
+from this command, so nodes that never receive `motion/off` simply maintain
+their existing levels.
+
 `ul/<node-id>/cmd/ota/check` – empty JSON `{}` triggers an OTA manifest check.
 
 OTA progress events are published on `ul/<node-id>/evt/ota` with payload

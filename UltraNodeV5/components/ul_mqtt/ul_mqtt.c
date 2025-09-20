@@ -1,5 +1,6 @@
 #include "ul_mqtt.h"
 #include "cJSON.h"
+#include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
@@ -31,6 +32,22 @@ static bool s_rgb_saved_valid[UL_RGB_MAX_STRIPS];
 static uint8_t s_white_saved_bri[UL_WHITE_MAX_CHANNELS];
 static bool s_white_saved_valid[UL_WHITE_MAX_CHANNELS];
 static bool s_lights_dimmed = false;
+
+typedef struct {
+  bool active;
+  int total_steps;
+  int current_step;
+  uint64_t interval_us;
+  uint8_t ws_initial_bri[UL_WS_MAX_STRIPS];
+  bool ws_active[UL_WS_MAX_STRIPS];
+  uint8_t rgb_initial_bri[UL_RGB_MAX_STRIPS];
+  bool rgb_active[UL_RGB_MAX_STRIPS];
+  uint8_t white_initial_bri[UL_WHITE_MAX_CHANNELS];
+  bool white_active[UL_WHITE_MAX_CHANNELS];
+} motion_fade_state_t;
+
+static motion_fade_state_t s_motion_fade = {0};
+static esp_timer_handle_t s_motion_fade_timer = NULL;
 
 static bool pir_task_compiled(void) {
 #if defined(CONFIG_UL_PIR_ENABLED) && CONFIG_UL_PIR_ENABLED
@@ -131,6 +148,173 @@ static void restore_all_lights(void) {
   }
 
   s_lights_dimmed = false;
+}
+
+static void motion_fade_apply_level(int step);
+
+static bool motion_fade_snapshot_channels(void) {
+  bool any = false;
+
+  memset(s_motion_fade.ws_active, 0, sizeof(s_motion_fade.ws_active));
+  memset(s_motion_fade.rgb_active, 0, sizeof(s_motion_fade.rgb_active));
+  memset(s_motion_fade.white_active, 0, sizeof(s_motion_fade.white_active));
+
+  for (int i = 0; i < UL_WS_MAX_STRIPS; ++i) {
+    ul_ws_strip_status_t st;
+    if (ul_ws_get_status(i, &st) && st.enabled && st.brightness > 0) {
+      s_motion_fade.ws_initial_bri[i] = st.brightness;
+      s_motion_fade.ws_active[i] = true;
+      any = true;
+    }
+  }
+
+  for (int i = 0; i < UL_RGB_MAX_STRIPS; ++i) {
+    ul_rgb_strip_status_t st;
+    if (ul_rgb_get_status(i, &st) && st.enabled && st.brightness > 0) {
+      s_motion_fade.rgb_initial_bri[i] = st.brightness;
+      s_motion_fade.rgb_active[i] = true;
+      any = true;
+    }
+  }
+
+  for (int i = 0; i < UL_WHITE_MAX_CHANNELS; ++i) {
+    ul_white_ch_status_t st;
+    if (ul_white_get_status(i, &st) && st.enabled && st.brightness > 0) {
+      s_motion_fade.white_initial_bri[i] = st.brightness;
+      s_motion_fade.white_active[i] = true;
+      any = true;
+    }
+  }
+
+  return any;
+}
+
+static void motion_fade_stop_timer(void) {
+  if (s_motion_fade_timer) {
+    esp_timer_stop(s_motion_fade_timer);
+  }
+}
+
+static void motion_fade_cancel(void) {
+  motion_fade_stop_timer();
+  s_motion_fade.active = false;
+  s_motion_fade.total_steps = 0;
+  s_motion_fade.current_step = 0;
+  s_motion_fade.interval_us = 0;
+}
+
+static void motion_fade_apply_level(int step) {
+  int steps = s_motion_fade.total_steps;
+  if (steps <= 0)
+    steps = 1;
+
+  int remaining = steps - step;
+  if (remaining < 0)
+    remaining = 0;
+
+  for (int i = 0; i < UL_WS_MAX_STRIPS; ++i) {
+    if (!s_motion_fade.ws_active[i])
+      continue;
+    int start = s_motion_fade.ws_initial_bri[i];
+    int value = 0;
+    if (remaining > 0)
+      value = (start * remaining + steps - 1) / steps;
+    ul_ws_set_brightness(i, (uint8_t)value);
+  }
+
+  for (int i = 0; i < UL_RGB_MAX_STRIPS; ++i) {
+    if (!s_motion_fade.rgb_active[i])
+      continue;
+    int start = s_motion_fade.rgb_initial_bri[i];
+    int value = 0;
+    if (remaining > 0)
+      value = (start * remaining + steps - 1) / steps;
+    ul_rgb_set_brightness(i, (uint8_t)value);
+  }
+
+  for (int i = 0; i < UL_WHITE_MAX_CHANNELS; ++i) {
+    if (!s_motion_fade.white_active[i])
+      continue;
+    int start = s_motion_fade.white_initial_bri[i];
+    int value = 0;
+    if (remaining > 0)
+      value = (start * remaining + steps - 1) / steps;
+    ul_white_set_brightness(i, (uint8_t)value);
+  }
+}
+
+static void motion_fade_timer_cb(void *arg) {
+  if (!s_motion_fade.active)
+    return;
+
+  s_motion_fade.current_step++;
+  motion_fade_apply_level(s_motion_fade.current_step);
+
+  if (s_motion_fade.current_step >= s_motion_fade.total_steps) {
+    motion_fade_cancel();
+  }
+}
+
+static void motion_fade_start(int duration_ms, int steps) {
+  motion_fade_cancel();
+
+  if (!motion_fade_snapshot_channels())
+    return;
+
+  if (steps <= 0)
+    steps = 8;
+  if (duration_ms <= 0)
+    duration_ms = 2000;
+
+  uint64_t interval_us = ((uint64_t)duration_ms * 1000ULL) / steps;
+  if (interval_us == 0)
+    interval_us = 1000;
+
+  s_motion_fade.total_steps = steps;
+  s_motion_fade.current_step = 0;
+  s_motion_fade.interval_us = interval_us;
+  s_motion_fade.active = true;
+
+  motion_fade_apply_level(0);
+
+  if (!s_motion_fade_timer) {
+    const esp_timer_create_args_t args = {
+        .callback = &motion_fade_timer_cb,
+        .name = "motion_fade",
+    };
+    esp_err_t err = esp_timer_create(&args, &s_motion_fade_timer);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to create motion fade timer: %s", esp_err_to_name(err));
+      s_motion_fade.active = false;
+      return;
+    }
+  }
+
+  esp_err_t start_err = esp_timer_start_periodic(s_motion_fade_timer, interval_us);
+  if (start_err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to start motion fade timer: %s", esp_err_to_name(start_err));
+    s_motion_fade.active = false;
+    return;
+  }
+}
+
+static void motion_fade_immediate_off(void) {
+  motion_fade_cancel();
+  if (!motion_fade_snapshot_channels())
+    return;
+
+  for (int i = 0; i < UL_WS_MAX_STRIPS; ++i) {
+    if (s_motion_fade.ws_active[i])
+      ul_ws_set_brightness(i, 0);
+  }
+  for (int i = 0; i < UL_RGB_MAX_STRIPS; ++i) {
+    if (s_motion_fade.rgb_active[i])
+      ul_rgb_set_brightness(i, 0);
+  }
+  for (int i = 0; i < UL_WHITE_MAX_CHANNELS; ++i) {
+    if (s_motion_fade.white_active[i])
+      ul_white_set_brightness(i, 0);
+  }
 }
 
 // JSON helpers (defined later)
@@ -572,6 +756,7 @@ static void on_message(esp_mqtt_event_handle_t event) {
   if (cmdlen >= 3 && strncmp(cmdroot, "cmd", 3) == 0) {
     const char *sub = cmdroot + 4; // skip "cmd/"
     if (starts_with(sub, "ws/set")) {
+      motion_fade_cancel();
       override_index_from_path(root, sub, "ws/set", "strip");
       int strip = 0;
       bool applied = handle_cmd_ws_set(root, &strip);
@@ -581,6 +766,7 @@ static void on_message(esp_mqtt_event_handle_t event) {
         }
       }
     } else if (starts_with(sub, "rgb/set")) {
+      motion_fade_cancel();
       override_index_from_path(root, sub, "rgb/set", "strip");
       int strip = 0;
       bool applied = handle_cmd_rgb_set(root, &strip);
@@ -595,6 +781,7 @@ static void on_message(esp_mqtt_event_handle_t event) {
       publish_status_snapshot();
     }
     else if (starts_with(sub, "white/set")) {
+      motion_fade_cancel();
       override_index_from_path(root, sub, "white/set", "channel");
       int channel = 0;
       bool applied = handle_cmd_white_set(root, &channel);
@@ -603,6 +790,25 @@ static void on_message(esp_mqtt_event_handle_t event) {
           ul_state_record_white(channel, event->data, event->data_len);
         }
       }
+    } else if (starts_with(sub, "motion/off")) {
+      int duration_ms = 2000;
+      int steps = 8;
+      cJSON *fade = cJSON_GetObjectItem(root, "fade");
+      if (fade && cJSON_IsObject(fade)) {
+        cJSON *dur = cJSON_GetObjectItem(fade, "duration_ms");
+        if (dur && cJSON_IsNumber(dur))
+          duration_ms = dur->valueint;
+        cJSON *jsteps = cJSON_GetObjectItem(fade, "steps");
+        if (jsteps && cJSON_IsNumber(jsteps))
+          steps = jsteps->valueint;
+      }
+      if (duration_ms <= 0 || steps <= 0) {
+        motion_fade_immediate_off();
+      } else {
+        motion_fade_start(duration_ms, steps);
+      }
+    } else if (starts_with(sub, "motion/on")) {
+      motion_fade_cancel();
     } else if (starts_with(sub, "motion/status")) {
       publish_motion_status();
     } else if (starts_with(sub, "status")) {
@@ -665,6 +871,7 @@ void ul_mqtt_start(void) {
 }
 
 void ul_mqtt_stop(void) {
+  motion_fade_cancel();
   if (!s_client)
     return;
   esp_mqtt_client_stop(s_client);
