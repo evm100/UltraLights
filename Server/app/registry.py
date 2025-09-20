@@ -89,6 +89,50 @@ def add_room(house_id: str, name: str) -> Room:
     return room
 
 
+def reorder_rooms(house_id: str, room_order: Iterable[str]) -> list[Room]:
+    """Rearrange rooms under ``house_id`` to match ``room_order``."""
+
+    house = find_house(house_id)
+    if not house:
+        raise KeyError("house not found")
+
+    rooms = house.get("rooms")
+    if not isinstance(rooms, list):
+        raise KeyError("room not found")
+
+    id_to_room: Dict[str, Room] = {}
+    for entry in rooms:
+        if not isinstance(entry, dict):
+            raise ValueError("room entry must be a mapping")
+        raw_id = entry.get("id")
+        if raw_id is None:
+            raise ValueError("room missing id")
+        room_id = str(raw_id)
+        if room_id in id_to_room:
+            raise ValueError(f"duplicate room id: {room_id}")
+        id_to_room[room_id] = entry
+
+    normalized_order: list[Room] = []
+    seen: set[str] = set()
+    for raw_room_id in room_order:
+        room_id = str(raw_room_id)
+        if room_id in seen:
+            raise ValueError(f"duplicate room id: {room_id}")
+        seen.add(room_id)
+        room = id_to_room.get(room_id)
+        if room is None:
+            raise ValueError(f"unknown room id: {room_id}")
+        normalized_order.append(room)
+
+    if len(normalized_order) != len(id_to_room):
+        missing = sorted(room_id for room_id in id_to_room.keys() if room_id not in seen)
+        raise ValueError(f"missing rooms: {', '.join(missing)}")
+
+    house["rooms"] = normalized_order
+    save_registry()
+    return normalized_order
+
+
 def add_node(
     house_id: str,
     room_id: str,

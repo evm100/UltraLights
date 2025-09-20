@@ -1,3 +1,4 @@
+import json
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -71,6 +72,40 @@ def test_registry_remove_room(monkeypatch, tmp_path):
 
     with pytest.raises(KeyError):
         registry.remove_room("house", "missing")
+
+
+def test_registry_reorder_rooms(monkeypatch, tmp_path):
+    from app import registry
+    from app.config import settings
+
+    test_registry = [
+        {
+            "id": "house",
+            "name": "House",
+            "rooms": [
+                {"id": "room-a", "name": "Room A", "nodes": []},
+                {"id": "room-b", "name": "Room B", "nodes": []},
+                {"id": "room-c", "name": "Room C", "nodes": []},
+            ],
+        }
+    ]
+
+    monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
+    monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
+
+    result = registry.reorder_rooms("house", ["room-c", "room-a", "room-b"])
+    assert [room["id"] for room in result] == ["room-c", "room-a", "room-b"]
+    stored = settings.DEVICE_REGISTRY[0]["rooms"]
+    assert [room["id"] for room in stored] == ["room-c", "room-a", "room-b"]
+
+    written = json.loads(settings.REGISTRY_FILE.read_text())
+    assert [room["id"] for room in written[0]["rooms"]] == ["room-c", "room-a", "room-b"]
+
+    with pytest.raises(ValueError):
+        registry.reorder_rooms("house", ["room-a", "room-a"])
+
+    with pytest.raises(ValueError):
+        registry.reorder_rooms("house", ["room-a", "room-b"])
 
 
 def test_api_delete_room_cleans_up(monkeypatch, tmp_path):
@@ -158,4 +193,42 @@ def test_api_delete_room_missing(monkeypatch):
     with pytest.raises(HTTPException) as excinfo:
         routes_api.api_delete_room("house", "room-a")
 
+    assert excinfo.value.status_code == 404
+
+
+def test_api_reorder_rooms(monkeypatch, tmp_path):
+    import app.routes_api as routes_api
+    from app.config import settings
+    from fastapi import HTTPException
+
+    test_registry = [
+        {
+            "id": "house",
+            "name": "House",
+            "rooms": [
+                {"id": "room-a", "name": "Room A", "nodes": []},
+                {"id": "room-b", "name": "Room B", "nodes": []},
+            ],
+        }
+    ]
+
+    monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
+    monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
+
+    result = routes_api.api_reorder_rooms("house", {"order": ["room-b", "room-a"]})
+    assert result["ok"] is True
+    assert result["order"] == ["room-b", "room-a"]
+    stored = settings.DEVICE_REGISTRY[0]["rooms"]
+    assert [room["id"] for room in stored] == ["room-b", "room-a"]
+
+    with pytest.raises(HTTPException) as excinfo:
+        routes_api.api_reorder_rooms("house", {"order": ["room-a"]})
+    assert excinfo.value.status_code == 400
+
+    with pytest.raises(HTTPException) as excinfo:
+        routes_api.api_reorder_rooms("house", {"order": "room-a"})
+    assert excinfo.value.status_code == 400
+
+    with pytest.raises(HTTPException) as excinfo:
+        routes_api.api_reorder_rooms("missing", {"order": ["room-a", "room-b"]})
     assert excinfo.value.status_code == 404

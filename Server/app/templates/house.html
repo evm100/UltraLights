@@ -7,9 +7,9 @@
     <button id="addRoom" class="w-12 h-12 flex items-center justify-center text-2xl rounded-full bg-indigo-600 hover:bg-indigo-500">+</button>
   </div>
 </div>
-<div class="grid md:grid-cols-3 gap-4">
+<div class="grid md:grid-cols-3 gap-4" data-room-grid>
   {% for r in house.rooms %}
-  <a href="/house/{{ house.id }}/room/{{ r.id }}" class="glass rounded-xl p-4 block hover:ring-2 hover:ring-indigo-400">
+  <a href="/house/{{ house.id }}/room/{{ r.id }}" data-room-card data-room-id="{{ r.id }}" class="glass rounded-xl p-4 block hover:ring-2 hover:ring-indigo-400 cursor-move">
     <div class="text-xl font-semibold">{{ r.name }}</div>
     <div class="opacity-60 text-xs mt-2">ID: {{ r.id }}</div>
     <div class="text-sm mt-2">{{ r.nodes|length }} nodes</div>
@@ -25,5 +25,90 @@ document.getElementById('addRoom').onclick = async () => {
   });
   if(res.ok) location.reload(); else alert('Failed to add room');
 };
+
+const grid = document.querySelector('[data-room-grid]');
+if(grid){
+  const cards = grid.querySelectorAll('[data-room-card]');
+  let dragging = null;
+  let dropOccurred = false;
+  let saving = false;
+
+  const persistOrder = async () => {
+    const order = Array.from(grid.querySelectorAll('[data-room-card]'))
+      .map(card => card.dataset.roomId)
+      .filter(id => !!id);
+    if(order.length <= 1){
+      return;
+    }
+    try {
+      const res = await fetch('/api/house/{{ house.id }}/rooms/reorder', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({order})
+      });
+      if(!res.ok){
+        throw new Error(await res.text());
+      }
+    } catch (err) {
+      console.error('Failed to save room order', err);
+      alert('Failed to save room order. Reloading previous layout.');
+      location.reload();
+    }
+  };
+
+  cards.forEach(card => {
+    card.setAttribute('draggable', 'true');
+    card.setAttribute('aria-grabbed', 'false');
+    card.addEventListener('dragstart', event => {
+      dragging = card;
+      dropOccurred = false;
+      card.classList.add('opacity-60', 'dragging');
+      card.setAttribute('aria-grabbed', 'true');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', card.dataset.roomId || '');
+    });
+    card.addEventListener('dragend', async () => {
+      card.classList.remove('opacity-60', 'dragging');
+      card.setAttribute('aria-grabbed', 'false');
+      const shouldSave = dropOccurred;
+      dropOccurred = false;
+      dragging = null;
+      if(shouldSave && !saving){
+        saving = true;
+        await persistOrder();
+        saving = false;
+      }
+    });
+  });
+
+  grid.addEventListener('dragover', event => {
+    if(!dragging) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const targetElement = event.target instanceof Element ? event.target.closest('[data-room-card]') : null;
+    if(!targetElement){
+      if(dragging && dragging !== grid.lastElementChild){
+        grid.appendChild(dragging);
+      }
+      return;
+    }
+    if(targetElement === dragging){
+      return;
+    }
+    const rect = targetElement.getBoundingClientRect();
+    const isAfter = event.clientY > rect.top + rect.height / 2;
+    if(isAfter){
+      targetElement.after(dragging);
+    } else {
+      targetElement.before(dragging);
+    }
+  });
+
+  grid.addEventListener('drop', event => {
+    if(!dragging) return;
+    event.preventDefault();
+    dropOccurred = true;
+  });
+}
 </script>
 {% endblock %}
