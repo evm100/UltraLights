@@ -196,6 +196,58 @@ def test_api_delete_room_missing(monkeypatch):
     assert excinfo.value.status_code == 404
 
 
+def test_api_set_node_name(monkeypatch, tmp_path):
+    import app.routes_api as routes_api
+    from app.config import settings
+    from fastapi import HTTPException
+
+    test_registry = [
+        {
+            "id": "house",
+            "rooms": [
+                {
+                    "id": "room-a",
+                    "nodes": [
+                        {"id": "node-1", "name": "Original Name", "modules": ["ws"]},
+                    ],
+                }
+            ],
+        }
+    ]
+
+    monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
+    monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
+
+    class MotionStub:
+        def __init__(self) -> None:
+            self.updates: List[tuple[str, str]] = []
+
+        def update_node_name(self, node_id: str, name: str) -> None:
+            self.updates.append((node_id, name))
+
+    motion_stub = MotionStub()
+    monkeypatch.setattr(routes_api, "motion_manager", motion_stub)
+
+    result = routes_api.api_set_node_name("node-1", {"name": "Updated Node"})
+
+    assert result["ok"] is True
+    assert result["node"]["name"] == "Updated Node"
+    assert settings.DEVICE_REGISTRY[0]["rooms"][0]["nodes"][0]["name"] == "Updated Node"
+    assert motion_stub.updates == [("node-1", "Updated Node")]
+
+    written = json.loads(settings.REGISTRY_FILE.read_text())
+    assert written[0]["rooms"][0]["nodes"][0]["name"] == "Updated Node"
+
+    with pytest.raises(HTTPException):
+        routes_api.api_set_node_name("node-1", {"name": "   "})
+
+    with pytest.raises(HTTPException):
+        routes_api.api_set_node_name("node-1", {"name": "x" * 200})
+
+    with pytest.raises(HTTPException):
+        routes_api.api_set_node_name("missing", {"name": "Another"})
+
+
 def test_api_reorder_rooms(monkeypatch, tmp_path):
     import app.routes_api as routes_api
     from app.config import settings
