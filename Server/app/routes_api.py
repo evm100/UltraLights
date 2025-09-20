@@ -291,6 +291,20 @@ def api_add_room(house_id: str, payload: Dict[str, str]):
     return {"ok": True, "room": room}
 
 
+@router.post("/api/house/{house_id}/rooms/reorder")
+def api_reorder_rooms(house_id: str, payload: Dict[str, Any]):
+    order = payload.get("order")
+    if not isinstance(order, list):
+        raise HTTPException(400, "missing order")
+    try:
+        new_order = registry.reorder_rooms(house_id, order)
+    except KeyError:
+        raise HTTPException(404, "Unknown house")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True, "order": [str(room.get("id")) for room in new_order]}
+
+
 @router.delete("/api/house/{house_id}/rooms/{room_id}")
 def api_delete_room(house_id: str, room_id: str):
     house, room = registry.find_room(house_id, room_id)
