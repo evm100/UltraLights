@@ -148,11 +148,34 @@
 <script>
 document.getElementById('addNode').onclick = async () => {
   const name = prompt('New node name');
-  if(!name) return;
-  const res = await fetch('/api/house/{{ house.id }}/room/{{ room.id }}/nodes', {
-    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name})
-  });
-  if(res.ok) location.reload(); else alert('Failed to add node');
+  if (!name) {
+    return;
+  }
+  let res;
+  try {
+    res = await fetch('/api/house/{{ house.id }}/room/{{ room.id }}/nodes', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name}),
+    });
+  } catch (error) {
+    alert('Failed to add node');
+    return;
+  }
+  if (res.ok) {
+    location.reload();
+    return;
+  }
+  let message = 'Failed to add node';
+  try {
+    const data = await res.json();
+    if (data && typeof data.detail === 'string' && data.detail.trim()) {
+      message = data.detail;
+    }
+  } catch (error) {
+    // ignore JSON parse errors
+  }
+  alert(message);
 };
 {% if motion_config %}
 (function(){

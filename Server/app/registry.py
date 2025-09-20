@@ -133,6 +133,9 @@ def reorder_rooms(house_id: str, room_order: Iterable[str]) -> list[Room]:
     return normalized_order
 
 
+MAX_NODE_ID_LENGTH = 31
+
+
 def add_node(
     house_id: str,
     room_id: str,
@@ -151,6 +154,9 @@ def add_node(
 
     house_slug = slugify(str(house_id))
     node_id = f"{house_slug}-{node_slug}" if house_slug else node_slug
+
+    if len(node_id) > MAX_NODE_ID_LENGTH:
+        raise ValueError(f"node id too long (max {MAX_NODE_ID_LENGTH} characters)")
 
     for _, _, existing in iter_nodes():
         existing_id = existing.get("id")
