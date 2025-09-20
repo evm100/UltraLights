@@ -12,15 +12,15 @@ presets/
 │   ├── __init__.py
 │   ├── color.py
 │   └── white.py
-└── catalog/               # House/room preset definitions built from actions
-    ├── __init__.py
-    ├── del_sur.py
-    ├── sdsu.py
-    └── shared.py
+└── custom_store.py        # JSON-backed storage for room-level presets
 ```
 
-Importers continue to use ``from .presets import get_room_presets`` and friends,
-but underneath each concern now lives in its own module.
+Importers continue to use ``from .presets import get_room_presets`` and friends.
+Preset data now lives in ``custom_presets.json`` alongside the server code and
+is loaded through :class:`~presets.custom_store.CustomPresetStore`.  The JSON
+file ships with a handful of seeded presets (marked with ``"source": "seed"``)
+so that rooms have sensible defaults out of the box, but operators can add or
+replace entries entirely through the web UI/API.
 
 ## Building reusable actions
 
@@ -89,27 +89,16 @@ previous color inside ``_reverse_meta``.
 
 ## Defining presets
 
-House and room presets live under ``catalog/``. Each module returns a dictionary
-mapping room identifiers to lists of presets. Preset definitions simply stitch
- together the reusable actions:
+Presets are stored in ``custom_presets.json`` as a mapping of
+``{house_id: {room_id: [preset, ...]}}``.  Each preset mirrors the structure
+returned by :func:`~presets.get_room_presets` and contains an ``id``, ``name``
+and ``actions`` list.  The seeded entries bundled with the repository were
+generated from the original Python catalog, but operators typically manage the
+file indirectly: the admin UI snapshots device state to create new presets, and
+the API exposes CRUD endpoints that update the JSON store safely.
 
-```python
-from ..actions import white_swell_actions
-
-PRESETS = {
-    "my-room": [
-        {
-            "id": "wake-up",
-            "name": "Wake Up",
-            "actions": white_swell_actions(["my-room-node"], 0, 200, 4000),
-        }
-    ]
-}
-```
-
-To add a new house, drop a module alongside ``del_sur.py`` and ``sdsu.py`` and
-update ``catalog/__init__.py`` to include it in ``ROOM_PRESETS``. Presets can
-freely mix existing action builders or new ones that you register.
+When editing the file manually, remember to preserve unique identifiers—custom
+presets saved through the UI will overwrite existing entries with matching IDs.
 
 ## Quick reference
 
@@ -121,8 +110,9 @@ freely mix existing action builders or new ones that you register.
 * ``presets.action_registry`` – the registry instance plus helper functions
   (:func:`~presets.register_action`, :func:`~presets.reverse_action`,
   :func:`~presets.with_action_type`).
-* ``presets.catalog`` – house/room preset data structures assembled from the
-  action helpers.
+* ``custom_presets.json`` – JSON payload loaded by
+  :class:`~presets.custom_store.CustomPresetStore` and exposed via
+  :func:`~presets.get_room_presets`.
 
 This modular layout keeps effect builders isolated, makes reversibility explicit
 and allows new presets to be added by composing small, well-documented pieces.

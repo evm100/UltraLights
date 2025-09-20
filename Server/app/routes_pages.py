@@ -22,7 +22,7 @@ from .effects import (
     WS_EFFECT_TIER_ORDER,
 )
 from .presets import get_room_presets
-from .motion import motion_manager, SPECIAL_ROOM_PRESETS
+from .motion import motion_manager
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
@@ -84,11 +84,7 @@ def _build_motion_config(
     if not sensor_nodes:
         return None
     sensor_nodes.sort(key=lambda item: item["node_name"].lower())
-    special = SPECIAL_ROOM_PRESETS.get((house_id, room_id))
-    default_preset = special.get("on") if special else None
-    schedule = motion_schedule.get_schedule_or_default(
-        house_id, room_id, default=default_preset
-    )
+    schedule = motion_schedule.get_schedule_or_default(house_id, room_id)
     palette = [
         "#f97316",
         "#38bdf8",
@@ -110,9 +106,6 @@ def _build_motion_config(
         preset_id = str(preset_id)
         preset_colors[preset_id] = palette[idx % len(palette)]
         preset_names[preset_id] = preset.get("name", preset_id)
-    if default_preset and default_preset not in preset_colors:
-        preset_colors[default_preset] = palette[len(preset_colors) % len(palette)]
-        preset_names.setdefault(default_preset, default_preset)
     for preset_id in schedule:
         if preset_id and preset_id not in preset_colors:
             preset_colors[preset_id] = palette[len(preset_colors) % len(palette)]
