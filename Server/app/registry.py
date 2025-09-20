@@ -144,7 +144,20 @@ def add_node(
     _, room = find_room(house_id, room_id)
     if not room:
         raise KeyError("room not found")
-    node = {"id": slugify(name), "name": name, "kind": kind}
+
+    node_slug = slugify(name)
+    if not node_slug:
+        raise ValueError("node name produces empty slug")
+
+    house_slug = slugify(str(house_id))
+    node_id = f"{house_slug}-{node_slug}" if house_slug else node_slug
+
+    for _, _, existing in iter_nodes():
+        existing_id = existing.get("id")
+        if isinstance(existing_id, str) and existing_id == node_id:
+            raise ValueError(f"node id already exists: {node_id}")
+
+    node = {"id": node_id, "name": name, "kind": kind}
     node["modules"] = modules or ["ws", "rgb", "white", "ota"]
     room.setdefault("nodes", []).append(node)
     save_registry()

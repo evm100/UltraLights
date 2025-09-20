@@ -196,6 +196,62 @@ def test_api_delete_room_missing(monkeypatch):
     assert excinfo.value.status_code == 404
 
 
+def test_api_add_node_house_prefixed_id(monkeypatch, tmp_path):
+    import app.routes_api as routes_api
+    from app.config import settings
+
+    test_registry = [
+        {
+            "id": "del-sur",
+            "name": "Del Sur",
+            "rooms": [
+                {"id": "kitchen", "name": "Kitchen", "nodes": []},
+            ],
+        }
+    ]
+
+    monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
+    monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
+
+    result = routes_api.api_add_node("del-sur", "kitchen", {"name": "Kitchen Node"})
+
+    assert result["ok"] is True
+    assert result["node"]["id"] == "del-sur-kitchen-node"
+    stored_nodes = settings.DEVICE_REGISTRY[0]["rooms"][0]["nodes"]
+    assert stored_nodes[0]["id"] == "del-sur-kitchen-node"
+
+
+def test_api_add_node_duplicate_name(monkeypatch, tmp_path):
+    import app.routes_api as routes_api
+    from app.config import settings
+    from fastapi import HTTPException
+
+    test_registry = [
+        {
+            "id": "del-sur",
+            "name": "Del Sur",
+            "rooms": [
+                {
+                    "id": "kitchen",
+                    "name": "Kitchen",
+                    "nodes": [
+                        {"id": "del-sur-kitchen-node", "name": "Kitchen Node", "kind": "ultranode"}
+                    ],
+                }
+            ],
+        }
+    ]
+
+    monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
+    monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
+
+    with pytest.raises(HTTPException) as excinfo:
+        routes_api.api_add_node("del-sur", "kitchen", {"name": "Kitchen Node"})
+
+    assert excinfo.value.status_code == 400
+    assert "already exists" in str(excinfo.value.detail)
+
+
 def test_api_set_node_name(monkeypatch, tmp_path):
     import app.routes_api as routes_api
     from app.config import settings
