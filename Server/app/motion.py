@@ -57,6 +57,17 @@ class MotionManager:
         self._ensure_room_sensor_entry(node_id, config=config)
         self._request_motion_status(node_id, force=True)
 
+    def update_node_name(self, node_id: str, name: str) -> None:
+        """Update cached sensor metadata for ``node_id`` with ``name``."""
+
+        for entry in self.room_sensors.values():
+            nodes = entry.get("nodes")
+            if not isinstance(nodes, dict):
+                continue
+            node_entry = nodes.get(node_id)
+            if isinstance(node_entry, dict):
+                node_entry["node_name"] = name
+
     def forget_node(self, node_id: str) -> None:
         self.config.pop(node_id, None)
         for key, entry in list(self.room_sensors.items()):

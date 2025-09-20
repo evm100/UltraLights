@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+{% set node_display_name = node.name or node.id %}
 <div class="flex items-center gap-2 text-sm mb-2">
   <span class="opacity-70">Connection:</span>
   <span
@@ -10,7 +11,59 @@
     style="background-color: #ef4444; box-shadow: 0 0 12px rgba(239,68,68,0.6);"
   ></span>
 </div>
-<h2 class="text-2xl font-semibold mb-4">{{ node.name }}</h2>
+<div id="nodeNameContainer" class="mb-4">
+  <div id="nodeNameDisplay" class="flex flex-wrap items-center gap-3">
+    <h2 class="text-2xl font-semibold" id="nodeNameText">{{ node_display_name }}</h2>
+    <button
+      id="nodeNameEdit"
+      type="button"
+      class="glass px-3 py-1 text-sm font-semibold rounded-lg hover:ring-2 hover:ring-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+    >
+      Edit Name
+    </button>
+  </div>
+  <form
+    id="nodeNameForm"
+    class="hidden flex flex-wrap items-center gap-3 mt-2"
+    autocomplete="off"
+    novalidate
+  >
+    <label for="nodeNameInput" class="sr-only">Node name</label>
+    <input
+      id="nodeNameInput"
+      name="name"
+      type="text"
+      value="{{ node_display_name }}"
+      maxlength="120"
+      aria-label="Node name"
+      spellcheck="false"
+      class="text-2xl font-semibold bg-transparent border border-indigo-500/40 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400/60 focus:outline-none rounded-lg px-3 py-1 text-slate-100 placeholder-slate-500 min-w-[220px]"
+    />
+    <div class="flex items-center gap-2">
+      <button
+        id="nodeNameSave"
+        type="submit"
+        class="glass px-3 py-1 text-sm font-semibold rounded-lg hover:ring-2 hover:ring-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50 disabled:hover:ring-0 disabled:cursor-not-allowed"
+      >
+        Save
+      </button>
+      <button
+        id="nodeNameCancel"
+        type="button"
+        class="text-sm opacity-80 hover:opacity-100 focus:outline-none focus:underline"
+      >
+        Cancel
+      </button>
+    </div>
+  </form>
+  <p
+    id="nodeNameStatus"
+    class="text-sm opacity-80 mt-2 hidden"
+    role="status"
+    aria-live="polite"
+  ></p>
+  <div class="text-sm opacity-60 mt-1">ID: {{ node.id }}</div>
+</div>
 <script>
   window.nodeBrightnessLimits = {{ brightness_limits|default({})|tojson }};
 </script>
@@ -40,6 +93,16 @@ const DEFAULT_MODULES = new Set({{ default_modules|tojson }});
 const STATUS_URL = `/api/node/${encodeURIComponent(STATUS_NODE_ID)}/status`;
 const STATE_URL = `/api/node/${encodeURIComponent(STATUS_NODE_ID)}/state`;
 const statusDot = document.getElementById('nodeStatusDot');
+const nodeNameDisplay = document.getElementById('nodeNameDisplay');
+const nodeNameText = document.getElementById('nodeNameText');
+const nodeNameForm = document.getElementById('nodeNameForm');
+const nodeNameInput = document.getElementById('nodeNameInput');
+const nodeNameEditButton = document.getElementById('nodeNameEdit');
+const nodeNameCancelButton = document.getElementById('nodeNameCancel');
+const nodeNameSaveButton = document.getElementById('nodeNameSave');
+const nodeNameStatus = document.getElementById('nodeNameStatus');
+let originalNodeName = nodeNameInput ? nodeNameInput.value.trim() : '';
+let savingNodeName = false;
 const moduleWrappers = Array.from(document.querySelectorAll('[data-module]'));
 const moduleWrapperMap = new Map();
 moduleWrappers.forEach((wrapper) => {
@@ -49,6 +112,146 @@ moduleWrappers.forEach((wrapper) => {
 });
 const moduleStatusMessage = document.getElementById('moduleStateMessage');
 const moduleLoaders = (window.nodeModuleLoaders = window.nodeModuleLoaders || {});
+
+function setNodeNameStatus(message, mode) {
+  if (!nodeNameStatus) return;
+  if (!message) {
+    nodeNameStatus.textContent = '';
+    nodeNameStatus.classList.add('hidden');
+    nodeNameStatus.classList.remove('text-emerald-400', 'text-rose-400');
+    return;
+  }
+  nodeNameStatus.textContent = message;
+  nodeNameStatus.classList.remove('hidden');
+  nodeNameStatus.classList.remove('text-emerald-400', 'text-rose-400');
+  if (mode === 'error') {
+    nodeNameStatus.classList.add('text-rose-400');
+  } else if (mode === 'success') {
+    nodeNameStatus.classList.add('text-emerald-400');
+  }
+}
+
+function toggleNodeNameEdit(show) {
+  if (!nodeNameDisplay || !nodeNameForm) return;
+  if (show) {
+    nodeNameDisplay.classList.add('hidden');
+    nodeNameForm.classList.remove('hidden');
+  } else {
+    nodeNameDisplay.classList.remove('hidden');
+    nodeNameForm.classList.add('hidden');
+  }
+}
+
+function updateNodeNameSaveState() {
+  if (!nodeNameInput || !nodeNameSaveButton) return;
+  const current = nodeNameInput.value.trim();
+  const hasChanged = current && current !== originalNodeName;
+  nodeNameSaveButton.disabled = savingNodeName || !hasChanged;
+}
+
+async function submitNodeName() {
+  if (!nodeNameInput) return;
+  const desiredName = nodeNameInput.value.trim();
+  if (!desiredName) {
+    setNodeNameStatus('Name cannot be empty.', 'error');
+    return;
+  }
+  if (desiredName === originalNodeName) {
+    toggleNodeNameEdit(false);
+    return;
+  }
+  savingNodeName = true;
+  updateNodeNameSaveState();
+  nodeNameInput.disabled = true;
+  setNodeNameStatus('Saving…');
+  try {
+    const res = await fetch(`/api/node/${encodeURIComponent(STATUS_NODE_ID)}/name`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: desiredName }),
+    });
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const errorPayload = await res.json();
+        if (errorPayload && typeof errorPayload.detail === 'string') {
+          detail = errorPayload.detail;
+        }
+      } catch (error) {
+        /* ignore JSON parse errors */
+      }
+      throw new Error(detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const storedName =
+      data && data.node && typeof data.node.name === 'string'
+        ? data.node.name
+        : desiredName;
+    originalNodeName = storedName.trim();
+    if (nodeNameText) {
+      nodeNameText.textContent = storedName;
+    }
+    nodeNameInput.value = storedName;
+    document.title = storedName;
+    setNodeNameStatus('Saved node name.', 'success');
+    toggleNodeNameEdit(false);
+  } catch (error) {
+    console.error('Failed to save node name', error);
+    setNodeNameStatus('Failed to save name.', 'error');
+  } finally {
+    savingNodeName = false;
+    if (nodeNameInput) {
+      nodeNameInput.disabled = false;
+    }
+    updateNodeNameSaveState();
+  }
+}
+
+if (nodeNameEditButton && nodeNameForm && nodeNameDisplay && nodeNameInput) {
+  nodeNameEditButton.addEventListener('click', () => {
+    toggleNodeNameEdit(true);
+    setNodeNameStatus('', '');
+    nodeNameInput.disabled = false;
+    nodeNameInput.focus();
+    nodeNameInput.select();
+    updateNodeNameSaveState();
+  });
+}
+
+if (nodeNameCancelButton && nodeNameInput) {
+  nodeNameCancelButton.addEventListener('click', () => {
+    nodeNameInput.value = originalNodeName;
+    toggleNodeNameEdit(false);
+    setNodeNameStatus('', '');
+    updateNodeNameSaveState();
+  });
+}
+
+if (nodeNameForm) {
+  nodeNameForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!savingNodeName) {
+      submitNodeName();
+    }
+  });
+}
+
+if (nodeNameInput) {
+  nodeNameInput.addEventListener('input', () => {
+    updateNodeNameSaveState();
+  });
+  nodeNameInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      nodeNameInput.value = originalNodeName;
+      toggleNodeNameEdit(false);
+      setNodeNameStatus('', '');
+      updateNodeNameSaveState();
+    }
+  });
+}
+
+updateNodeNameSaveState();
 
 function setModuleStateMessage(text, mode) {
   if (!moduleStatusMessage) return;
