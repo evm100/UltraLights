@@ -466,19 +466,24 @@ if (container) {
   };
 
   const persistPresetOrder = async () => {
-    if (!orderDirty) {
+    const order = currentOrder();
+    if (order.length < 2) {
+      orderDirty = false;
+      lastKnownOrder = order.slice();
       return true;
     }
+
+    const hasChanges = !ordersEqual(order, lastKnownOrder);
+    orderDirty = hasChanges;
+    if (!hasChanges) {
+      return true;
+    }
+
     if (!reorderUrl) {
       setStatus('Saving preset order is not available.', 'error');
       return false;
     }
-    const order = currentOrder();
-    if (order.length < 2) {
-      orderDirty = false;
-      lastKnownOrder = order;
-      return true;
-    }
+    
     try {
       if (editButton) {
         editButton.disabled = true;
@@ -534,7 +539,11 @@ if (container) {
       if (editing) {
         editing = false;
         updateEditingUI();
-        await persistPresetOrder();
+        const saved = await persistPresetOrder();
+        if (!saved) {
+          editing = true;
+          updateEditingUI();
+        }
       } else {
         editing = true;
         updateEditingUI();
