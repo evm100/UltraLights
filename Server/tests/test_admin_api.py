@@ -1,3 +1,4 @@
+import importlib
 import json
 import sys
 from copy import deepcopy
@@ -5,6 +6,7 @@ from pathlib import Path
 from typing import List
 
 import pytest
+from fastapi import HTTPException
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -332,7 +334,6 @@ def test_api_set_node_name(monkeypatch, tmp_path):
 def test_api_reorder_rooms(monkeypatch, tmp_path):
     import app.routes_api as routes_api
     from app.config import settings
-    from fastapi import HTTPException
 
     test_registry = [
         {
@@ -365,3 +366,83 @@ def test_api_reorder_rooms(monkeypatch, tmp_path):
     with pytest.raises(HTTPException) as excinfo:
         routes_api.api_reorder_rooms("missing", {"order": ["room-a", "room-b"]})
     assert excinfo.value.status_code == 404
+
+
+def test_api_reorder_room_presets(monkeypatch, tmp_path):
+    preset_path = tmp_path / "custom_presets.json"
+    monkeypatch.setenv("CUSTOM_PRESET_FILE", str(preset_path))
+
+    test_registry = [
+        {
+            "id": "house",
+            "name": "House",
+            "rooms": [{"id": "room", "name": "Room", "nodes": []}],
+        }
+    ]
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps(test_registry))
+    monkeypatch.setenv("REGISTRY_FILE", str(registry_path))
+
+    for module_name in ["app.routes_api", "app.presets", "app.config", "app.registry"]:
+        sys.modules.pop(module_name, None)
+
+    try:
+        config_module = importlib.import_module("app.config")
+        settings = config_module.settings
+        routes_api = importlib.import_module("app.routes_api")
+        presets = importlib.import_module("app.presets")
+
+        monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
+        monkeypatch.setattr(settings, "CUSTOM_PRESET_FILE", preset_path)
+        monkeypatch.setattr(
+            routes_api.registry.settings, "DEVICE_REGISTRY", deepcopy(test_registry)
+        )
+        monkeypatch.setattr(
+            routes_api.registry.settings, "CUSTOM_PRESET_FILE", preset_path
+        )
+        assert routes_api.registry.find_room("house", "room")[1] is not None
+
+        presets.save_custom_preset(
+            "house",
+            "room",
+            {
+                "id": "one",
+                "name": "One",
+                "actions": [
+                    {"module": "white", "node": "node-1", "channel": 0, "effect": "", "params": []}
+                ],
+            },
+        )
+        presets.save_custom_preset(
+            "house",
+            "room",
+            {
+                "id": "two",
+                "name": "Two",
+                "actions": [
+                    {"module": "white", "node": "node-1", "channel": 1, "effect": "", "params": []}
+                ],
+            },
+        )
+
+        result = routes_api.api_reorder_room_presets("house", "room", {"order": ["two", "one"]})
+        assert result["ok"] is True
+        assert [preset["id"] for preset in result["presets"]] == ["two", "one"]
+
+        stored = presets.list_custom_presets("house", "room")
+        assert [preset["id"] for preset in stored] == ["two", "one"]
+
+        with pytest.raises(HTTPException) as excinfo:
+            routes_api.api_reorder_room_presets("house", "room", {"order": ["two", "two"]})
+        assert excinfo.value.status_code == 400
+
+        with pytest.raises(HTTPException) as excinfo:
+            routes_api.api_reorder_room_presets("house", "room", {"order": "two"})
+        assert excinfo.value.status_code == 400
+
+        with pytest.raises(HTTPException) as excinfo:
+            routes_api.api_reorder_room_presets("house", "room", {"order": ["missing", "one"]})
+        assert excinfo.value.status_code == 400
+    finally:
+        for module_name in ["app.routes_api", "app.presets", "app.config", "app.registry"]:
+            sys.modules.pop(module_name, None)

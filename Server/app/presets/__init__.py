@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from copy import deepcopy
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from ..config import settings
 from ..mqtt_bus import MqttBus
@@ -19,6 +19,7 @@ __all__ = [
     "get_preset",
     "get_room_presets",
     "list_custom_presets",
+    "reorder_custom_presets",
     "save_custom_preset",
     "snapshot_to_actions",
 ]
@@ -53,6 +54,16 @@ def delete_custom_preset(house_id: str, room_id: str, preset_id: str) -> bool:
     """Remove the custom preset ``preset_id`` from ``house_id``/``room_id``."""
 
     return _custom_presets.delete_preset(str(house_id), str(room_id), str(preset_id))
+
+
+def reorder_custom_presets(
+    house_id: str, room_id: str, preset_order: Iterable[Any]
+) -> List[Dict[str, Any]]:
+    """Reorder presets for ``house_id``/``room_id`` to match ``preset_order``."""
+
+    return _custom_presets.reorder_presets(
+        str(house_id), str(room_id), preset_order
+    )
 
 
 def get_preset(house_id: str, room_id: str, preset_id: str) -> Optional[Dict[str, Any]]:
