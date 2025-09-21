@@ -483,6 +483,7 @@ if (container) {
       setStatus('Saving preset order is not available.', 'error');
       return false;
     }
+    
     try {
       if (editButton) {
         editButton.disabled = true;
