@@ -219,6 +219,82 @@ class CustomPresetRoundTripTests(unittest.TestCase):
                 )
 
 
+class CustomPresetReorderTests(unittest.TestCase):
+    def test_reorder_presets_updates_persistence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            preset_path = Path(tmp_dir) / "custom_presets.json"
+            with _override_custom_preset_file(preset_path) as presets:
+                presets.save_custom_preset(
+                    "house-1",
+                    "room-1",
+                    {"id": "one", "name": "One", "actions": []},
+                )
+                presets.save_custom_preset(
+                    "house-1",
+                    "room-1",
+                    {"id": "two", "name": "Two", "actions": []},
+                )
+                presets.save_custom_preset(
+                    "house-1",
+                    "room-1",
+                    {"id": "three", "name": "Three", "actions": []},
+                )
+
+                initial = presets.list_custom_presets("house-1", "room-1")
+                self.assertEqual([p["id"] for p in initial], ["one", "two", "three"])
+
+                reordered = presets.reorder_custom_presets(
+                    "house-1", "room-1", ["three", "one", "two"]
+                )
+                self.assertEqual([p["id"] for p in reordered], ["three", "one", "two"])
+
+                persisted = presets.list_custom_presets("house-1", "room-1")
+                self.assertEqual([p["id"] for p in persisted], ["three", "one", "two"])
+
+    def test_reorder_presets_validates_order(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            preset_path = Path(tmp_dir) / "custom_presets.json"
+            with _override_custom_preset_file(preset_path) as presets:
+                presets.save_custom_preset(
+                    "house-1",
+                    "room-1",
+                    {"id": "one", "name": "One", "actions": []},
+                )
+                presets.save_custom_preset(
+                    "house-1",
+                    "room-1",
+                    {"id": "two", "name": "Two", "actions": []},
+                )
+
+                with self.assertRaises(ValueError):
+                    presets.reorder_custom_presets(
+                        "house-1", "room-1", ["two", "two"]
+                    )
+
+                with self.assertRaises(ValueError):
+                    presets.reorder_custom_presets("house-1", "room-1", ["two"])
+
+                with self.assertRaises(ValueError):
+                    presets.reorder_custom_presets(
+                        "house-1", "room-1", ["missing", "one"]
+                    )
+
+                stored = presets.list_custom_presets("house-1", "room-1")
+                self.assertEqual([p["id"] for p in stored], ["one", "two"])
+
+    def test_reorder_presets_handles_empty_rooms(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            preset_path = Path(tmp_dir) / "custom_presets.json"
+            with _override_custom_preset_file(preset_path) as presets:
+                self.assertEqual(
+                    presets.reorder_custom_presets("house-1", "room-1", []),
+                    [],
+                )
+
+                with self.assertRaises(KeyError):
+                    presets.reorder_custom_presets("house-1", "room-1", ["one"])
+
+
 class RecordingClient:
     """Simple MQTT client stub that records published messages."""
 

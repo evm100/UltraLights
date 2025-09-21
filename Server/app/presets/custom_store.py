@@ -6,7 +6,7 @@ import json
 import threading
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 
 Preset = Dict[str, Any]
@@ -147,6 +147,59 @@ class CustomPresetStore:
                     self._persist()
                     return True
             return False
+
+    def reorder_presets(
+        self, house_id: str, room_id: str, preset_order: Iterable[Any]
+    ) -> PresetList:
+        with self._lock:
+            normalized_ids: List[str] = []
+            seen: set[str] = set()
+            for raw_id in preset_order:
+                if raw_id is None:
+                    raise ValueError("preset id cannot be empty")
+                preset_id = str(raw_id).strip()
+                if not preset_id:
+                    raise ValueError("preset id cannot be empty")
+                if preset_id in seen:
+                    raise ValueError(f"duplicate preset id: {preset_id}")
+                seen.add(preset_id)
+                normalized_ids.append(preset_id)
+
+            house = self._data.get(str(house_id))
+            if not house:
+                if normalized_ids:
+                    raise KeyError("house not found")
+                return []
+
+            room_presets = house.get(str(room_id))
+            if not room_presets:
+                if normalized_ids:
+                    raise KeyError("room not found")
+                return []
+
+            id_to_preset: Dict[str, Preset] = {}
+            for preset in room_presets:
+                preset_id = preset.get("id")
+                if not isinstance(preset_id, str):
+                    continue
+                if preset_id in id_to_preset:
+                    raise ValueError(f"duplicate preset id: {preset_id}")
+                id_to_preset[preset_id] = preset
+
+            for preset_id in normalized_ids:
+                if preset_id not in id_to_preset:
+                    raise ValueError(f"unknown preset id: {preset_id}")
+
+            missing = sorted(
+                preset_id for preset_id in id_to_preset.keys() if preset_id not in seen
+            )
+            if missing:
+                raise ValueError(f"missing presets: {', '.join(missing)}")
+
+            ordered_presets = [deepcopy(id_to_preset[preset_id]) for preset_id in normalized_ids]
+            house[str(room_id)] = ordered_presets
+            self._persist()
+            return [deepcopy(preset) for preset in ordered_presets]
 
 
 __all__ = ["CustomPresetStore"]

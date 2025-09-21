@@ -5,6 +5,7 @@ if (container) {
   const editButton = document.getElementById('presetEditButton');
   const baseUrl = container.dataset.apiBase || '';
   const presetsUrl = baseUrl ? `${baseUrl}/presets` : '';
+  const reorderUrl = presetsUrl ? `${presetsUrl}/reorder` : '';
   const applyUrlFor = (id) => `${baseUrl}/preset/${encodeURIComponent(id)}`;
   let statusTimer = null;
 
@@ -81,6 +82,25 @@ if (container) {
   const initialPresets = normalizePresets(initialRaw);
   let presets = initialPresets;
   let editing = false;
+  let orderDirty = false;
+
+  const ordersEqual = (a, b) => {
+    if (!Array.isArray(a) || !Array.isArray(b)) {
+      return false;
+    }
+    if (a.length !== b.length) {
+      return false;
+    }
+    for (let index = 0; index < a.length; index += 1) {
+      if (a[index] !== b[index]) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const currentOrder = () => presets.map((preset) => preset.id);
+  let lastKnownOrder = currentOrder();
 
   const dragState = { id: null, index: -1 };
   let currentDropTarget = null;
@@ -262,6 +282,8 @@ if (container) {
       presets = normalizePresets(data.presets);
       renderPresets();
       updateEditingUI();
+      lastKnownOrder = currentOrder();
+      orderDirty = false;
       sharePresets(presets);
     }
   };
@@ -363,6 +385,7 @@ if (container) {
     if (moved) {
       renderPresets();
       updateEditingUI();
+      orderDirty = !ordersEqual(currentOrder(), lastKnownOrder);
       sharePresets(presets);
     }
   });
@@ -442,6 +465,50 @@ if (container) {
     }
   };
 
+  const persistPresetOrder = async () => {
+    const order = currentOrder();
+    if (order.length < 2) {
+      orderDirty = false;
+      lastKnownOrder = order.slice();
+      return true;
+    }
+
+    const hasChanges = !ordersEqual(order, lastKnownOrder);
+    orderDirty = hasChanges;
+    if (!hasChanges) {
+      return true;
+    }
+
+    if (!reorderUrl) {
+      setStatus('Saving preset order is not available.', 'error');
+      return false;
+    }
+    try {
+      if (editButton) {
+        editButton.disabled = true;
+      }
+      setStatus('Saving preset order...', 'info');
+      const data = await fetchJson(reorderUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order }),
+      });
+      updateFromResponse(data);
+      lastKnownOrder = currentOrder();
+      orderDirty = false;
+      setStatus('Preset order saved ✓', 'success', true);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update preset order.';
+      setStatus(`Failed to update preset order: ${message}`, 'error');
+      return false;
+    } finally {
+      if (editButton) {
+        editButton.disabled = false;
+      }
+    }
+  };
+
   container.addEventListener('click', (event) => {
     const deleteButton = event.target.closest('button.preset-delete');
     if (deleteButton) {
@@ -466,10 +533,20 @@ if (container) {
   });
 
   if (editButton) {
-    editButton.addEventListener('click', (event) => {
+    editButton.addEventListener('click', async (event) => {
       event.preventDefault();
-      editing = !editing;
-      updateEditingUI();
+      if (editing) {
+        editing = false;
+        updateEditingUI();
+        const saved = await persistPresetOrder();
+        if (!saved) {
+          editing = true;
+          updateEditingUI();
+        }
+      } else {
+        editing = true;
+        updateEditingUI();
+      }
     });
   }
 
