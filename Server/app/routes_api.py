@@ -10,6 +10,7 @@ from .presets import (
     get_room_presets,
     save_custom_preset,
     delete_custom_preset,
+    reorder_custom_presets,
     snapshot_to_actions,
 )
 from .motion import motion_manager
@@ -492,6 +493,26 @@ def api_delete_room_preset(house_id: str, room_id: str, preset_id: str):
         raise HTTPException(404, "Unknown preset")
 
     presets = get_room_presets(house_id, room_id)
+    return {"ok": True, "presets": presets}
+
+
+@router.post("/api/house/{house_id}/room/{room_id}/presets/reorder")
+def api_reorder_room_presets(house_id: str, room_id: str, payload: Dict[str, Any]):
+    house, room = registry.find_room(house_id, room_id)
+    if not house or not room:
+        raise HTTPException(404, "Unknown room")
+
+    order = payload.get("order")
+    if not isinstance(order, list):
+        raise HTTPException(400, "order must be provided as a list")
+
+    try:
+        presets = reorder_custom_presets(house_id, room_id, order)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except KeyError:
+        raise HTTPException(404, "Unknown preset")
+
     return {"ok": True, "presets": presets}
 
 
