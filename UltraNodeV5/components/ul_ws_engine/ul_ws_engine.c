@@ -220,6 +220,26 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
     s_strips[idx].frame_pos = 0.0f;
 }
 
+static void deinit_strip(int idx) {
+    if (idx < 0 || idx >= (int)(sizeof(s_strips) / sizeof(s_strips[0]))) return;
+    ws_strip_t* strip = &s_strips[idx];
+    if (strip->handle) {
+        led_strip_del(strip->handle);
+        strip->handle = NULL;
+    }
+    if (strip->frame) {
+        free(strip->frame);
+        strip->frame = NULL;
+    }
+    strip->pixels = 0;
+    strip->eff = NULL;
+    strip->solid_r = 0;
+    strip->solid_g = 0;
+    strip->solid_b = 0;
+    strip->brightness = 0;
+    strip->frame_pos = 0.0f;
+}
+
 static void apply_brightness(uint8_t* f, int count, uint8_t bri) {
     if (bri == 255) return;
     for (int i=0;i<count;i++) {
@@ -271,7 +291,13 @@ static void ws_task(void*)
 
 static void led_refresh_task(void *arg) {
     while (1) {
-        xSemaphoreTake(s_refresh_sem, portMAX_DELAY);
+        if (!s_refresh_sem) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+        if (xSemaphoreTake(s_refresh_sem, portMAX_DELAY) != pdTRUE) {
+            continue;
+        }
 #if CONFIG_UL_WS0_ENABLED
         if (s_strips[0].handle) led_strip_refresh(s_strips[0].handle);
 #endif
@@ -302,6 +328,12 @@ void ul_ws_engine_start(void)
     init_strip(1, 0, 0, false);
 #endif
     s_refresh_sem = xSemaphoreCreateBinary();
+    if (!s_refresh_sem) {
+        ESP_LOGE(TAG, "Failed to create WS refresh semaphore");
+        deinit_strip(0);
+        deinit_strip(1);
+        return;
+    }
     // Pixel refresh tasks pin to core 1 on multi-core targets to free core 0
     // for networking and other work.
     ul_task_create(led_refresh_task, "ws_refresh", 2048, NULL, 24, &s_refresh_task, 1);
@@ -320,13 +352,7 @@ void ul_ws_engine_stop(void)
         s_ws_task = NULL;
     }
     for (int i = 0; i < 2; ++i) {
-        if (s_strips[i].handle) {
-            led_strip_del(s_strips[i].handle);
-            s_strips[i].handle = NULL;
-        }
-        free(s_strips[i].frame);
-        s_strips[i].frame = NULL;
-        s_strips[i].pixels = 0;
+        deinit_strip(i);
     }
     if (s_refresh_sem) {
         vSemaphoreDelete(s_refresh_sem);
