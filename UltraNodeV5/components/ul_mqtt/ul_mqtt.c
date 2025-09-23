@@ -18,6 +18,7 @@
 #include "ul_rgb_engine.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #endif
 
 #include <ctype.h>
@@ -28,6 +29,12 @@
 static const char *TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
+
+#ifndef UL_MQTT_TESTING
+#define UL_MQTT_PUBLISH_ACK_QUEUE_LENGTH 8
+#define UL_MQTT_PUBLISH_ACK_TIMEOUT_MS 2000
+static QueueHandle_t s_publish_ack_queue = NULL;
+#endif
 
 #define UL_MQTT_RETRY_DELAY_US (5ULL * 1000000ULL)
 
@@ -359,12 +366,40 @@ static void override_index_from_path(cJSON *root, const char *sub,
 }
 
 // Helper to publish JSON
-static void publish_json(const char *topic, const char *json) {
+static int publish_json(const char *topic, const char *json) {
 
-  if (!s_client || !ul_core_is_connected())
-    return;
-  esp_mqtt_client_publish(s_client, topic, json, 0, 1, 0);
+  if (!s_client || !ul_core_is_connected() || !json)
+    return -1;
+  return esp_mqtt_client_publish(s_client, topic, json, 0, 1, 0);
 }
+
+#ifndef UL_MQTT_TESTING
+static bool wait_for_publish_ack(int msg_id, uint32_t timeout_ms) {
+  if (msg_id <= 0)
+    return false;
+  if (!s_publish_ack_queue) {
+    s_publish_ack_queue =
+        xQueueCreate(UL_MQTT_PUBLISH_ACK_QUEUE_LENGTH, sizeof(int));
+    if (!s_publish_ack_queue)
+      return false;
+  }
+
+  TickType_t timeout_ticks = pdMS_TO_TICKS(timeout_ms);
+  if (timeout_ticks == 0)
+    timeout_ticks = 1;
+  TickType_t deadline = xTaskGetTickCount() + timeout_ticks;
+
+  while (true) {
+    TickType_t now = xTaskGetTickCount();
+    TickType_t remaining = (deadline > now) ? (deadline - now) : 0;
+    int ack_id = 0;
+    if (xQueueReceive(s_publish_ack_queue, &ack_id, remaining) != pdTRUE)
+      return false;
+    if (ack_id == msg_id)
+      return true;
+  }
+}
+#endif
 
 static cJSON *load_params_from_state(bool (*copy_fn)(int, char *, size_t),
                                      int index, char *buffer,
@@ -610,10 +645,22 @@ void ul_mqtt_publish_ota_event(const char *status, const char *detail) {
   cJSON_AddStringToObject(root, "status", status);
   if (detail)
     cJSON_AddStringToObject(root, "detail", detail);
+  int msg_id = -1;
   char *json = cJSON_PrintUnformatted(root);
-  publish_json(topic, json);
-  cJSON_free(json);
+  if (json) {
+    msg_id = publish_json(topic, json);
+    cJSON_free(json);
+  }
   cJSON_Delete(root);
+#ifndef UL_MQTT_TESTING
+  if (msg_id >= 0 && status && strcmp(status, "success") == 0) {
+    if (!wait_for_publish_ack(msg_id, UL_MQTT_PUBLISH_ACK_TIMEOUT_MS)) {
+      ESP_LOGW(TAG,
+               "Timed out waiting for OTA success publish acknowledgment (msg_id=%d)",
+               msg_id);
+    }
+  }
+#endif
 }
 
 static void publish_motion_status(void) {
@@ -842,6 +889,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_CONNECTED: {
     ESP_LOGI(TAG, "MQTT connected");
     s_ready = true;
+#ifndef UL_MQTT_TESTING
+    if (s_publish_ack_queue)
+      xQueueReset(s_publish_ack_queue);
+#endif
     ul_health_notify_mqtt(true);
     restore_all_lights();
     if (ul_core_is_connected()) {
@@ -853,11 +904,36 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     }
     break;
   }
+#ifndef UL_MQTT_TESTING
+  case MQTT_EVENT_PUBLISHED: {
+    ESP_LOGD(TAG, "MQTT published msg_id=%d", event->msg_id);
+    if (s_publish_ack_queue) {
+      int msg_id = event->msg_id;
+      if (xQueueSend(s_publish_ack_queue, &msg_id, 0) != pdTRUE) {
+        int dropped;
+        if (xQueueReceive(s_publish_ack_queue, &dropped, 0) == pdTRUE) {
+          if (xQueueSend(s_publish_ack_queue, &msg_id, 0) != pdTRUE) {
+            ESP_LOGW(TAG, "Failed to enqueue publish acknowledgment (msg_id=%d)",
+                     msg_id);
+          }
+        } else {
+          ESP_LOGW(TAG, "Failed to enqueue publish acknowledgment (msg_id=%d)",
+                   msg_id);
+        }
+      }
+    }
+    break;
+  }
+#endif
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGW(TAG, "MQTT disconnected");
     s_ready = false;
     ul_health_notify_mqtt(false);
     dim_all_lights();
+#ifndef UL_MQTT_TESTING
+    if (s_publish_ack_queue)
+      xQueueReset(s_publish_ack_queue);
+#endif
     break;
   case MQTT_EVENT_DATA:
     on_message(event);
@@ -929,6 +1005,18 @@ void ul_mqtt_start(void) {
   }
 
   cancel_mqtt_retry();
+
+#ifndef UL_MQTT_TESTING
+  if (s_publish_ack_queue) {
+    xQueueReset(s_publish_ack_queue);
+  } else {
+    s_publish_ack_queue =
+        xQueueCreate(UL_MQTT_PUBLISH_ACK_QUEUE_LENGTH, sizeof(int));
+    if (!s_publish_ack_queue) {
+      ESP_LOGW(TAG, "Failed to allocate MQTT publish acknowledgment queue");
+    }
+  }
+#endif
 
   // MQTT runs at modest priority. On the ESP32-C3 all tasks share the
   // single core, so no explicit core assignment is needed.
