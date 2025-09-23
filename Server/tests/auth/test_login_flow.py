@@ -106,8 +106,11 @@ def test_login_rejects_invalid_credentials(client: TestClient) -> None:
     assert f"{SESSION_COOKIE_NAME}=" in cookie_header
     assert "Max-Age=0" in cookie_header
 
-    unauthenticated = client.get(f"/house/{house_external_id}")
-    assert unauthenticated.status_code == 401
+    unauthenticated = client.get(
+        f"/house/{house_external_id}", follow_redirects=False
+    )
+    assert unauthenticated.status_code == 303
+    assert unauthenticated.headers["location"] == "/login"
 
 
 def test_logout_clears_cookie_and_blocks_access(client: TestClient) -> None:
@@ -126,5 +129,8 @@ def test_logout_clears_cookie_and_blocks_access(client: TestClient) -> None:
     assert f"{SESSION_COOKIE_NAME}=" in cookie_header
     assert "Max-Age=0" in cookie_header
 
-    protected = client.get(f"/house/{house_external_id}")
-    assert protected.status_code == 401
+    protected = client.get(
+        f"/house/{house_external_id}", follow_redirects=False
+    )
+    assert protected.status_code == 303
+    assert protected.headers["location"] == "/login"

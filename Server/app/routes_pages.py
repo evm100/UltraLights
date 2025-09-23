@@ -2,13 +2,14 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
 from . import registry
-from .auth.dependencies import get_current_user, require_admin
+from .auth.access import AccessPolicy, HouseContext, NodeContext, RoomContext
+from .auth.dependencies import get_current_user
 from .auth.models import House, HouseMembership, User
 from .auth.security import (
     SESSION_COOKIE_NAME,
@@ -42,6 +43,21 @@ router = APIRouter()
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 NODE_MODULE_TEMPLATES = ["ws", "rgb", "white", "ota", "motion"]
+
+
+def _require_current_user(
+    request: Request,
+    session: Session = Depends(get_session),
+) -> User:
+    try:
+        return get_current_user(request, session)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            raise HTTPException(
+                status.HTTP_303_SEE_OTHER,
+                headers={"Location": "/login"},
+            ) from exc
+        raise
 
 
 def _user_default_house_external_id(session: Session, user: User) -> Optional[str]:
@@ -96,11 +112,8 @@ def _redirect_if_authenticated(request: Request, session: Session) -> Optional[R
 
 
 @router.get("/", include_in_schema=False)
-def root(request: Request, session: Session = Depends(get_session)):
-    redirect = _redirect_if_authenticated(request, session)
-    if redirect:
-        return redirect
-    return RedirectResponse(url="/login", status_code=303)
+def root(_request: Request, _user: User = Depends(_require_current_user)):
+    return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -112,7 +125,7 @@ def login_page(request: Request, session: Session = Depends(get_session)):
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"title": "Sign in"},
+        {"request": request, "title": "Sign in"},
     )
 
 
@@ -129,6 +142,7 @@ def login_submit(
             request,
             "login.html",
             {
+                "request": request,
                 "title": "Sign in",
                 "error": "Invalid username or password",
             },
@@ -148,6 +162,28 @@ def logout():
     response = RedirectResponse(url="/login", status_code=303)
     clear_session_cookie(response)
     return response
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+def dashboard(
+    request: Request,
+    current_user: User = Depends(_require_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = AccessPolicy.from_session(session, current_user)
+    houses = policy.houses_for_templates()
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {
+            "request": request,
+            "houses": houses,
+            "title": "Dashboard",
+            "subtitle": None,
+            "show_admin": policy.manages_any_house(),
+            "can_all_off": current_user.server_admin,
+        },
+    )
 
 
 def _build_motion_config(
@@ -243,9 +279,17 @@ def _build_motion_config(
     }
 
 
-def _collect_admin_nodes(house_id: Optional[str] = None) -> List[Dict[str, Any]]:
+def _collect_admin_nodes(
+    policy: AccessPolicy, house_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
     nodes: List[Dict[str, Any]] = []
     for house, room, node in registry.iter_nodes():
+        if not house:
+            continue
+        external_id = registry.get_house_external_id(house)
+        access = policy.get_house_access(external_id)
+        if access is None or not access.can_manage(policy.user):
+            continue
         if house_id:
             slug = registry.get_house_slug(house) if house else None
             if slug != house_id:
@@ -300,8 +344,20 @@ def _admin_template_context(
 
 
 @router.get("/admin", response_class=HTMLResponse)
-def admin_panel(request: Request, _admin: User = Depends(require_admin)):
-    nodes = _collect_admin_nodes()
+def admin_panel(
+    request: Request,
+    current_user: User = Depends(_require_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = AccessPolicy.from_session(session, current_user)
+    if not policy.manages_any_house():
+        return templates.TemplateResponse(
+            request,
+            "base.html",
+            {"request": request, "content": "Forbidden"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    nodes = _collect_admin_nodes(policy)
     return templates.TemplateResponse(
         request,
         "admin.html",
@@ -311,6 +367,7 @@ def admin_panel(request: Request, _admin: User = Depends(require_admin)):
             title="Admin Panel",
             subtitle="System status",
             heading="Admin Panel",
+            allow_remove=current_user.server_admin,
         ),
     )
 
@@ -319,45 +376,58 @@ def admin_panel(request: Request, _admin: User = Depends(require_admin)):
 def admin_house_panel(
     request: Request,
     house_id: str,
-    _admin: User = Depends(require_admin),
+    current_user: User = Depends(_require_current_user),
+    session: Session = Depends(get_session),
 ):
+    policy = AccessPolicy.from_session(session, current_user)
     try:
-        house, house_slug = registry.require_house(house_id)
-    except KeyError:
+        house_ctx = policy.ensure_house(house_id)
+    except LookupError:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"content": "Unknown house"},
-            status_code=404,
+            {"request": request, "content": "Unknown house"},
+            status_code=status.HTTP_404_NOT_FOUND,
         )
-    house_name = house.get("name") or registry.get_house_slug(house) or house_id
-    nodes = _collect_admin_nodes(house_slug)
-    public_house_id = registry.get_house_external_id(house)
+    except PermissionError:
+        return templates.TemplateResponse(
+            request,
+            "base.html",
+            {"request": request, "content": "Forbidden"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    if not house_ctx.access.can_manage(current_user):
+        return templates.TemplateResponse(
+            request,
+            "base.html",
+            {"request": request, "content": "Forbidden"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    nodes = _collect_admin_nodes(policy, house_ctx.slug)
+    house_name = house_ctx.original.get("name") or house_ctx.slug or house_id
     rooms: List[Dict[str, Any]] = []
-    seen_ids: set[str] = set()
-    for entry in house.get("rooms", []) or []:
+    for entry in house_ctx.original.get("rooms", []) or []:
         if not isinstance(entry, dict):
             continue
-        room_id = entry.get("id")
-        if not isinstance(room_id, str):
+        room_id = str(entry.get("id") or "").strip()
+        if not room_id:
             continue
-        clean_id = room_id.strip()
-        if not clean_id:
+        if not house_ctx.access.can_view_room(room_id):
             continue
-        if clean_id in seen_ids:
-            continue
-        seen_ids.add(clean_id)
         name = entry.get("name")
-        room_name = str(name).strip() if isinstance(name, str) else clean_id
+        room_name = str(name).strip() if isinstance(name, str) else room_id
         node_count = 0
         node_entries = entry.get("nodes")
         if isinstance(node_entries, list):
             for node in node_entries:
                 if isinstance(node, dict) and node.get("id"):
                     node_count += 1
-        rooms.append({"id": clean_id, "name": room_name, "node_count": node_count})
+        rooms.append({"id": room_id, "name": room_name, "node_count": node_count})
     rooms.sort(key=lambda item: item["name"].lower())
     return templates.TemplateResponse(
+        request,
         "admin.html",
         _admin_template_context(
             request,
@@ -366,7 +436,7 @@ def admin_house_panel(
             subtitle=f"{house_name} status",
             heading=f"{house_name} Admin",
             description=f"Monitor node heartbeats for {house_name}.",
-            status_house_id=public_house_id,
+            status_house_id=house_ctx.external_id,
             allow_remove=True,
             house_rooms=rooms,
         ),
@@ -377,25 +447,39 @@ def admin_house_panel(
 def house_page(
     request: Request,
     house_id: str,
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(_require_current_user),
+    session: Session = Depends(get_session),
 ):
-    house = registry.find_house(house_id)
-    if not house:
+    policy = AccessPolicy.from_session(session, current_user)
+    try:
+        house_ctx = policy.ensure_house(house_id)
+    except LookupError:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"content": "Unknown house"},
-            status_code=404,
+            {"request": request, "content": "Unknown house"},
+            status_code=status.HTTP_404_NOT_FOUND,
         )
-    public_house_id = registry.get_house_external_id(house)
+    except PermissionError:
+        return templates.TemplateResponse(
+            request,
+            "base.html",
+            {"request": request, "content": "Forbidden"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    can_manage = house_ctx.access.can_manage(current_user)
+    public_house_id = house_ctx.external_id
     return templates.TemplateResponse(
         request,
         "house.html",
         {
-            "house": house,
+            "request": request,
+            "house": house_ctx.filtered,
             "house_public_id": public_house_id,
-            "title": house.get("name", house_id),
-            "subtitle": house.get("name", house_id),
+            "title": house_ctx.filtered.get("name", house_id),
+            "subtitle": house_ctx.filtered.get("name", house_id),
+            "can_manage_house": can_manage,
         },
     )
 
@@ -405,32 +489,48 @@ def room_page(
     request: Request,
     house_id: str,
     room_id: str,
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(_require_current_user),
+    session: Session = Depends(get_session),
 ):
-    house, room = registry.find_room(house_id, room_id)
-    if not room:
+    policy = AccessPolicy.from_session(session, current_user)
+    try:
+        room_ctx = policy.ensure_room(house_id, room_id)
+    except LookupError:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"content": "Unknown room"},
-            status_code=404,
+            {"request": request, "content": "Unknown room"},
+            status_code=status.HTTP_404_NOT_FOUND,
         )
-    house_slug = registry.get_house_slug(house)
-    public_house_id = registry.get_house_external_id(house)
-    title = f"{house.get('name', house_id)} - {room.get('name', room_id)}"
+    except PermissionError:
+        return templates.TemplateResponse(
+            request,
+            "base.html",
+            {"request": request, "content": "Forbidden"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    house_slug = room_ctx.house.slug
+    public_house_id = room_ctx.house.external_id
+    room_name = room_ctx.filtered_room.get("name", room_id)
+    house_name = room_ctx.house.filtered.get("name", house_id)
+    title = f"{house_name} - {room_name}"
     presets = get_room_presets(house_slug, room_id)
     motion_config = _build_motion_config(house_slug, room_id, presets)
+    can_manage = room_ctx.house.access.can_manage(current_user)
     return templates.TemplateResponse(
         request,
         "room.html",
         {
-            "house": house,
+            "request": request,
+            "house": room_ctx.house.filtered,
             "house_public_id": public_house_id,
-            "room": room,
+            "room": room_ctx.filtered_room,
             "title": title,
             "subtitle": title,
             "presets": presets,
             "motion_config": motion_config,
+            "can_manage_room": can_manage,
         },
     )
 
@@ -438,19 +538,32 @@ def room_page(
 def node_page(
     request: Request,
     node_id: str,
-    _user: User = Depends(get_current_user),
+    current_user: User = Depends(_require_current_user),
+    session: Session = Depends(get_session),
 ):
-    house, room, node = registry.find_node(node_id)
-    if not node:
+    policy = AccessPolicy.from_session(session, current_user)
+    try:
+        node_ctx = policy.ensure_node(node_id)
+    except LookupError:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"content": "Unknown node"},
-            status_code=404,
+            {"request": request, "content": "Unknown node"},
+            status_code=status.HTTP_404_NOT_FOUND,
         )
+    except PermissionError:
+        return templates.TemplateResponse(
+            request,
+            "base.html",
+            {"request": request, "content": "Forbidden"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    node = node_ctx.node
+    room = node_ctx.room.room
+    house = node_ctx.room.house.original
     title = node.get("name", node_id)
     if room and house:
-        subtitle = f"{house.get('name', house['id'])} • {room.get('name', room['id'])}"
+        subtitle = f"{house.get('name', house.get('id'))} • {room.get('name', room.get('id'))}"
     else:
         subtitle = None
 
@@ -483,6 +596,7 @@ def node_page(
         request,
         "node.html",
         {
+            "request": request,
             "node": node,
             "title": title,
             "subtitle": subtitle,
