@@ -1,3 +1,4 @@
+#include "esp_err.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -152,7 +153,11 @@ void app_main(void) {
   ESP_LOGI(TAG, "UltraLights boot");
 
   ESP_ERROR_CHECK(nvs_flash_init());
-  ul_state_init();
+  esp_err_t state_err = ul_state_init();
+  if (state_err != ESP_OK) {
+    ESP_LOGE(TAG, "State persistence disabled: %s",
+             esp_err_to_name(state_err));
+  }
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 

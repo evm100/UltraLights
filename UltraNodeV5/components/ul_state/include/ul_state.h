@@ -1,7 +1,8 @@
 #pragma once
 
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include "esp_err.h"
 
 #define UL_STATE_MAX_JSON_LEN 1024
 
@@ -10,7 +11,9 @@ extern "C" {
 #endif
 
 // Initializes the persistence pipeline. Must be called after NVS is ready.
-void ul_state_init(void);
+// Returns ESP_OK on success or an error code if persistence could not be
+// initialized (e.g. due to memory pressure).
+esp_err_t ul_state_init(void);
 
 // Records the most recent MQTT command for the given target. The payload is
 // copied immediately so callers may release their buffers as soon as the call
