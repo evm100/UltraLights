@@ -307,6 +307,24 @@ static void led_refresh_task(void *arg) {
     }
 }
 
+static void ws_engine_shutdown(void) {
+    if (s_refresh_task) {
+        vTaskDelete(s_refresh_task);
+        s_refresh_task = NULL;
+    }
+    if (s_ws_task) {
+        vTaskDelete(s_ws_task);
+        s_ws_task = NULL;
+    }
+    for (int i = 0; i < 2; ++i) {
+        deinit_strip(i);
+    }
+    if (s_refresh_sem) {
+        vSemaphoreDelete(s_refresh_sem);
+        s_refresh_sem = NULL;
+    }
+}
+
 void ul_ws_engine_start(void)
 {
     if (!ul_core_is_connected()) {
@@ -336,28 +354,31 @@ void ul_ws_engine_start(void)
     }
     // Pixel refresh tasks pin to core 1 on multi-core targets to free core 0
     // for networking and other work.
-    ul_task_create(led_refresh_task, "ws_refresh", 2048, NULL, 24, &s_refresh_task, 1);
-    ul_task_create(ws_task, "ws60fps", 6144, NULL, 23, &s_ws_task, 1);
+    BaseType_t rc = ul_task_create(led_refresh_task, "ws_refresh", 2048, NULL, 24,
+                                   &s_refresh_task, 1);
+    if (rc != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create WS refresh task (%ld)", (long)rc);
+        s_refresh_task = NULL;
+        ws_engine_shutdown();
+        return;
+    }
+    rc = ul_task_create(ws_task, "ws60fps", 6144, NULL, 23, &s_ws_task, 1);
+    if (rc != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create WS render task (%ld)", (long)rc);
+        if (s_refresh_task) {
+            vTaskDelete(s_refresh_task);
+            s_refresh_task = NULL;
+        }
+        s_ws_task = NULL;
+        ws_engine_shutdown();
+        return;
+    }
     if (s_refresh_sem) xSemaphoreGive(s_refresh_sem);
 }
 
 void ul_ws_engine_stop(void)
 {
-    if (s_refresh_task) {
-        vTaskDelete(s_refresh_task);
-        s_refresh_task = NULL;
-    }
-    if (s_ws_task) {
-        vTaskDelete(s_ws_task);
-        s_ws_task = NULL;
-    }
-    for (int i = 0; i < 2; ++i) {
-        deinit_strip(i);
-    }
-    if (s_refresh_sem) {
-        vSemaphoreDelete(s_refresh_sem);
-        s_refresh_sem = NULL;
-    }
+    ws_engine_shutdown();
 }
 
 
