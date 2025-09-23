@@ -55,6 +55,7 @@ bool ul_rgb_get_status(int strip, ul_rgb_strip_status_t* out) {
 #include "esp_log.h"
 #include "string.h"
 #include "cJSON.h"
+#include "ul_health.h"
 #include "ul_task.h"
 #include "ul_common_effects.h"
 #include "effects_rgb/effect.h"
@@ -238,6 +239,7 @@ static void rgb_task(void* arg) {
 void ul_rgb_engine_start(void) {
     memset(s_strips, 0, sizeof(s_strips));
     s_strip_count = 0;
+    s_current_strip = 0;
 
 #if CONFIG_UL_RGB0_ENABLED
     strip_init(0, true, CONFIG_UL_RGB0_PWM_HZ, CONFIG_UL_RGB0_LEDC_MODE,
@@ -265,9 +267,24 @@ void ul_rgb_engine_start(void) {
 #endif
 
     if (s_strip_count > 0) {
-        ul_task_create(rgb_task, "rgb_smooth", 4096, NULL, 23, &s_rgb_task, 1);
+        TaskHandle_t task = NULL;
+        BaseType_t rc = ul_task_create(rgb_task, "rgb_smooth", 4096, NULL, 23,
+                                       &task, 1);
+        if (rc != pdPASS) {
+            ESP_LOGE(TAG, "Failed to create RGB smoothing task (%ld)",
+                     (long)rc);
+            ul_health_notify_rgb_engine_failure();
+            ul_rgb_engine_stop();
+            memset(s_strips, 0, sizeof(s_strips));
+            s_strip_count = 0;
+            s_rgb_task = NULL;
+            return;
+        }
+        s_rgb_task = task;
+        ul_health_notify_rgb_engine_ok();
     } else {
         ESP_LOGI(TAG, "RGB engine started with no enabled strips");
+        ul_health_notify_rgb_engine_ok();
     }
 }
 
