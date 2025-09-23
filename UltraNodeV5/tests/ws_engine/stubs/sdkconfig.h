@@ -10,5 +10,10 @@
 #define CONFIG_UL_GAMMA_ENABLE 0
 #define CONFIG_UL_IS_ESP32C3 0
 #define CONFIG_UL_HAS_PSRAM 0
+#define CONFIG_UL_NODE_ID "test-node"
+#define CONFIG_UL_WIFI_SSID "test-ssid"
+#define CONFIG_UL_WIFI_PSK "test-psk"
+#define CONFIG_UL_SNTP_SYNC_INTERVAL_S 60
+#define CONFIG_UL_TIMEZONE "UTC"
 
 #define MALLOC_CAP_8BIT 0
