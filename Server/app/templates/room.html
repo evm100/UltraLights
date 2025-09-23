@@ -67,7 +67,7 @@
   </div>
   <div class="glass rounded-xl p-4 mt-4">
     <div class="text-xs uppercase tracking-wide opacity-70 mb-2">Legend</div>
-    <div class="flex flex-wrap gap-2">
+    <div class="flex flex-wrap gap-2" id="motionLegendList">
       <div class="motion-legend-item">
         <span class="motion-legend-swatch" style="--swatch-color: {{ motion_config.no_motion_color }}"></span>
         <span class="motion-legend-label">No Motion</span>
@@ -214,7 +214,19 @@ document.getElementById('addNode').onclick = async () => {
     const saveButton = document.getElementById('motionScheduleSave');
     const statusEl = document.getElementById('motionScheduleStatus');
     const saveUrl = scheduleContainer.dataset.saveUrl;
-    const legendItems = Array.from(scheduleContainer.querySelectorAll('.motion-legend-item--editable'));
+    let legendContainer = scheduleContainer.querySelector('#motionLegendList');
+    if (!legendContainer) {
+      const sampleLegendItem = scheduleContainer.querySelector('.motion-legend-item--editable');
+      if (sampleLegendItem && sampleLegendItem.parentElement) {
+        legendContainer = sampleLegendItem.parentElement;
+      }
+    }
+    const getLegendItems = () => {
+      if (!legendContainer) {
+        return [];
+      }
+      return Array.from(legendContainer.querySelectorAll('.motion-legend-item--editable'));
+    };
     const slotCount = scheduleData.length;
     let slots = [];
     let statusTimeout = null;
@@ -306,8 +318,47 @@ document.getElementById('addNode').onclick = async () => {
       return `#${text.slice(1).toUpperCase()}`;
     };
 
+    const rebuildLegendItems = (list) => {
+      if (!legendContainer) {
+        return;
+      }
+      const currentItems = getLegendItems();
+      currentItems.forEach((item) => item.remove());
+      if (!Array.isArray(list) || !list.length) {
+        return;
+      }
+      const fragment = document.createDocumentFragment();
+      list.forEach((preset) => {
+        if (!preset || preset.id === undefined || preset.id === null) {
+          return;
+        }
+        const id = String(preset.id);
+        const name = preset.name ? String(preset.name) : id;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'motion-legend-item motion-legend-item--editable';
+        button.dataset.presetId = id;
+        const color = presetColors[id] || '';
+        if (color) {
+          button.dataset.color = color;
+        }
+        button.title = `Change color for preset ${name}`;
+        button.setAttribute('aria-label', `Change color for preset ${name}`);
+        const swatch = document.createElement('span');
+        swatch.className = 'motion-legend-swatch';
+        swatch.style.setProperty('--swatch-color', color || noMotionColor);
+        const label = document.createElement('span');
+        label.className = 'motion-legend-label';
+        label.textContent = name;
+        button.appendChild(swatch);
+        button.appendChild(label);
+        fragment.appendChild(button);
+      });
+      legendContainer.appendChild(fragment);
+    };
+
     const updateLegendSwatches = () => {
-      legendItems.forEach((item) => {
+      getLegendItems().forEach((item) => {
         const presetId = item.dataset.presetId || '';
         if (!presetId) {
           return;
@@ -397,20 +448,22 @@ document.getElementById('addNode').onclick = async () => {
       updateSlotHighlight();
     };
 
-    if (legendItems.length) {
-      legendItems.forEach((item) => {
-        item.addEventListener('click', (event) => {
-          event.preventDefault();
-          const presetId = item.dataset.presetId || '';
-          if (!presetId) {
-            return;
-          }
-          const currentColor = normalizeHexColor(presetColors[presetId] || '') || '#38BDF8';
-          activeLegendPreset = presetId;
-          activeLegendPrevious = presetColors[presetId] || '';
-          colorPicker.value = currentColor;
-          colorPicker.click();
-        });
+    if (legendContainer) {
+      legendContainer.addEventListener('click', (event) => {
+        const item = event.target.closest('.motion-legend-item--editable');
+        if (!item || !legendContainer.contains(item)) {
+          return;
+        }
+        event.preventDefault();
+        const presetId = item.dataset.presetId || '';
+        if (!presetId) {
+          return;
+        }
+        const currentColor = normalizeHexColor(presetColors[presetId] || '') || '#38BDF8';
+        activeLegendPreset = presetId;
+        activeLegendPrevious = presetColors[presetId] || '';
+        colorPicker.value = currentColor;
+        colorPicker.click();
       });
     }
 
@@ -577,20 +630,26 @@ document.getElementById('addNode').onclick = async () => {
           normalized.push({ id, name });
         });
       }
-      const required = new Set(
-        Array.isArray(scheduleData)
-          ? scheduleData.filter((value) => value !== null && value !== undefined && value !== '')
-          : []
-      );
+      const validIds = new Set(normalized.map((preset) => preset.id));
+      const required = new Set();
+      let scheduleChanged = false;
+      if (Array.isArray(scheduleData)) {
+        for (let index = 0; index < scheduleData.length; index += 1) {
+          const value = scheduleData[index];
+          if (value === null || value === undefined || value === '') {
+            continue;
+          }
+          if (!validIds.has(value)) {
+            scheduleData[index] = null;
+            scheduleChanged = true;
+            continue;
+          }
+          required.add(value);
+        }
+      }
       const newNames = { '': 'No Motion' };
       normalized.forEach((preset) => {
         newNames[preset.id] = preset.name;
-      });
-      required.forEach((id) => {
-        if (!newNames[id]) {
-          const fallback = presetNames[id] || String(id);
-          newNames[id] = fallback;
-        }
       });
       const newColors = {};
       const usedColors = new Set();
@@ -616,20 +675,25 @@ document.getElementById('addNode').onclick = async () => {
         usedColors.add(assigned);
       });
       required.forEach((id) => {
+        if (!newNames[id]) {
+          const fallback = presetNames[id] || String(id);
+          newNames[id] = fallback;
+        }
         if (!newColors[id] && presetColors[id]) {
           newColors[id] = presetColors[id];
           usedColors.add(presetColors[id]);
-          if (!newNames[id]) {
-            newNames[id] = presetNames[id] || String(id);
-          }
         }
       });
       presetNames = newNames;
       presetColors = newColors;
+      rebuildLegendItems(normalized);
       updateLegendSwatches();
       rebuildPresetSelectOptions(normalized);
       renderSchedule();
       updateSelection(selectedSlot);
+      if (scheduleChanged) {
+        markDirty();
+      }
     };
 
     document.addEventListener('ultralights:presets-changed', (event) => {
