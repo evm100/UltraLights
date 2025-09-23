@@ -1,15 +1,25 @@
 from collections import defaultdict
-
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from typing import Any, Dict, List, Optional
-
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlmodel import Session, select
 
-from .config import settings
 from . import registry
+from .auth.dependencies import get_current_user, require_admin
+from .auth.models import House, HouseMembership, User
+from .auth.security import (
+    SESSION_COOKIE_NAME,
+    authenticate_user,
+    clear_session_cookie,
+    create_session_token,
+    set_session_cookie,
+    verify_session_token,
+)
+from .config import settings
+from .database import get_session
 from .effects import (
     WS_EFFECTS,
     WHITE_EFFECTS,
@@ -29,18 +39,115 @@ from .brightness_limits import brightness_limits
 
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
+TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 NODE_MODULE_TEMPLATES = ["ws", "rgb", "white", "ota", "motion"]
 
 
-@router.get("/", response_class=HTMLResponse)
-def home(request: Request):
-    registry.ensure_house_external_ids(persist=False)
-    houses = settings.DEVICE_REGISTRY
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request, "houses": houses, "title": "UltraLights"},
+def _user_default_house_external_id(session: Session, user: User) -> Optional[str]:
+    if user.id is None:
+        return None
+
+    membership_query = (
+        select(House.external_id)
+        .join(HouseMembership, HouseMembership.house_id == House.id)
+        .where(HouseMembership.user_id == user.id)
+        .order_by(HouseMembership.role.desc(), House.id)
     )
+    external_id = session.exec(membership_query).first()
+    if external_id:
+        return str(external_id)
+
+    fallback = session.exec(select(House.external_id).order_by(House.id)).first()
+    if fallback:
+        return str(fallback)
+
+    registry.ensure_house_external_ids(persist=False)
+    first_house = settings.DEVICE_REGISTRY[0] if settings.DEVICE_REGISTRY else None
+    if isinstance(first_house, dict):
+        external = registry.get_house_external_id(first_house)
+        if external:
+            return external
+    return None
+
+
+def _default_house_path(session: Session, user: User) -> str:
+    external_id = _user_default_house_external_id(session, user)
+    if external_id:
+        return f"/house/{external_id}"
+    return "/admin"
+
+
+def _redirect_if_authenticated(request: Request, session: Session) -> Optional[RedirectResponse]:
+    token_value = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token_value:
+        return None
+
+    token_data = verify_session_token(token_value)
+    if token_data is None:
+        return None
+
+    user = session.exec(select(User).where(User.id == token_data.user_id)).first()
+    if not user:
+        return None
+
+    target = _default_house_path(session, user)
+    return RedirectResponse(target, status_code=303)
+
+
+@router.get("/", include_in_schema=False)
+def root(request: Request, session: Session = Depends(get_session)):
+    redirect = _redirect_if_authenticated(request, session)
+    if redirect:
+        return redirect
+    return RedirectResponse(url="/login", status_code=303)
+
+
+@router.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, session: Session = Depends(get_session)):
+    redirect = _redirect_if_authenticated(request, session)
+    if redirect:
+        return redirect
+    registry.ensure_house_external_ids(persist=False)
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {"title": "Sign in"},
+    )
+
+
+@router.post("/login", response_class=HTMLResponse)
+def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    session: Session = Depends(get_session),
+):
+    user = authenticate_user(session, username, password)
+    if not user:
+        response = templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "title": "Sign in",
+                "error": "Invalid username or password",
+            },
+            status_code=400,
+        )
+        clear_session_cookie(response)
+        return response
+
+    redirect = RedirectResponse(_default_house_path(session, user), status_code=303)
+    token = create_session_token(user)
+    set_session_cookie(redirect, token)
+    return redirect
+
+
+@router.get("/logout")
+def logout():
+    response = RedirectResponse(url="/login", status_code=303)
+    clear_session_cookie(response)
+    return response
 
 
 def _build_motion_config(
@@ -193,9 +300,10 @@ def _admin_template_context(
 
 
 @router.get("/admin", response_class=HTMLResponse)
-def admin_panel(request: Request):
+def admin_panel(request: Request, _admin: User = Depends(require_admin)):
     nodes = _collect_admin_nodes()
     return templates.TemplateResponse(
+        request,
         "admin.html",
         _admin_template_context(
             request,
@@ -208,13 +316,18 @@ def admin_panel(request: Request):
 
 
 @router.get("/admin/house/{house_id}", response_class=HTMLResponse)
-def admin_house_panel(request: Request, house_id: str):
+def admin_house_panel(
+    request: Request,
+    house_id: str,
+    _admin: User = Depends(require_admin),
+):
     try:
         house, house_slug = registry.require_house(house_id)
     except KeyError:
         return templates.TemplateResponse(
+            request,
             "base.html",
-            {"request": request, "content": "Unknown house"},
+            {"content": "Unknown house"},
             status_code=404,
         )
     house_name = house.get("name") or registry.get_house_slug(house) or house_id
@@ -261,19 +374,24 @@ def admin_house_panel(request: Request, house_id: str):
 
 
 @router.get("/house/{house_id}", response_class=HTMLResponse)
-def house_page(request: Request, house_id: str):
+def house_page(
+    request: Request,
+    house_id: str,
+    _user: User = Depends(get_current_user),
+):
     house = registry.find_house(house_id)
     if not house:
         return templates.TemplateResponse(
+            request,
             "base.html",
-            {"request": request, "content": "Unknown house"},
+            {"content": "Unknown house"},
             status_code=404,
         )
     public_house_id = registry.get_house_external_id(house)
     return templates.TemplateResponse(
+        request,
         "house.html",
         {
-            "request": request,
             "house": house,
             "house_public_id": public_house_id,
             "title": house.get("name", house_id),
@@ -283,12 +401,18 @@ def house_page(request: Request, house_id: str):
 
 
 @router.get("/house/{house_id}/room/{room_id}", response_class=HTMLResponse)
-def room_page(request: Request, house_id: str, room_id: str):
+def room_page(
+    request: Request,
+    house_id: str,
+    room_id: str,
+    _user: User = Depends(get_current_user),
+):
     house, room = registry.find_room(house_id, room_id)
     if not room:
         return templates.TemplateResponse(
+            request,
             "base.html",
-            {"request": request, "content": "Unknown room"},
+            {"content": "Unknown room"},
             status_code=404,
         )
     house_slug = registry.get_house_slug(house)
@@ -297,9 +421,9 @@ def room_page(request: Request, house_id: str, room_id: str):
     presets = get_room_presets(house_slug, room_id)
     motion_config = _build_motion_config(house_slug, room_id, presets)
     return templates.TemplateResponse(
+        request,
         "room.html",
         {
-            "request": request,
             "house": house,
             "house_public_id": public_house_id,
             "room": room,
@@ -311,11 +435,18 @@ def room_page(request: Request, house_id: str, room_id: str):
     )
 
 @router.get("/node/{node_id}", response_class=HTMLResponse)
-def node_page(request: Request, node_id: str):
+def node_page(
+    request: Request,
+    node_id: str,
+    _user: User = Depends(get_current_user),
+):
     house, room, node = registry.find_node(node_id)
     if not node:
         return templates.TemplateResponse(
-            "base.html", {"request": request, "content": "Unknown node"}, status_code=404
+            request,
+            "base.html",
+            {"content": "Unknown node"},
+            status_code=404,
         )
     title = node.get("name", node_id)
     if room and house:
@@ -349,9 +480,9 @@ def node_page(request: Request, node_id: str):
     status_initial_online = bool(status_info.get("online"))
 
     return templates.TemplateResponse(
+        request,
         "node.html",
         {
-            "request": request,
             "node": node,
             "title": title,
             "subtitle": subtitle,
