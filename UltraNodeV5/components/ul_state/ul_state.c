@@ -58,6 +58,7 @@ static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 
 static void schedule_flush(size_t entry_index);
 static bool copy_entry(size_t entry_index, char *buffer, size_t buffer_len);
+static void cleanup_resources(size_t active_entries);
 
 static void ul_state_task(void *arg) {
   ul_state_msg_t msg;
@@ -126,8 +127,54 @@ static void flush_timer_cb(void *arg) {
   }
 }
 
-static void init_entry(size_t entry_index, ul_state_target_t target, int index,
-                       const char *key) {
+static void cleanup_entry(ul_state_entry_t *entry) {
+  if (!entry)
+    return;
+  if (entry->timer) {
+    esp_err_t err = esp_timer_stop(entry->timer);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+      ESP_LOGW(TAG, "Failed to stop timer for %s: %s",
+               entry->key[0] ? entry->key : "entry",
+               esp_err_to_name(err));
+    }
+    err = esp_timer_delete(entry->timer);
+    if (err != ESP_OK) {
+      ESP_LOGW(TAG, "Failed to delete timer for %s: %s",
+               entry->key[0] ? entry->key : "entry",
+               esp_err_to_name(err));
+    }
+    entry->timer = NULL;
+  }
+  if (entry->payload) {
+    free(entry->payload);
+    entry->payload = NULL;
+  }
+  entry->payload_len = 0;
+  entry->dirty = false;
+}
+
+static void cleanup_resources(size_t active_entries) {
+  size_t total_entries = sizeof(s_entries) / sizeof(s_entries[0]);
+  if (active_entries > total_entries)
+    active_entries = total_entries;
+  for (size_t i = 0; i < active_entries; ++i) {
+    cleanup_entry(&s_entries[i]);
+  }
+  if (s_queue) {
+    vQueueDelete(s_queue);
+    s_queue = NULL;
+  }
+  if (s_nvs) {
+    nvs_close(s_nvs);
+    s_nvs = 0;
+  }
+  s_entry_count = 0;
+  s_task = NULL;
+  s_ready = false;
+}
+
+static esp_err_t init_entry(size_t entry_index, ul_state_target_t target,
+                            int index, const char *key) {
   ul_state_entry_t *entry = &s_entries[entry_index];
   entry->target = target;
   entry->index = index;
@@ -136,61 +183,102 @@ static void init_entry(size_t entry_index, ul_state_target_t target, int index,
   entry->payload = NULL;
   entry->payload_len = 0;
   entry->dirty = false;
+  entry->timer = NULL;
 
   const esp_timer_create_args_t args = {
       .callback = &flush_timer_cb,
       .arg = (void *)(intptr_t)entry_index,
       .name = "ul_state", };
-  ESP_ERROR_CHECK(esp_timer_create(&args, &entry->timer));
+  esp_err_t err = esp_timer_create(&args, &entry->timer);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to create persistence timer for %s: %s", entry->key,
+             esp_err_to_name(err));
+    cleanup_resources(entry_index);
+    return err;
+  }
+  return ESP_OK;
 }
 
-void ul_state_init(void) {
+esp_err_t ul_state_init(void) {
   if (s_ready)
-    return;
+    return ESP_OK;
+
+  s_entry_count = 0;
+  s_task = NULL;
+  s_queue = NULL;
+  s_nvs = 0;
 
   esp_err_t err = nvs_open("ulstate", NVS_READWRITE, &s_nvs);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to open NVS namespace: %s", esp_err_to_name(err));
-    return;
+    return err;
   }
 
   s_queue = xQueueCreate(8, sizeof(ul_state_msg_t));
   if (!s_queue) {
     ESP_LOGE(TAG, "Failed to create persistence queue");
-    nvs_close(s_nvs);
-    return;
+    cleanup_resources(0);
+    return ESP_ERR_NO_MEM;
   }
 
-  init_entry(s_entry_count++, UL_STATE_TARGET_WS, 0, "ws0");
-  init_entry(s_entry_count++, UL_STATE_TARGET_WS, 1, "ws1");
-  init_entry(s_entry_count++, UL_STATE_TARGET_RGB, 0, "rgb0");
-  init_entry(s_entry_count++, UL_STATE_TARGET_RGB, 1, "rgb1");
-  init_entry(s_entry_count++, UL_STATE_TARGET_RGB, 2, "rgb2");
-  init_entry(s_entry_count++, UL_STATE_TARGET_RGB, 3, "rgb3");
-  init_entry(s_entry_count++, UL_STATE_TARGET_WHITE, 0, "wht0");
-  init_entry(s_entry_count++, UL_STATE_TARGET_WHITE, 1, "wht1");
-  init_entry(s_entry_count++, UL_STATE_TARGET_WHITE, 2, "wht2");
-  init_entry(s_entry_count++, UL_STATE_TARGET_WHITE, 3, "wht3");
+  const size_t total_entries = sizeof(s_entries) / sizeof(s_entries[0]);
 
-  if (s_entry_count > sizeof(s_entries) / sizeof(s_entries[0])) {
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_WS, 0, "ws0")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_WS, 1, "ws1")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_RGB, 0, "rgb0")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_RGB, 1, "rgb1")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_RGB, 2, "rgb2")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_RGB, 3, "rgb3")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_WHITE, 0, "wht0")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_WHITE, 1, "wht1")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_WHITE, 2, "wht2")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_WHITE, 3, "wht3")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+
+  if (s_entry_count > total_entries) {
     ESP_LOGE(TAG, "Too many state entries configured");
-    vQueueDelete(s_queue);
-    s_queue = NULL;
-    nvs_close(s_nvs);
-    s_entry_count = 0;
-    return;
+    cleanup_resources(s_entry_count);
+    return ESP_FAIL;
   }
 
   if (ul_task_create(ul_state_task, "ul_state", 4096, NULL, 5, &s_task, 0) !=
       pdPASS) {
     ESP_LOGE(TAG, "Failed to start persistence task");
-    vQueueDelete(s_queue);
-    s_queue = NULL;
-    nvs_close(s_nvs);
-    return;
+    cleanup_resources(s_entry_count);
+    return ESP_ERR_NO_MEM;
   }
 
   s_ready = true;
+  return ESP_OK;
 }
 
 static void schedule_flush(size_t entry_index) {
