@@ -70,6 +70,7 @@ bool ul_ws_get_status(int strip, ul_ws_strip_status_t* out) {
 #include "freertos/semphr.h"
 #include "ul_task.h"
 #include "ul_core.h"
+#include "esp_err.h"
 #include "esp_log.h"
 #include "led_strip.h"
 #include "led_strip_spi.h"
@@ -103,6 +104,29 @@ static TaskHandle_t s_ws_task = NULL;
 int ul_ws_effect_current_strip(void) { return s_current_strip_idx; }
 
 static ws_strip_t* get_strip(int idx);
+
+static void deinit_strip(ws_strip_t* s) {
+    if (!s) return;
+    if (s->handle) {
+        led_strip_del(s->handle);
+        s->handle = NULL;
+    }
+    if (s->frame) {
+        free(s->frame);
+        s->frame = NULL;
+    }
+    s->pixels = 0;
+    s->eff = NULL;
+    s->solid_r = s->solid_g = s->solid_b = 0;
+    s->brightness = 0;
+    s->frame_pos = 0.0f;
+}
+
+static void deinit_all_strips(void) {
+    for (int i = 0; i < 2; ++i) {
+        deinit_strip(&s_strips[i]);
+    }
+}
 
 void ul_ws_apply_json(cJSON* root) {
     if (!root) return;
@@ -150,7 +174,8 @@ static const ws_effect_t* find_effect_by_name(const char* name) {
 }
 
 static void init_strip(int idx, int gpio, int pixels, bool enabled) {
-    if (!enabled) { s_strips[idx].pixels = 0; return; }
+    deinit_strip(&s_strips[idx]);
+    if (!enabled) return;
     led_strip_config_t strip_config = {
         .strip_gpio_num = gpio,
         .max_leds = pixels,
@@ -169,10 +194,24 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
             .with_dma = true,
         },
     };
-    ESP_ERROR_CHECK(led_strip_new_spi_device(&strip_config, &spi_config, &s_strips[idx].handle));
-    led_strip_clear(s_strips[idx].handle);
-    s_strips[idx].pixels = pixels;
+    esp_err_t err = led_strip_new_spi_device(&strip_config, &spi_config, &s_strips[idx].handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create LED strip %d: %s", idx, esp_err_to_name(err));
+        return;
+    }
+    err = led_strip_clear(s_strips[idx].handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to clear LED strip %d: %s", idx, esp_err_to_name(err));
+        deinit_strip(&s_strips[idx]);
+        return;
+    }
     s_strips[idx].frame = (uint8_t*)heap_caps_malloc(pixels*3, MALLOC_CAP_8BIT);
+    if (!s_strips[idx].frame) {
+        ESP_LOGE(TAG, "Failed to allocate frame buffer for strip %d", idx);
+        deinit_strip(&s_strips[idx]);
+        return;
+    }
+    s_strips[idx].pixels = pixels;
     memset(s_strips[idx].frame, 0, pixels*3);
     // defaults
     int n=0; const ws_effect_t* tbl = ul_ws_get_effects(&n);
@@ -233,7 +272,13 @@ static void ws_task(void*)
 
 static void led_refresh_task(void *arg) {
     while (1) {
-        xSemaphoreTake(s_refresh_sem, portMAX_DELAY);
+        if (!s_refresh_sem) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+        if (xSemaphoreTake(s_refresh_sem, portMAX_DELAY) != pdTRUE) {
+            continue;
+        }
 #if CONFIG_UL_WS0_ENABLED
         if (s_strips[0].handle) led_strip_refresh(s_strips[0].handle);
 #endif
@@ -264,6 +309,11 @@ void ul_ws_engine_start(void)
     init_strip(1, 0, 0, false);
 #endif
     s_refresh_sem = xSemaphoreCreateBinary();
+    if (!s_refresh_sem) {
+        ESP_LOGE(TAG, "Failed to create WS refresh semaphore");
+        deinit_all_strips();
+        return;
+    }
     // Pixel refresh tasks pin to core 1 on multi-core targets to free core 0
     // for networking and other work.
     ul_task_create(led_refresh_task, "ws_refresh", 2048, NULL, 24, &s_refresh_task, 1);
@@ -281,15 +331,7 @@ void ul_ws_engine_stop(void)
         vTaskDelete(s_ws_task);
         s_ws_task = NULL;
     }
-    for (int i = 0; i < 2; ++i) {
-        if (s_strips[i].handle) {
-            led_strip_del(s_strips[i].handle);
-            s_strips[i].handle = NULL;
-        }
-        free(s_strips[i].frame);
-        s_strips[i].frame = NULL;
-        s_strips[i].pixels = 0;
-    }
+    deinit_all_strips();
     if (s_refresh_sem) {
         vSemaphoreDelete(s_refresh_sem);
         s_refresh_sem = NULL;
