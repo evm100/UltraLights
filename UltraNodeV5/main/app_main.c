@@ -65,7 +65,10 @@ static void service_manager_task(void *ctx) {
             ESP_LOGE(TAG, "WS engine failed to start; running without it");
           }
           ul_rgb_engine_start();   // RGB PWM engine
-          ul_white_engine_start(); // 200 Hz smoothing
+          bool white_started = ul_white_engine_start(); // 200 Hz smoothing
+          if (!white_started) {
+            ESP_LOGE(TAG, "White engine failed to start; running without it");
+          }
 #if CONFIG_UL_PIR_ENABLED
           ul_pir_start();
 #endif
