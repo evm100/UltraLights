@@ -1,27 +1,39 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-  <h2 class="text-2xl font-semibold">Locations</h2>
+  <h2 class="text-2xl font-semibold">My Houses</h2>
   <div class="flex items-center gap-2">
+    {% if show_admin %}
     <a href="/admin" class="px-4 py-2 pill bg-slate-700 hover:bg-slate-600">Admin Panel</a>
+    {% endif %}
+    {% if can_all_off %}
     <button id="allOff" class="px-4 py-2 pill bg-rose-600 hover:bg-rose-500">All Off</button>
+    {% endif %}
   </div>
 </div>
 
+{% if houses %}
 <div class="grid md:grid-cols-3 gap-4 mt-6">
   {% for h in houses %}
   <a href="/house/{{ h.external_id }}" class="glass rounded-xl p-4 block hover:ring-2 hover:ring-indigo-400">
     <div class="text-xl font-semibold">{{ h.name }}</div>
     <div class="opacity-60 text-xs mt-2">Public ID: {{ h.external_id }}</div>
-    <div class="text-sm mt-2">{{ h.rooms|length }} rooms</div>
+    <div class="text-sm mt-2">{{ h.rooms|length }} room{% if h.rooms|length != 1 %}s{% endif %}</div>
   </a>
   {% endfor %}
 </div>
+{% else %}
+<div class="glass rounded-xl p-6 text-center text-sm opacity-70">
+  No houses assigned to your account yet.
+</div>
+{% endif %}
 
+{% if can_all_off %}
 <script>
 document.getElementById('allOff').onclick = async () => {
   const res = await fetch('/api/all-off', {method:'POST'});
   if(!res.ok){ alert('Failed to turn all off'); }
 };
 </script>
+{% endif %}
 {% endblock %}

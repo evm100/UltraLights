@@ -5,3 +5,5 @@ paho-mqtt
 python-dotenv
 sqlmodel
 passlib[bcrypt]
+itsdangerous
+python-multipart

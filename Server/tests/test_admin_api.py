@@ -42,11 +42,27 @@ class _NoopBus:
         pass
 
 
+class _StubSession:
+    def exec(self, *_args, **_kwargs):  # pragma: no cover - simple stub
+        class _Result:
+            def all(self_inner):  # pragma: no cover - simple stub
+                return []
+
+        return _Result()
+
+
 @pytest.fixture(autouse=True)
 def _stub_mqtt(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.mqtt_bus
 
     monkeypatch.setattr(app.mqtt_bus, "MqttBus", lambda *args, **kwargs: _NoopBus())
+
+
+@pytest.fixture()
+def admin_user_session():
+    from app.auth.models import User
+
+    return User(id=1, username="admin", hashed_password="", server_admin=True), _StubSession()
 
 
 def test_registry_remove_room(monkeypatch, tmp_path):
@@ -110,7 +126,7 @@ def test_registry_reorder_rooms(monkeypatch, tmp_path):
         registry.reorder_rooms("house", ["room-a", "room-b"])
 
 
-def test_api_delete_room_cleans_up(monkeypatch, tmp_path):
+def test_api_delete_room_cleans_up(monkeypatch, tmp_path, admin_user_session):
     import app.routes_api as routes_api
     from app.config import settings
 
@@ -168,7 +184,11 @@ def test_api_delete_room_cleans_up(monkeypatch, tmp_path):
     monkeypatch.setattr(routes_api, "status_monitor", status)
     monkeypatch.setattr(routes_api, "motion_schedule", schedule)
 
-    result = routes_api.api_delete_room("house", "room-a")
+    user, session = admin_user_session
+
+    result = routes_api.api_delete_room(
+        "house", "room-a", current_user=user, session=session
+    )
 
     assert result["ok"] is True
     assert result["room"]["id"] == "room-a"
@@ -183,7 +203,7 @@ def test_api_delete_room_cleans_up(monkeypatch, tmp_path):
     assert schedule.calls == [("house", "room-a")]
 
 
-def test_api_delete_room_missing(monkeypatch):
+def test_api_delete_room_missing(monkeypatch, admin_user_session):
     import app.routes_api as routes_api
     from app.config import settings
     from fastapi import HTTPException
@@ -193,12 +213,14 @@ def test_api_delete_room_missing(monkeypatch):
     ])
 
     with pytest.raises(HTTPException) as excinfo:
-        routes_api.api_delete_room("house", "room-a")
+        routes_api.api_delete_room(
+            "house", "room-a", current_user=admin_user_session[0], session=admin_user_session[1]
+        )
 
     assert excinfo.value.status_code == 404
 
 
-def test_api_add_node_house_prefixed_id(monkeypatch, tmp_path):
+def test_api_add_node_house_prefixed_id(monkeypatch, tmp_path, admin_user_session):
     import app.routes_api as routes_api
     from app.config import settings
 
@@ -215,7 +237,14 @@ def test_api_add_node_house_prefixed_id(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
     monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
 
-    result = routes_api.api_add_node("del-sur", "kitchen", {"name": "Kitchen Node"})
+    user, session = admin_user_session
+    result = routes_api.api_add_node(
+        "del-sur",
+        "kitchen",
+        {"name": "Kitchen Node"},
+        current_user=user,
+        session=session,
+    )
 
     assert result["ok"] is True
     assert result["node"]["id"] == "del-sur-kitchen-node"
@@ -223,7 +252,7 @@ def test_api_add_node_house_prefixed_id(monkeypatch, tmp_path):
     assert stored_nodes[0]["id"] == "del-sur-kitchen-node"
 
 
-def test_api_add_node_duplicate_name(monkeypatch, tmp_path):
+def test_api_add_node_duplicate_name(monkeypatch, tmp_path, admin_user_session):
     import app.routes_api as routes_api
     from app.config import settings
     from fastapi import HTTPException
@@ -248,13 +277,19 @@ def test_api_add_node_duplicate_name(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
 
     with pytest.raises(HTTPException) as excinfo:
-        routes_api.api_add_node("del-sur", "kitchen", {"name": "Kitchen Node"})
+        routes_api.api_add_node(
+            "del-sur",
+            "kitchen",
+            {"name": "Kitchen Node"},
+            current_user=admin_user_session[0],
+            session=admin_user_session[1],
+        )
 
     assert excinfo.value.status_code == 400
     assert "already exists" in str(excinfo.value.detail)
 
 
-def test_api_add_node_rejects_long_id(monkeypatch, tmp_path):
+def test_api_add_node_rejects_long_id(monkeypatch, tmp_path, admin_user_session):
     import app.routes_api as routes_api
     from app.config import settings
     from fastapi import HTTPException
@@ -273,13 +308,19 @@ def test_api_add_node_rejects_long_id(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
 
     with pytest.raises(HTTPException) as excinfo:
-        routes_api.api_add_node("del-sur", "kitchen", {"name": "x" * 50})
+        routes_api.api_add_node(
+            "del-sur",
+            "kitchen",
+            {"name": "x" * 50},
+            current_user=admin_user_session[0],
+            session=admin_user_session[1],
+        )
 
     assert excinfo.value.status_code == 400
     assert str(excinfo.value.detail) == "node id too long (max 31 characters)"
 
 
-def test_api_set_node_name(monkeypatch, tmp_path):
+def test_api_set_node_name(monkeypatch, tmp_path, admin_user_session):
     import app.routes_api as routes_api
     from app.config import settings
     from fastapi import HTTPException
@@ -311,7 +352,10 @@ def test_api_set_node_name(monkeypatch, tmp_path):
     motion_stub = MotionStub()
     monkeypatch.setattr(routes_api, "motion_manager", motion_stub)
 
-    result = routes_api.api_set_node_name("node-1", {"name": "Updated Node"})
+    user, session = admin_user_session
+    result = routes_api.api_set_node_name(
+        "node-1", {"name": "Updated Node"}, current_user=user, session=session
+    )
 
     assert result["ok"] is True
     assert result["node"]["name"] == "Updated Node"
@@ -322,16 +366,22 @@ def test_api_set_node_name(monkeypatch, tmp_path):
     assert written[0]["rooms"][0]["nodes"][0]["name"] == "Updated Node"
 
     with pytest.raises(HTTPException):
-        routes_api.api_set_node_name("node-1", {"name": "   "})
+        routes_api.api_set_node_name(
+            "node-1", {"name": "   "}, current_user=user, session=session
+        )
 
     with pytest.raises(HTTPException):
-        routes_api.api_set_node_name("node-1", {"name": "x" * 200})
+        routes_api.api_set_node_name(
+            "node-1", {"name": "x" * 200}, current_user=user, session=session
+        )
 
     with pytest.raises(HTTPException):
-        routes_api.api_set_node_name("missing", {"name": "Another"})
+        routes_api.api_set_node_name(
+            "missing", {"name": "Another"}, current_user=user, session=session
+        )
 
 
-def test_api_reorder_rooms(monkeypatch, tmp_path):
+def test_api_reorder_rooms(monkeypatch, tmp_path, admin_user_session):
     import app.routes_api as routes_api
     from app.config import settings
 
@@ -349,26 +399,38 @@ def test_api_reorder_rooms(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
     monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
 
-    result = routes_api.api_reorder_rooms("house", {"order": ["room-b", "room-a"]})
+    user, session = admin_user_session
+    result = routes_api.api_reorder_rooms(
+        "house", {"order": ["room-b", "room-a"]}, current_user=user, session=session
+    )
     assert result["ok"] is True
     assert result["order"] == ["room-b", "room-a"]
     stored = settings.DEVICE_REGISTRY[0]["rooms"]
     assert [room["id"] for room in stored] == ["room-b", "room-a"]
 
     with pytest.raises(HTTPException) as excinfo:
-        routes_api.api_reorder_rooms("house", {"order": ["room-a"]})
+        routes_api.api_reorder_rooms(
+            "house", {"order": ["room-a"]}, current_user=user, session=session
+        )
     assert excinfo.value.status_code == 400
 
     with pytest.raises(HTTPException) as excinfo:
-        routes_api.api_reorder_rooms("house", {"order": "room-a"})
+        routes_api.api_reorder_rooms(
+            "house", {"order": "room-a"}, current_user=user, session=session
+        )
     assert excinfo.value.status_code == 400
 
     with pytest.raises(HTTPException) as excinfo:
-        routes_api.api_reorder_rooms("missing", {"order": ["room-a", "room-b"]})
+        routes_api.api_reorder_rooms(
+            "missing",
+            {"order": ["room-a", "room-b"]},
+            current_user=user,
+            session=session,
+        )
     assert excinfo.value.status_code == 404
 
 
-def test_api_reorder_room_presets(monkeypatch, tmp_path):
+def test_api_reorder_room_presets(monkeypatch, tmp_path, admin_user_session):
     preset_path = tmp_path / "custom_presets.json"
     monkeypatch.setenv("CUSTOM_PRESET_FILE", str(preset_path))
 
@@ -425,7 +487,14 @@ def test_api_reorder_room_presets(monkeypatch, tmp_path):
             },
         )
 
-        result = routes_api.api_reorder_room_presets("house", "room", {"order": ["two", "one"]})
+        user, session = admin_user_session
+        result = routes_api.api_reorder_room_presets(
+            "house",
+            "room",
+            {"order": ["two", "one"]},
+            current_user=user,
+            session=session,
+        )
         assert result["ok"] is True
         assert [preset["id"] for preset in result["presets"]] == ["two", "one"]
 
@@ -433,15 +502,29 @@ def test_api_reorder_room_presets(monkeypatch, tmp_path):
         assert [preset["id"] for preset in stored] == ["two", "one"]
 
         with pytest.raises(HTTPException) as excinfo:
-            routes_api.api_reorder_room_presets("house", "room", {"order": ["two", "two"]})
+            routes_api.api_reorder_room_presets(
+                "house",
+                "room",
+                {"order": ["two", "two"]},
+                current_user=user,
+                session=session,
+            )
         assert excinfo.value.status_code == 400
 
         with pytest.raises(HTTPException) as excinfo:
-            routes_api.api_reorder_room_presets("house", "room", {"order": "two"})
+            routes_api.api_reorder_room_presets(
+                "house", "room", {"order": "two"}, current_user=user, session=session
+            )
         assert excinfo.value.status_code == 400
 
         with pytest.raises(HTTPException) as excinfo:
-            routes_api.api_reorder_room_presets("house", "room", {"order": ["missing", "one"]})
+            routes_api.api_reorder_room_presets(
+                "house",
+                "room",
+                {"order": ["missing", "one"]},
+                current_user=user,
+                session=session,
+            )
         assert excinfo.value.status_code == 400
     finally:
         for module_name in ["app.routes_api", "app.presets", "app.config", "app.registry"]:

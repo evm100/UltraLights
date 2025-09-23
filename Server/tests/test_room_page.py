@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterator, Tuple
 
 import pytest
+from starlette.requests import Request
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -217,3 +218,27 @@ def test_motion_config_omits_pir_disabled_nodes(app_modules) -> None:
         settings.DEVICE_REGISTRY = original_registry
         motion_module.motion_manager.config = original_config
         motion_module.motion_manager.room_sensors = original_room_sensors
+
+
+def test_room_page_forbidden(monkeypatch) -> None:
+    from app.auth.models import User
+    import app.mqtt_bus
+
+    monkeypatch.setattr(app.mqtt_bus, "MqttBus", lambda *args, **kwargs: _NoopBus())
+
+    import app.routes_pages as routes_pages
+
+    class DummyPolicy:
+        def ensure_room(self, *args, **kwargs):
+            raise PermissionError
+
+    monkeypatch.setattr(
+        routes_pages.AccessPolicy,
+        "from_session",
+        classmethod(lambda cls, session, user: DummyPolicy()),
+    )
+
+    dummy_request = Request({"type": "http"})
+    user = User(id=1, username="test", hashed_password="x", server_admin=False)
+    response = routes_pages.room_page(dummy_request, "alpha", "room", user, session=None)
+    assert response.status_code == 403

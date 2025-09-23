@@ -1,8 +1,12 @@
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, HTTPException
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlmodel import Session
 from .mqtt_bus import MqttBus
 from . import registry
+from .auth.access import AccessPolicy, HouseContext
+from .auth.dependencies import get_current_user
+from .auth.models import User
 from .effects import WS_EFFECTS, WHITE_EFFECTS, RGB_EFFECTS
 from .presets import (
     get_preset,
@@ -19,6 +23,7 @@ from .motion_prefs import motion_preferences
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
 from .channel_names import channel_names
+from .database import get_session
 
 
 router = APIRouter()
@@ -28,31 +33,49 @@ DEFAULT_SNAPSHOT_TIMEOUT = 3.0
 MAX_CUSTOM_PRESET_NAME_LENGTH = 64
 MAX_NODE_NAME_LENGTH = 120
 
+
+def _build_policy(session: Session, user: User) -> AccessPolicy:
+    return AccessPolicy.from_session(session, user)
+
+
+def _require_house(policy: AccessPolicy, house_id: str):
+    try:
+        return policy.ensure_house(house_id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown house") from exc
+    except PermissionError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden") from exc
+
+
+def _require_room(policy: AccessPolicy, house_id: str, room_id: str):
+    try:
+        return policy.ensure_room(house_id, room_id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown room") from exc
+    except PermissionError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden") from exc
+
+
+def _require_node(policy: AccessPolicy, node_id: str):
+    try:
+        return policy.ensure_node(node_id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id") from exc
+    except PermissionError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden") from exc
+
+
+def _ensure_can_manage_house(house_ctx: HouseContext, user: User) -> None:
+    if not house_ctx.access.can_manage(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
+
+
 def get_bus() -> MqttBus:
     global BUS
     if BUS is None:
         BUS = MqttBus()
     return BUS
 
-
-def _resolve_house(house_id: str) -> tuple[dict[str, Any], str, str]:
-    house = registry.find_house(house_id)
-    if not house:
-        raise HTTPException(404, "Unknown house")
-    slug = registry.get_house_slug(house)
-    public_id = registry.get_house_external_id(house)
-    return house, slug, public_id
-
-
-def _resolve_room(
-    house_id: str, room_id: str
-) -> tuple[dict[str, Any], dict[str, Any], str, str]:
-    house, room = registry.find_room(house_id, room_id)
-    if not house or not room:
-        raise HTTPException(404, "Unknown room")
-    slug = registry.get_house_slug(house)
-    public_id = registry.get_house_external_id(house)
-    return house, room, slug, public_id
 
 def _valid_node(node_id: str) -> Dict[str, Any]:
     _, _, node = registry.find_node(node_id)
@@ -283,22 +306,35 @@ def _modules_to_snapshot(modules: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.delete("/api/node/{node_id}")
-def api_remove_node(node_id: str):
-    house, room, node = registry.find_node(node_id)
-    if not node or not house or not room:
-        raise HTTPException(404, "Unknown node id")
+def api_remove_node(
+    node_id: str,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    node_ctx = _require_node(policy, node_id)
+    _ensure_can_manage_house(node_ctx.room.house, current_user)
     try:
         removed = registry.remove_node(node_id)
     except KeyError:
-        raise HTTPException(404, "Unknown node id")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
     motion_manager.forget_node(node_id)
     status_monitor.forget(node_id)
     return {"ok": True, "node": removed}
 
 
 @router.post("/api/node/{node_id}/name")
-def api_set_node_name(node_id: str, payload: Dict[str, Any]):
-    _valid_node(node_id)
+def api_set_node_name(
+    node_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    node_ctx = _require_node(policy, node_id)
+    _ensure_can_manage_house(node_ctx.room.house, current_user)
     raw_name = payload.get("name")
     if raw_name is None:
         raise HTTPException(400, "missing name")
@@ -312,49 +348,80 @@ def api_set_node_name(node_id: str, payload: Dict[str, Any]):
     try:
         node = registry.set_node_name(node_id, clean_name)
     except KeyError:
-        raise HTTPException(404, "Unknown node id")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
     motion_manager.update_node_name(node_id, clean_name)
     return {"ok": True, "node": node}
 
 
 @router.post("/api/all-off")
-def api_all_off():
+def api_all_off(
+    *,
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user.server_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
     get_bus().all_off()
     return {"ok": True}
 
 @router.post("/api/house/{house_id}/rooms")
-def api_add_room(house_id: str, payload: Dict[str, str]):
+def api_add_room(
+    house_id: str,
+    payload: Dict[str, str],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    house_ctx = _require_house(policy, house_id)
+    _ensure_can_manage_house(house_ctx, current_user)
     name = str(payload.get("name", "")).strip()
     if not name:
         raise HTTPException(400, "missing name")
     try:
         room = registry.add_room(house_id, name)
     except KeyError:
-        raise HTTPException(404, "Unknown house")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown house")
     return {"ok": True, "room": room}
 
 
 @router.post("/api/house/{house_id}/rooms/reorder")
-def api_reorder_rooms(house_id: str, payload: Dict[str, Any]):
+def api_reorder_rooms(
+    house_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    house_ctx = _require_house(policy, house_id)
+    _ensure_can_manage_house(house_ctx, current_user)
     order = payload.get("order")
     if not isinstance(order, list):
         raise HTTPException(400, "missing order")
     try:
         new_order = registry.reorder_rooms(house_id, order)
     except KeyError:
-        raise HTTPException(404, "Unknown house")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown house")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return {"ok": True, "order": [str(room.get("id")) for room in new_order]}
 
 
 @router.delete("/api/house/{house_id}/rooms/{room_id}")
-def api_delete_room(house_id: str, room_id: str):
-    house, room, house_slug, _ = _resolve_room(house_id, room_id)
+def api_delete_room(
+    house_id: str,
+    room_id: str,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
+    _ensure_can_manage_house(room_ctx.house, current_user)
 
     seen: set[str] = set()
     node_ids: List[str] = []
-    nodes = room.get("nodes")
+    nodes = room_ctx.room.get("nodes")
     if isinstance(nodes, list):
         for entry in nodes:
             if not isinstance(entry, dict):
@@ -371,20 +438,30 @@ def api_delete_room(house_id: str, room_id: str):
     try:
         removed = registry.remove_room(house_id, room_id)
     except KeyError:
-        raise HTTPException(404, "Unknown room")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown room")
 
     for node_id in node_ids:
         motion_manager.forget_node(node_id)
         status_monitor.forget(node_id)
 
-    motion_manager.forget_room(house_slug, room_id)
-    motion_schedule.remove_room(house_slug, room_id)
+    motion_manager.forget_room(room_ctx.house.slug, room_id)
+    motion_schedule.remove_room(room_ctx.house.slug, room_id)
 
     return {"ok": True, "room": removed, "removed_nodes": node_ids}
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/nodes")
-def api_add_node(house_id: str, room_id: str, payload: Dict[str, Any]):
+def api_add_node(
+    house_id: str,
+    room_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
+    _ensure_can_manage_house(room_ctx.house, current_user)
     name = str(payload.get("name", "")).strip()
     if not name:
         raise HTTPException(400, "missing name")
@@ -393,22 +470,37 @@ def api_add_node(house_id: str, room_id: str, payload: Dict[str, Any]):
     try:
         node = registry.add_node(house_id, room_id, name, kind, modules)
     except KeyError:
-        raise HTTPException(404, "Unknown room")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown room")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return {"ok": True, "node": node}
 
 
 @router.get("/api/house/{house_id}/room/{room_id}/presets")
-def api_list_room_presets(house_id: str, room_id: str):
-    _, _, house_slug, _ = _resolve_room(house_id, room_id)
-    presets = get_room_presets(house_slug, room_id)
+def api_list_room_presets(
+    house_id: str,
+    room_id: str,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
+    presets = get_room_presets(room_ctx.house.slug, room_id)
     return {"presets": presets}
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/presets")
-def api_create_room_preset(house_id: str, room_id: str, payload: Dict[str, Any]):
-    house, room, house_slug, _ = _resolve_room(house_id, room_id)
+def api_create_room_preset(
+    house_id: str,
+    room_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
 
     raw_name = payload.get("name")
     if raw_name is None:
@@ -429,7 +521,7 @@ def api_create_room_preset(house_id: str, room_id: str, payload: Dict[str, Any])
 
     node_entries: List[tuple[str, Dict[str, Any]]] = []
     seen_nodes: set[str] = set()
-    room_nodes = room.get("nodes")
+    room_nodes = room_ctx.room.get("nodes")
     if not isinstance(room_nodes, list):
         room_nodes = []
     for entry in room_nodes:
@@ -471,7 +563,7 @@ def api_create_room_preset(house_id: str, room_id: str, payload: Dict[str, Any])
 
     existing_ids = {
         str(p.get("id"))
-        for p in get_room_presets(house_slug, room_id)
+        for p in get_room_presets(room_ctx.house.slug, room_id)
         if isinstance(p, dict) and p.get("id") is not None
     }
     base_id = registry.slugify(name)
@@ -484,40 +576,56 @@ def api_create_room_preset(house_id: str, room_id: str, payload: Dict[str, Any])
         counter += 1
 
     saved = save_custom_preset(
-        house_slug,
+        room_ctx.house.slug,
         room_id,
         {"id": preset_id, "name": name, "actions": actions, "source": "custom"},
     )
 
-    presets = get_room_presets(house_slug, room_id)
+    presets = get_room_presets(room_ctx.house.slug, room_id)
     return {"ok": True, "preset": saved, "presets": presets}
 
 
 @router.delete("/api/house/{house_id}/room/{room_id}/presets")
-def api_delete_room_preset(house_id: str, room_id: str, preset_id: str):
-    _, _, house_slug, _ = _resolve_room(house_id, room_id)
+def api_delete_room_preset(
+    house_id: str,
+    room_id: str,
+    preset_id: str,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
 
     preset_key = str(preset_id).strip()
     if not preset_key:
         raise HTTPException(400, "invalid preset id")
 
-    if not delete_custom_preset(house_slug, room_id, preset_key):
+    if not delete_custom_preset(room_ctx.house.slug, room_id, preset_key):
         raise HTTPException(404, "Unknown preset")
 
-    presets = get_room_presets(house_slug, room_id)
+    presets = get_room_presets(room_ctx.house.slug, room_id)
     return {"ok": True, "presets": presets}
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/presets/reorder")
-def api_reorder_room_presets(house_id: str, room_id: str, payload: Dict[str, Any]):
-    _, _, house_slug, _ = _resolve_room(house_id, room_id)
+def api_reorder_room_presets(
+    house_id: str,
+    room_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
 
     order = payload.get("order")
     if not isinstance(order, list):
         raise HTTPException(400, "order must be provided as a list")
 
     try:
-        presets = reorder_custom_presets(house_slug, room_id, order)
+        presets = reorder_custom_presets(room_ctx.house.slug, room_id, order)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except KeyError:
@@ -527,9 +635,17 @@ def api_reorder_room_presets(house_id: str, room_id: str, payload: Dict[str, Any
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/preset/{preset_id}")
-def api_apply_preset(house_id: str, room_id: str, preset_id: str):
-    _, _, house_slug, _ = _resolve_room(house_id, room_id)
-    preset = get_preset(house_slug, room_id, preset_id)
+def api_apply_preset(
+    house_id: str,
+    room_id: str,
+    preset_id: str,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
+    preset = get_preset(room_ctx.house.slug, room_id, preset_id)
     if not preset:
         raise HTTPException(404, "Unknown preset")
     apply_preset(get_bus(), preset)
@@ -537,15 +653,37 @@ def api_apply_preset(house_id: str, room_id: str, preset_id: str):
 
 
 @router.get("/api/house/{house_id}/room/{room_id}/motion-immune")
-def api_get_motion_immune(house_id: str, room_id: str):
-    _, _, house_slug, public_id = _resolve_room(house_id, room_id)
-    immune = sorted(motion_preferences.get_room_immune_nodes(house_slug, room_id))
-    return {"house_id": public_id, "room_id": room_id, "immune": immune}
+def api_get_motion_immune(
+    house_id: str,
+    room_id: str,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
+    immune = sorted(
+        motion_preferences.get_room_immune_nodes(room_ctx.house.slug, room_id)
+    )
+    return {
+        "house_id": room_ctx.house.external_id,
+        "room_id": room_id,
+        "immune": immune,
+    }
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/motion-immune")
-def api_set_motion_immune(house_id: str, room_id: str, payload: Dict[str, Any]):
-    house, room, house_slug, public_id = _resolve_room(house_id, room_id)
+def api_set_motion_immune(
+    house_id: str,
+    room_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
+    _ensure_can_manage_house(room_ctx.house, current_user)
 
     if not isinstance(payload, dict):
         raise HTTPException(400, "invalid payload")
@@ -558,7 +696,7 @@ def api_set_motion_immune(house_id: str, room_id: str, payload: Dict[str, Any]):
 
     available_nodes = {
         str(node.get("id"))
-        for node in room.get("nodes", [])
+        for node in room_ctx.room.get("nodes", [])
         if node.get("id") is not None
     }
 
@@ -572,22 +710,37 @@ def api_set_motion_immune(house_id: str, room_id: str, payload: Dict[str, Any]):
         if node_id not in clean_list:
             clean_list.append(node_id)
 
-    stored = motion_preferences.set_room_immune_nodes(house_slug, room_id, clean_list)
+    stored = motion_preferences.set_room_immune_nodes(
+        room_ctx.house.slug, room_id, clean_list
+    )
     immune = sorted(stored)
-    return {"ok": True, "immune": immune, "house_id": public_id}
+    return {
+        "ok": True,
+        "immune": immune,
+        "house_id": room_ctx.house.external_id,
+    }
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/motion-schedule")
-def api_set_motion_schedule(house_id: str, room_id: str, payload: Dict[str, Any]):
-    _, _, house_slug, public_id = _resolve_room(house_id, room_id)
-    if (house_slug, room_id) not in motion_manager.room_sensors:
+def api_set_motion_schedule(
+    house_id: str,
+    room_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
+    _ensure_can_manage_house(room_ctx.house, current_user)
+    if (room_ctx.house.slug, room_id) not in motion_manager.room_sensors:
         raise HTTPException(404, "Motion schedule not supported for this room")
     schedule = payload.get("schedule")
     if not isinstance(schedule, list):
         raise HTTPException(400, "invalid schedule")
     if len(schedule) != motion_schedule.slot_count:
         raise HTTPException(400, "invalid schedule length")
-    valid_presets = {p["id"] for p in get_room_presets(house_slug, room_id)}
+    valid_presets = {p["id"] for p in get_room_presets(room_ctx.house.slug, room_id)}
     clean: List[Optional[str]] = []
     for value in schedule:
         if value in (None, "", "none"):
@@ -598,14 +751,27 @@ def api_set_motion_schedule(house_id: str, room_id: str, payload: Dict[str, Any]
         if value not in valid_presets:
             raise HTTPException(400, f"unknown preset: {value}")
         clean.append(value)
-    stored = motion_schedule.set_schedule(house_slug, room_id, clean)
-    return {"ok": True, "schedule": stored, "house_id": public_id}
+    stored = motion_schedule.set_schedule(room_ctx.house.slug, room_id, clean)
+    return {
+        "ok": True,
+        "schedule": stored,
+        "house_id": room_ctx.house.external_id,
+    }
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/motion-schedule/color")
-def api_set_motion_schedule_color(house_id: str, room_id: str, payload: Dict[str, Any]):
-    _, _, house_slug, public_id = _resolve_room(house_id, room_id)
-    if (house_slug, room_id) not in motion_manager.room_sensors:
+def api_set_motion_schedule_color(
+    house_id: str,
+    room_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
+    _ensure_can_manage_house(room_ctx.house, current_user)
+    if (room_ctx.house.slug, room_id) not in motion_manager.room_sensors:
         raise HTTPException(404, "Motion schedule not supported for this room")
     if not isinstance(payload, dict):
         raise HTTPException(400, "invalid payload")
@@ -618,23 +784,36 @@ def api_set_motion_schedule_color(house_id: str, room_id: str, payload: Dict[str
         raise HTTPException(400, "invalid color")
     valid_presets = {
         str(p.get("id"))
-        for p in get_room_presets(house_slug, room_id)
+        for p in get_room_presets(room_ctx.house.slug, room_id)
         if p.get("id") is not None
     }
     if preset_key not in valid_presets:
         raise HTTPException(404, f"unknown preset: {preset_key}")
     try:
         stored = motion_schedule.set_preset_color(
-            house_slug, room_id, preset_key, color_value
+            room_ctx.house.slug, room_id, preset_key, color_value
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    return {"ok": True, "preset": preset_key, "color": stored, "house_id": public_id}
+    return {
+        "ok": True,
+        "preset": preset_key,
+        "color": stored,
+        "house_id": room_ctx.house.external_id,
+    }
 
 # ---- Node command APIs -------------------------------------------------
 
 @router.post("/api/node/{node_id}/ws/set")
-def api_ws_set(node_id: str, payload: Dict[str, Any]):
+def api_ws_set(
+    node_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    _require_node(policy, node_id)
     _valid_node(node_id)
     try:
         strip = int(payload.get("strip"))
@@ -668,7 +847,15 @@ def api_ws_set(node_id: str, payload: Dict[str, Any]):
     return {"ok": True}
 
 @router.post("/api/node/{node_id}/white/set")
-def api_white_set(node_id: str, payload: Dict[str, Any]):
+def api_white_set(
+    node_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    _require_node(policy, node_id)
     _valid_node(node_id)
     try:
         channel = int(payload.get("channel"))
@@ -698,7 +885,15 @@ def api_white_set(node_id: str, payload: Dict[str, Any]):
 
 
 @router.post("/api/node/{node_id}/rgb/set")
-def api_rgb_set(node_id: str, payload: Dict[str, Any]):
+def api_rgb_set(
+    node_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    _require_node(policy, node_id)
     _valid_node(node_id)
     try:
         strip = int(payload.get("strip"))
@@ -735,8 +930,18 @@ def api_rgb_set(node_id: str, payload: Dict[str, Any]):
 
 
 @router.post("/api/node/{node_id}/{module}/brightness-limit")
-def api_set_brightness_limit(node_id: str, module: str, payload: Dict[str, Any]):
-    node = _valid_node(node_id)
+def api_set_brightness_limit(
+    node_id: str,
+    module: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    node_ctx = _require_node(policy, node_id)
+    _ensure_can_manage_house(node_ctx.room.house, current_user)
+    node = node_ctx.node
     module_key = str(module).lower()
     if module_key not in {"ws", "white", "rgb"}:
         raise HTTPException(404, "unsupported module")
@@ -763,8 +968,18 @@ def api_set_brightness_limit(node_id: str, module: str, payload: Dict[str, Any])
 
 
 @router.post("/api/node/{node_id}/{module}/channel-name")
-def api_set_channel_name(node_id: str, module: str, payload: Dict[str, Any]):
-    node = _valid_node(node_id)
+def api_set_channel_name(
+    node_id: str,
+    module: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    node_ctx = _require_node(policy, node_id)
+    _ensure_can_manage_house(node_ctx.room.house, current_user)
+    node = node_ctx.node
     module_key = str(module).lower()
     if module_key not in {"ws", "white", "rgb"}:
         raise HTTPException(404, "unsupported module")
@@ -784,8 +999,16 @@ def api_set_channel_name(node_id: str, module: str, payload: Dict[str, Any]):
 
 
 @router.post("/api/node/{node_id}/motion")
-def api_node_motion(node_id: str, payload: Dict[str, Any]):
-    _valid_node(node_id)
+def api_node_motion(
+    node_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    node_ctx = _require_node(policy, node_id)
+    _ensure_can_manage_house(node_ctx.room.house, current_user)
     enabled = bool(payload.get("enabled", True))
     try:
         duration = int(payload.get("duration", 30))
@@ -797,15 +1020,30 @@ def api_node_motion(node_id: str, payload: Dict[str, Any]):
     return {"ok": True}
 
 @router.post("/api/node/{node_id}/ota/check")
-def api_ota_check(node_id: str):
-    _valid_node(node_id)
+def api_ota_check(
+    node_id: str,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    node_ctx = _require_node(policy, node_id)
+    _ensure_can_manage_house(node_ctx.room.house, current_user)
     get_bus().ota_check(node_id)
     return {"ok": True}
 
 
 @router.get("/api/node/{node_id}/state")
-def api_node_state(node_id: str, timeout: float = 3.0):
-    node = _valid_node(node_id)
+def api_node_state(
+    node_id: str,
+    timeout: float = 3.0,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    node_ctx = _require_node(policy, node_id)
+    node = node_ctx.node
     try:
         timeout_value = float(timeout)
     except (TypeError, ValueError):
@@ -856,7 +1094,21 @@ def api_node_status(node_id: str):
 
 
 @router.get("/api/admin/status")
-def api_admin_status(house_id: Optional[str] = None):
+def api_admin_status(
+    house_id: Optional[str] = None,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    filter_slug: Optional[str] = None
+    if house_id is not None:
+        house_ctx = _require_house(policy, house_id)
+        _ensure_can_manage_house(house_ctx, current_user)
+        filter_slug = house_ctx.slug
+    elif not policy.manages_any_house():
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
+
     snapshot = status_monitor.snapshot()
 
     def _iso(ts: Optional[float]) -> Optional[str]:
@@ -865,14 +1117,15 @@ def api_admin_status(house_id: Optional[str] = None):
         return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
 
     nodes: Dict[str, Dict[str, Any]] = {}
-    filter_slug: Optional[str] = None
-    if house_id is not None:
-        _, filter_slug, _ = _resolve_house(house_id)
     for house, _, node in registry.iter_nodes():
         if filter_slug:
             slug = registry.get_house_slug(house)
             if slug != filter_slug:
                 continue
+        external_id = registry.get_house_external_id(house)
+        access = policy.get_house_access(external_id)
+        if not access or not access.can_manage(current_user):
+            continue
         node_id = node["id"]
         info = snapshot.get(node_id, {})
         signal_value: Optional[float] = None
