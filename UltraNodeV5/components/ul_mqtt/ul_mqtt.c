@@ -948,9 +948,20 @@ void ul_mqtt_start(void) {
     return;
   }
 
+  esp_err_t register_err =
+      esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID,
+                                     mqtt_event_handler, NULL);
+  if (register_err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to register MQTT event handler (%d)",
+             (int)register_err);
+    esp_mqtt_client_destroy(client);
+    s_client = NULL;
+    ul_health_notify_mqtt(false);
+    schedule_mqtt_retry();
+    return;
+  }
+
   s_client = client;
-  esp_mqtt_client_register_event(s_client, ESP_EVENT_ANY_ID, mqtt_event_handler,
-                                 NULL);
   esp_err_t start_err = esp_mqtt_client_start(s_client);
   if (start_err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to start MQTT client (%d)", (int)start_err);
