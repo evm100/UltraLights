@@ -42,6 +42,7 @@ static int g_semaphore_count = 0;
 static bool g_core_connected = true;
 
 static int g_task_create_calls = 0;
+static int g_task_create_fail_call = -1;
 
 static int g_effect_render_calls = 0;
 static int g_effect_init_calls = 0;
@@ -49,12 +50,19 @@ static int g_effect_init_calls = 0;
 // Forward declarations for helpers
 static void reset_test_state(void);
 static void test_set_heap_caps_malloc_fail_call(int call);
+static void test_set_task_create_fail_call(int call);
+static void assert_engine_disabled(void);
 
 // ---- Stub implementations -------------------------------------------------
 
 void test_set_heap_caps_malloc_fail_call(int call) {
     g_heap_caps_malloc_fail_call = call;
     g_heap_caps_malloc_call_count = 0;
+}
+
+void test_set_task_create_fail_call(int call) {
+    g_task_create_fail_call = call;
+    g_task_create_calls = 0;
 }
 
 void* heap_caps_malloc(size_t size, uint32_t caps) {
@@ -128,6 +136,10 @@ void vTaskDelayUntil(TickType_t* const pxPreviousWakeTime, TickType_t xTimeIncre
     }
 }
 
+void vTaskDelay(TickType_t ticks) {
+    (void)ticks;
+}
+
 void vTaskDelete(TaskHandle_t task) {
     (void)task;
 }
@@ -177,6 +189,13 @@ BaseType_t ul_task_create(TaskFunction_t task_func,
     (void)priority;
     (void)core_id;
     g_task_create_calls++;
+    if (g_task_create_fail_call > 0 &&
+        g_task_create_calls == g_task_create_fail_call) {
+        if (task_handle) {
+            *task_handle = NULL;
+        }
+        return pdFAIL;
+    }
     if (task_handle) {
         *task_handle = (TaskHandle_t)task_func;
     }
@@ -228,6 +247,7 @@ const ws_effect_t* ul_ws_get_effects(int* count) {
 // ---- Helpers --------------------------------------------------------------
 
 static void reset_test_state(void) {
+    ul_ws_engine_stop();
     memset(g_led_strip_storage, 0, sizeof(g_led_strip_storage));
     g_led_strip_storage_count = 0;
     g_led_strip_del_calls = 0;
@@ -241,9 +261,9 @@ static void reset_test_state(void) {
     g_semaphore_count = 0;
     g_core_connected = true;
     g_task_create_calls = 0;
+    g_task_create_fail_call = -1;
     g_effect_render_calls = 0;
     g_effect_init_calls = 0;
-    ul_ws_engine_stop();
 }
 
 static void assert_strip_disabled(int idx) {
@@ -258,6 +278,15 @@ static void assert_strip_enabled(int idx, int expected_pixels) {
     assert(s_strips[idx].frame != NULL);
     assert(s_strips[idx].handle != NULL);
     assert(s_strips[idx].eff != NULL);
+}
+
+static void assert_engine_disabled(void) {
+    assert_strip_disabled(0);
+    assert_strip_disabled(1);
+    assert(s_refresh_sem == NULL);
+    assert(s_refresh_task == NULL);
+    assert(s_ws_task == NULL);
+    assert(ul_ws_get_strip_count() == 0);
 }
 
 // ---- Tests ----------------------------------------------------------------
@@ -297,8 +326,64 @@ static void test_allocation_failure_second_strip(void) {
     assert(g_led_strip_set_pixel_total == pixel_calls_before);
 }
 
+static void test_task_create_failure_first_task(void) {
+    reset_test_state();
+    test_set_task_create_fail_call(1);
+
+    ul_ws_engine_start();
+
+    assert_engine_disabled();
+    assert(g_led_strip_del_calls == 2);
+    assert(g_semaphore_count == 1);
+    assert(g_semaphores[0].deleted);
+    assert(g_task_create_calls == 1);
+
+    test_set_task_create_fail_call(-1);
+    ul_ws_engine_start();
+
+    assert_strip_enabled(0, CONFIG_UL_WS0_PIXELS);
+    assert_strip_enabled(1, CONFIG_UL_WS1_PIXELS);
+    assert(s_refresh_sem != NULL);
+    assert(s_refresh_task != NULL);
+    assert(s_ws_task != NULL);
+    assert(ul_ws_get_strip_count() == 2);
+    assert(g_task_create_calls == 2);
+
+    ul_ws_engine_stop();
+    assert_engine_disabled();
+}
+
+static void test_task_create_failure_second_task(void) {
+    reset_test_state();
+    test_set_task_create_fail_call(2);
+
+    ul_ws_engine_start();
+
+    assert_engine_disabled();
+    assert(g_led_strip_del_calls == 2);
+    assert(g_semaphore_count == 1);
+    assert(g_semaphores[0].deleted);
+    assert(g_task_create_calls == 2);
+
+    test_set_task_create_fail_call(-1);
+    ul_ws_engine_start();
+
+    assert_strip_enabled(0, CONFIG_UL_WS0_PIXELS);
+    assert_strip_enabled(1, CONFIG_UL_WS1_PIXELS);
+    assert(s_refresh_sem != NULL);
+    assert(s_refresh_task != NULL);
+    assert(s_ws_task != NULL);
+    assert(ul_ws_get_strip_count() == 2);
+    assert(g_task_create_calls == 2);
+
+    ul_ws_engine_stop();
+    assert_engine_disabled();
+}
+
 int main(void) {
     test_allocation_failure_second_strip();
+    test_task_create_failure_first_task();
+    test_task_create_failure_second_task();
     ul_ws_engine_stop();
     printf("All tests passed\n");
     return 0;

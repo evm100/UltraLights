@@ -14,6 +14,7 @@ typedef uint32_t StackType_t;
 #define pdTRUE 1
 #define pdFALSE 0
 #define pdPASS 1
+#define pdFAIL 0
 #define portMAX_DELAY ((TickType_t)-1)
 #define BIT0 (1U << 0)
 #define BIT1 (1U << 1)
