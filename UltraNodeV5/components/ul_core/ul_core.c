@@ -64,6 +64,8 @@ void ul_core_register_time_sync_cb(ul_core_time_sync_cb_t cb, void *ctx) {
 }
 
 static void wifi_reconnect_timer_cb(void *arg) {
+  if (!s_wifi_event_group)
+    return;
   xEventGroupClearBits(s_wifi_event_group, WIFI_FAIL_BIT);
   esp_err_t err = esp_wifi_connect();
   if (err != ESP_OK) {
@@ -77,6 +79,10 @@ static void wifi_reconnect_timer_cb(void *arg) {
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data) {
+  if (!s_wifi_event_group) {
+    ESP_LOGW(TAG, "Wi-Fi event received before event group init");
+    return;
+  }
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
     s_backoff_ms = 1000;
     esp_wifi_connect();
@@ -99,7 +105,22 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 }
 
 void ul_core_wifi_start(void) {
-  s_wifi_event_group = xEventGroupCreate();
+  EventGroupHandle_t event_group = xEventGroupCreate();
+  if (!event_group) {
+    ESP_LOGE(TAG, "Failed to create Wi-Fi event group");
+    if (s_reconnect_timer) {
+      esp_timer_stop(s_reconnect_timer);
+      esp_timer_delete(s_reconnect_timer);
+      s_reconnect_timer = NULL;
+    }
+    if (s_wifi_restart_mutex) {
+      vSemaphoreDelete(s_wifi_restart_mutex);
+      s_wifi_restart_mutex = NULL;
+    }
+    return;
+  }
+
+  s_wifi_event_group = event_group;
 
   if (!s_wifi_restart_mutex) {
     s_wifi_restart_mutex = xSemaphoreCreateMutex();
@@ -138,6 +159,8 @@ void ul_core_wifi_start(void) {
 }
 
 bool ul_core_wait_for_ip(TickType_t timeout) {
+  if (!s_wifi_event_group)
+    return false;
   TickType_t start = xTaskGetTickCount();
   TickType_t remaining = timeout;
   while (1) {
