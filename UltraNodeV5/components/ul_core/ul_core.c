@@ -7,6 +7,7 @@
 #include "esp_sntp.h"
 #include "esp_netif_sntp.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -14,6 +15,7 @@
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
+#include <limits.h>
 
 static const char *TAG = "ul_core";
 
@@ -24,12 +26,27 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_FAIL_BIT BIT1
 #define WIFI_MAX_BACKOFF_MS 30000
 
+#define SNTP_RETRY_INITIAL_DELAY_MS 5000
+#define SNTP_RETRY_MAX_DELAY_MS 60000
+
 static esp_timer_handle_t s_reconnect_timer;
 static int s_backoff_ms = 1000;
 static SemaphoreHandle_t s_wifi_restart_mutex;
 
 static ul_core_time_sync_cb_t s_time_sync_cb = NULL;
 static void *s_time_sync_ctx = NULL;
+
+static TaskHandle_t s_sntp_task;
+static esp_timer_handle_t s_sntp_retry_timer;
+static uint32_t s_sntp_retry_delay_ms = SNTP_RETRY_INITIAL_DELAY_MS;
+static uint32_t s_sntp_retry_attempts;
+static uint64_t s_sntp_first_failure_us;
+static uint64_t s_sntp_last_failure_us;
+static portMUX_TYPE s_sntp_lock = portMUX_INITIALIZER_UNLOCKED;
+
+static BaseType_t ul_core_start_sntp_task(void);
+static void sntp_retry_timer_cb(void *arg);
+static void schedule_sntp_retry(uint32_t delay_ms);
 
 const char *ul_core_get_node_id(void) { return s_node_id; }
 
@@ -246,6 +263,125 @@ void ul_core_sntp_start(void) {
   ESP_LOGI(TAG, "Time sync: %ld", now);
   if (s_time_sync_cb)
     s_time_sync_cb(s_time_sync_ctx);
-  ul_task_create(sntp_sync_task, "sntp_sync", 2048, NULL, tskIDLE_PRIORITY,
-                 NULL, 0);
+  if (!s_sntp_retry_timer) {
+    const esp_timer_create_args_t retry_args = {
+        .callback = &sntp_retry_timer_cb,
+        .name = "sntp_retry",
+    };
+    esp_err_t timer_err = esp_timer_create(&retry_args, &s_sntp_retry_timer);
+    if (timer_err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to create SNTP retry timer: %s",
+               esp_err_to_name(timer_err));
+    }
+  }
+
+  portENTER_CRITICAL(&s_sntp_lock);
+  s_sntp_retry_delay_ms = SNTP_RETRY_INITIAL_DELAY_MS;
+  portEXIT_CRITICAL(&s_sntp_lock);
+
+  if (ul_core_start_sntp_task() != pdPASS) {
+    ESP_LOGW(TAG, "SNTP resync task creation deferred; retry scheduled");
+  }
+}
+
+static BaseType_t ul_core_start_sntp_task(void) {
+  TaskHandle_t existing;
+  portENTER_CRITICAL(&s_sntp_lock);
+  existing = s_sntp_task;
+  portEXIT_CRITICAL(&s_sntp_lock);
+  if (existing)
+    return pdPASS;
+
+  TaskHandle_t task_handle = NULL;
+  BaseType_t rc = ul_task_create(sntp_sync_task, "sntp_sync", 2048, NULL,
+                                 tskIDLE_PRIORITY, &task_handle, 0);
+  if (rc == pdPASS) {
+    portENTER_CRITICAL(&s_sntp_lock);
+    s_sntp_task = task_handle;
+    s_sntp_retry_attempts = 0;
+    s_sntp_first_failure_us = 0;
+    s_sntp_last_failure_us = 0;
+    s_sntp_retry_delay_ms = SNTP_RETRY_INITIAL_DELAY_MS;
+    portEXIT_CRITICAL(&s_sntp_lock);
+    if (s_sntp_retry_timer && esp_timer_is_active(s_sntp_retry_timer)) {
+      esp_timer_stop(s_sntp_retry_timer);
+    }
+    return rc;
+  }
+
+  uint64_t now_us = esp_timer_get_time();
+  uint32_t attempt;
+  uint32_t delay_ms;
+  portENTER_CRITICAL(&s_sntp_lock);
+  if (s_sntp_retry_attempts == 0)
+    s_sntp_first_failure_us = now_us;
+  if (s_sntp_retry_attempts < UINT32_MAX)
+    s_sntp_retry_attempts++;
+  attempt = s_sntp_retry_attempts;
+  s_sntp_last_failure_us = now_us;
+  delay_ms = s_sntp_retry_delay_ms;
+  if (s_sntp_retry_delay_ms < SNTP_RETRY_MAX_DELAY_MS) {
+    uint32_t next_delay = s_sntp_retry_delay_ms * 2;
+    if (next_delay > SNTP_RETRY_MAX_DELAY_MS)
+      next_delay = SNTP_RETRY_MAX_DELAY_MS;
+    s_sntp_retry_delay_ms = next_delay;
+  }
+  portEXIT_CRITICAL(&s_sntp_lock);
+
+  ESP_LOGE(TAG, "Failed to start SNTP resync task (attempt %u): %ld. Retrying in %u ms",
+           (unsigned)attempt, (long)rc, (unsigned)delay_ms);
+  schedule_sntp_retry(delay_ms);
+  return rc;
+}
+
+static void sntp_retry_timer_cb(void *arg) {
+  (void)arg;
+  ul_core_start_sntp_task();
+}
+
+static void schedule_sntp_retry(uint32_t delay_ms) {
+  if (!s_sntp_retry_timer) {
+    ESP_LOGE(TAG, "SNTP retry timer unavailable; cannot reschedule");
+    return;
+  }
+  if (esp_timer_is_active(s_sntp_retry_timer)) {
+    esp_timer_stop(s_sntp_retry_timer);
+  }
+  esp_err_t err = esp_timer_start_once(s_sntp_retry_timer, delay_ms * 1000ULL);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to schedule SNTP retry in %u ms: %s", (unsigned)delay_ms,
+             esp_err_to_name(err));
+  }
+}
+
+bool ul_core_is_sntp_resync_active(void) {
+  bool active;
+  portENTER_CRITICAL(&s_sntp_lock);
+  active = s_sntp_task != NULL;
+  portEXIT_CRITICAL(&s_sntp_lock);
+  return active;
+}
+
+uint32_t ul_core_get_sntp_retry_attempts(void) {
+  uint32_t attempts;
+  portENTER_CRITICAL(&s_sntp_lock);
+  attempts = s_sntp_retry_attempts;
+  portEXIT_CRITICAL(&s_sntp_lock);
+  return attempts;
+}
+
+uint64_t ul_core_get_sntp_first_failure_us(void) {
+  uint64_t first;
+  portENTER_CRITICAL(&s_sntp_lock);
+  first = s_sntp_first_failure_us;
+  portEXIT_CRITICAL(&s_sntp_lock);
+  return first;
+}
+
+uint64_t ul_core_get_sntp_last_failure_us(void) {
+  uint64_t last;
+  portENTER_CRITICAL(&s_sntp_lock);
+  last = s_sntp_last_failure_us;
+  portEXIT_CRITICAL(&s_sntp_lock);
+  return last;
 }
