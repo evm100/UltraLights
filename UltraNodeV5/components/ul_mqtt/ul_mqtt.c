@@ -1,3 +1,6 @@
+#ifdef UL_MQTT_TESTING
+#include "ul_mqtt_test_stubs.h"
+#else
 #include "ul_mqtt.h"
 #include "cJSON.h"
 #include "esp_err.h"
@@ -15,6 +18,8 @@
 #include "ul_rgb_engine.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#endif
+
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
@@ -23,6 +28,13 @@
 static const char *TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
+
+#define UL_MQTT_RETRY_DELAY_US (5ULL * 1000000ULL)
+
+static esp_timer_handle_t s_retry_timer = NULL;
+static bool s_retry_pending = false;
+
+#ifndef UL_MQTT_TESTING
 
 #define UL_WS_MAX_STRIPS 2
 #define UL_RGB_MAX_STRIPS 4
@@ -854,6 +866,56 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     break;
   }
 }
+#endif
+
+static void cancel_mqtt_retry(void) {
+  if (!s_retry_timer)
+    return;
+  esp_err_t err = esp_timer_stop(s_retry_timer);
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+    ESP_LOGW(TAG, "Failed to stop MQTT retry timer (%d)", (int)err);
+  }
+  s_retry_pending = false;
+}
+
+static void schedule_mqtt_retry(void);
+
+void ul_mqtt_start(void);
+
+static void mqtt_retry_timer_cb(void *arg) {
+  (void)arg;
+  s_retry_pending = false;
+  ESP_LOGI(TAG, "Retrying MQTT client start");
+  ul_mqtt_start();
+}
+
+static void schedule_mqtt_retry(void) {
+  const uint64_t delay_us = UL_MQTT_RETRY_DELAY_US;
+  if (!s_retry_timer) {
+    const esp_timer_create_args_t args = {
+        .callback = &mqtt_retry_timer_cb,
+        .name = "ul_mqtt_retry",
+    };
+    esp_err_t err = esp_timer_create(&args, &s_retry_timer);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to create MQTT retry timer (%d)", (int)err);
+      return;
+    }
+  }
+
+  esp_err_t err = esp_timer_stop(s_retry_timer);
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+    ESP_LOGW(TAG, "Failed to stop MQTT retry timer before scheduling (%d)",
+             (int)err);
+  }
+
+  err = esp_timer_start_once(s_retry_timer, delay_us);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to start MQTT retry timer (%d)", (int)err);
+    return;
+  }
+  s_retry_pending = true;
+}
 
 void ul_mqtt_start(void) {
   if (s_client) {
@@ -865,6 +927,9 @@ void ul_mqtt_start(void) {
     ul_health_notify_mqtt(false);
     return;
   }
+
+  cancel_mqtt_retry();
+
   // MQTT runs at modest priority. On the ESP32-C3 all tasks share the
   // single core, so no explicit core assignment is needed.
   esp_mqtt_client_config_t cfg = {
@@ -874,14 +939,33 @@ void ul_mqtt_start(void) {
       .task.priority = 5,
       .task.stack_size = 6144,
   };
-  s_client = esp_mqtt_client_init(&cfg);
+
+  esp_mqtt_client_handle_t client = esp_mqtt_client_init(&cfg);
+  if (!client) {
+    ESP_LOGE(TAG, "Failed to initialize MQTT client");
+    ul_health_notify_mqtt(false);
+    schedule_mqtt_retry();
+    return;
+  }
+
+  s_client = client;
   esp_mqtt_client_register_event(s_client, ESP_EVENT_ANY_ID, mqtt_event_handler,
                                  NULL);
-  esp_mqtt_client_start(s_client);
+  esp_err_t start_err = esp_mqtt_client_start(s_client);
+  if (start_err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to start MQTT client (%d)", (int)start_err);
+    esp_mqtt_client_destroy(s_client);
+    s_client = NULL;
+    ul_health_notify_mqtt(false);
+    schedule_mqtt_retry();
+    return;
+  }
+
   ul_health_notify_mqtt(false);
 }
 
 void ul_mqtt_stop(void) {
+  cancel_mqtt_retry();
   motion_fade_cancel();
   if (s_client) {
     esp_mqtt_client_stop(s_client);
@@ -910,6 +994,7 @@ bool ul_mqtt_is_connected(void) { return s_ready; }
 
 bool ul_mqtt_is_ready(void) { return s_ready; }
 
+#ifndef UL_MQTT_TESTING
 void ul_mqtt_publish_status_now(void) { publish_status_snapshot(); }
 
 void ul_mqtt_run_local(const char *path, const char *json) {
@@ -949,3 +1034,9 @@ void ul_mqtt_run_local(const char *path, const char *json) {
   }
   cJSON_Delete(root);
 }
+#endif
+
+#ifdef UL_MQTT_TESTING
+esp_mqtt_client_handle_t ul_mqtt_test_get_client_handle(void) { return s_client; }
+bool ul_mqtt_test_retry_pending(void) { return s_retry_pending; }
+#endif
