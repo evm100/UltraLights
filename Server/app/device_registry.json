@@ -1,6 +1,7 @@
 [
   {
     "id": "del-sur",
+    "external_id": "DyBfmDmTxEPGabwR",
     "name": "Del Sur",
     "rooms": [
       {
@@ -62,6 +63,7 @@
   },
   {
     "id": "sdsu",
+    "external_id": "vPvpjnurt8M6nnyE",
     "name": "SDSU",
     "rooms": []
   }

@@ -7,7 +7,10 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from . import registry
+from .auth import init_auth_storage
 from .config import settings
+from .database import get_session
 from .motion import motion_manager
 from .ota import router as ota_router
 from .routes_api import router as api_router
@@ -49,9 +52,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     motion_manager.start()
     status_monitor.start()
 
+    registry.ensure_house_external_ids()
+    init_auth_storage()
+    app.dependency_overrides[get_session] = get_session
+
     try:
         yield
     finally:
+        app.dependency_overrides.pop(get_session, None)
         if broker:
             await broker.shutdown()
         if broker_task:

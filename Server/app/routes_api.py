@@ -34,6 +34,26 @@ def get_bus() -> MqttBus:
         BUS = MqttBus()
     return BUS
 
+
+def _resolve_house(house_id: str) -> tuple[dict[str, Any], str, str]:
+    house = registry.find_house(house_id)
+    if not house:
+        raise HTTPException(404, "Unknown house")
+    slug = registry.get_house_slug(house)
+    public_id = registry.get_house_external_id(house)
+    return house, slug, public_id
+
+
+def _resolve_room(
+    house_id: str, room_id: str
+) -> tuple[dict[str, Any], dict[str, Any], str, str]:
+    house, room = registry.find_room(house_id, room_id)
+    if not house or not room:
+        raise HTTPException(404, "Unknown room")
+    slug = registry.get_house_slug(house)
+    public_id = registry.get_house_external_id(house)
+    return house, room, slug, public_id
+
 def _valid_node(node_id: str) -> Dict[str, Any]:
     _, _, node = registry.find_node(node_id)
     if node:
@@ -330,9 +350,7 @@ def api_reorder_rooms(house_id: str, payload: Dict[str, Any]):
 
 @router.delete("/api/house/{house_id}/rooms/{room_id}")
 def api_delete_room(house_id: str, room_id: str):
-    house, room = registry.find_room(house_id, room_id)
-    if not house or not room:
-        raise HTTPException(404, "Unknown room")
+    house, room, house_slug, _ = _resolve_room(house_id, room_id)
 
     seen: set[str] = set()
     node_ids: List[str] = []
@@ -359,8 +377,8 @@ def api_delete_room(house_id: str, room_id: str):
         motion_manager.forget_node(node_id)
         status_monitor.forget(node_id)
 
-    motion_manager.forget_room(house_id, room_id)
-    motion_schedule.remove_room(house_id, room_id)
+    motion_manager.forget_room(house_slug, room_id)
+    motion_schedule.remove_room(house_slug, room_id)
 
     return {"ok": True, "room": removed, "removed_nodes": node_ids}
 
@@ -383,18 +401,14 @@ def api_add_node(house_id: str, room_id: str, payload: Dict[str, Any]):
 
 @router.get("/api/house/{house_id}/room/{room_id}/presets")
 def api_list_room_presets(house_id: str, room_id: str):
-    house, room = registry.find_room(house_id, room_id)
-    if not house or not room:
-        raise HTTPException(404, "Unknown room")
-    presets = get_room_presets(house_id, room_id)
+    _, _, house_slug, _ = _resolve_room(house_id, room_id)
+    presets = get_room_presets(house_slug, room_id)
     return {"presets": presets}
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/presets")
 def api_create_room_preset(house_id: str, room_id: str, payload: Dict[str, Any]):
-    house, room = registry.find_room(house_id, room_id)
-    if not house or not room:
-        raise HTTPException(404, "Unknown room")
+    house, room, house_slug, _ = _resolve_room(house_id, room_id)
 
     raw_name = payload.get("name")
     if raw_name is None:
@@ -457,7 +471,7 @@ def api_create_room_preset(house_id: str, room_id: str, payload: Dict[str, Any])
 
     existing_ids = {
         str(p.get("id"))
-        for p in get_room_presets(house_id, room_id)
+        for p in get_room_presets(house_slug, room_id)
         if isinstance(p, dict) and p.get("id") is not None
     }
     base_id = registry.slugify(name)
@@ -470,44 +484,40 @@ def api_create_room_preset(house_id: str, room_id: str, payload: Dict[str, Any])
         counter += 1
 
     saved = save_custom_preset(
-        house_id,
+        house_slug,
         room_id,
         {"id": preset_id, "name": name, "actions": actions, "source": "custom"},
     )
 
-    presets = get_room_presets(house_id, room_id)
+    presets = get_room_presets(house_slug, room_id)
     return {"ok": True, "preset": saved, "presets": presets}
 
 
 @router.delete("/api/house/{house_id}/room/{room_id}/presets")
 def api_delete_room_preset(house_id: str, room_id: str, preset_id: str):
-    house, room = registry.find_room(house_id, room_id)
-    if not house or not room:
-        raise HTTPException(404, "Unknown room")
+    _, _, house_slug, _ = _resolve_room(house_id, room_id)
 
     preset_key = str(preset_id).strip()
     if not preset_key:
         raise HTTPException(400, "invalid preset id")
 
-    if not delete_custom_preset(house_id, room_id, preset_key):
+    if not delete_custom_preset(house_slug, room_id, preset_key):
         raise HTTPException(404, "Unknown preset")
 
-    presets = get_room_presets(house_id, room_id)
+    presets = get_room_presets(house_slug, room_id)
     return {"ok": True, "presets": presets}
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/presets/reorder")
 def api_reorder_room_presets(house_id: str, room_id: str, payload: Dict[str, Any]):
-    house, room = registry.find_room(house_id, room_id)
-    if not house or not room:
-        raise HTTPException(404, "Unknown room")
+    _, _, house_slug, _ = _resolve_room(house_id, room_id)
 
     order = payload.get("order")
     if not isinstance(order, list):
         raise HTTPException(400, "order must be provided as a list")
 
     try:
-        presets = reorder_custom_presets(house_id, room_id, order)
+        presets = reorder_custom_presets(house_slug, room_id, order)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except KeyError:
@@ -518,7 +528,8 @@ def api_reorder_room_presets(house_id: str, room_id: str, payload: Dict[str, Any
 
 @router.post("/api/house/{house_id}/room/{room_id}/preset/{preset_id}")
 def api_apply_preset(house_id: str, room_id: str, preset_id: str):
-    preset = get_preset(house_id, room_id, preset_id)
+    _, _, house_slug, _ = _resolve_room(house_id, room_id)
+    preset = get_preset(house_slug, room_id, preset_id)
     if not preset:
         raise HTTPException(404, "Unknown preset")
     apply_preset(get_bus(), preset)
@@ -527,18 +538,14 @@ def api_apply_preset(house_id: str, room_id: str, preset_id: str):
 
 @router.get("/api/house/{house_id}/room/{room_id}/motion-immune")
 def api_get_motion_immune(house_id: str, room_id: str):
-    house, room = registry.find_room(house_id, room_id)
-    if not house or not room:
-        raise HTTPException(404, "Unknown room")
-    immune = sorted(motion_preferences.get_room_immune_nodes(house_id, room_id))
-    return {"house_id": house_id, "room_id": room_id, "immune": immune}
+    _, _, house_slug, public_id = _resolve_room(house_id, room_id)
+    immune = sorted(motion_preferences.get_room_immune_nodes(house_slug, room_id))
+    return {"house_id": public_id, "room_id": room_id, "immune": immune}
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/motion-immune")
 def api_set_motion_immune(house_id: str, room_id: str, payload: Dict[str, Any]):
-    house, room = registry.find_room(house_id, room_id)
-    if not house or not room:
-        raise HTTPException(404, "Unknown room")
+    house, room, house_slug, public_id = _resolve_room(house_id, room_id)
 
     if not isinstance(payload, dict):
         raise HTTPException(400, "invalid payload")
@@ -565,21 +572,22 @@ def api_set_motion_immune(house_id: str, room_id: str, payload: Dict[str, Any]):
         if node_id not in clean_list:
             clean_list.append(node_id)
 
-    stored = motion_preferences.set_room_immune_nodes(house_id, room_id, clean_list)
+    stored = motion_preferences.set_room_immune_nodes(house_slug, room_id, clean_list)
     immune = sorted(stored)
-    return {"ok": True, "immune": immune}
+    return {"ok": True, "immune": immune, "house_id": public_id}
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/motion-schedule")
 def api_set_motion_schedule(house_id: str, room_id: str, payload: Dict[str, Any]):
-    if (house_id, room_id) not in motion_manager.room_sensors:
+    _, _, house_slug, public_id = _resolve_room(house_id, room_id)
+    if (house_slug, room_id) not in motion_manager.room_sensors:
         raise HTTPException(404, "Motion schedule not supported for this room")
     schedule = payload.get("schedule")
     if not isinstance(schedule, list):
         raise HTTPException(400, "invalid schedule")
     if len(schedule) != motion_schedule.slot_count:
         raise HTTPException(400, "invalid schedule length")
-    valid_presets = {p["id"] for p in get_room_presets(house_id, room_id)}
+    valid_presets = {p["id"] for p in get_room_presets(house_slug, room_id)}
     clean: List[Optional[str]] = []
     for value in schedule:
         if value in (None, "", "none"):
@@ -590,13 +598,14 @@ def api_set_motion_schedule(house_id: str, room_id: str, payload: Dict[str, Any]
         if value not in valid_presets:
             raise HTTPException(400, f"unknown preset: {value}")
         clean.append(value)
-    stored = motion_schedule.set_schedule(house_id, room_id, clean)
-    return {"ok": True, "schedule": stored}
+    stored = motion_schedule.set_schedule(house_slug, room_id, clean)
+    return {"ok": True, "schedule": stored, "house_id": public_id}
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/motion-schedule/color")
 def api_set_motion_schedule_color(house_id: str, room_id: str, payload: Dict[str, Any]):
-    if (house_id, room_id) not in motion_manager.room_sensors:
+    _, _, house_slug, public_id = _resolve_room(house_id, room_id)
+    if (house_slug, room_id) not in motion_manager.room_sensors:
         raise HTTPException(404, "Motion schedule not supported for this room")
     if not isinstance(payload, dict):
         raise HTTPException(400, "invalid payload")
@@ -609,18 +618,18 @@ def api_set_motion_schedule_color(house_id: str, room_id: str, payload: Dict[str
         raise HTTPException(400, "invalid color")
     valid_presets = {
         str(p.get("id"))
-        for p in get_room_presets(house_id, room_id)
+        for p in get_room_presets(house_slug, room_id)
         if p.get("id") is not None
     }
     if preset_key not in valid_presets:
         raise HTTPException(404, f"unknown preset: {preset_key}")
     try:
         stored = motion_schedule.set_preset_color(
-            house_id, room_id, preset_key, color_value
+            house_slug, room_id, preset_key, color_value
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    return {"ok": True, "preset": preset_key, "color": stored}
+    return {"ok": True, "preset": preset_key, "color": stored, "house_id": public_id}
 
 # ---- Node command APIs -------------------------------------------------
 
@@ -856,11 +865,14 @@ def api_admin_status(house_id: Optional[str] = None):
         return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
 
     nodes: Dict[str, Dict[str, Any]] = {}
-    if house_id is not None and not registry.find_house(house_id):
-        raise HTTPException(404, "Unknown house id")
+    filter_slug: Optional[str] = None
+    if house_id is not None:
+        _, filter_slug, _ = _resolve_house(house_id)
     for house, _, node in registry.iter_nodes():
-        if house_id and house.get("id") != house_id:
-            continue
+        if filter_slug:
+            slug = registry.get_house_slug(house)
+            if slug != filter_slug:
+                continue
         node_id = node["id"]
         info = snapshot.get(node_id, {})
         signal_value: Optional[float] = None

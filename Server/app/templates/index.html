@@ -10,9 +10,9 @@
 
 <div class="grid md:grid-cols-3 gap-4 mt-6">
   {% for h in houses %}
-  <a href="/house/{{ h.id }}" class="glass rounded-xl p-4 block hover:ring-2 hover:ring-indigo-400">
+  <a href="/house/{{ h.external_id }}" class="glass rounded-xl p-4 block hover:ring-2 hover:ring-indigo-400">
     <div class="text-xl font-semibold">{{ h.name }}</div>
-    <div class="opacity-60 text-xs mt-2">ID: {{ h.id }}</div>
+    <div class="opacity-60 text-xs mt-2">Public ID: {{ h.external_id }}</div>
     <div class="text-sm mt-2">{{ h.rooms|length }} rooms</div>
   </a>
   {% endfor %}

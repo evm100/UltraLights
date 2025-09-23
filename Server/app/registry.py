@@ -22,10 +22,13 @@ nodes, e.g.::
 These helpers simplify finding houses, rooms and nodes in the registry.
 """
 from __future__ import annotations
+
 import json
 import re
-
+import secrets
+import string
 from typing import Any, Dict, Iterable, Iterator, Optional, Tuple
+
 from .config import settings
 
 Registry = list[Dict[str, Any]]
@@ -38,11 +41,64 @@ def slugify(text: str) -> str:
     """Return a URL-friendly identifier for ``text``."""
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
+EXTERNAL_ID_ALPHABET = string.ascii_lowercase + string.ascii_uppercase + string.digits
+
+
 def save_registry() -> None:
     """Persist the in-memory registry to ``REGISTRY_FILE``."""
     settings.REGISTRY_FILE.write_text(
         json.dumps(settings.DEVICE_REGISTRY, indent=2)
     )
+
+
+def generate_house_external_id(length: Optional[int] = None) -> str:
+    """Return a random identifier for use as a house external id."""
+
+    max_length = settings.MAX_HOUSE_ID_LENGTH
+    target_length = max(8, min(max_length, length or max_length))
+    return "".join(secrets.choice(EXTERNAL_ID_ALPHABET) for _ in range(target_length))
+
+
+def ensure_house_external_ids(
+    registry: Optional[Registry] = None,
+    *,
+    persist: bool = True,
+) -> bool:
+    """Ensure every house in ``registry`` carries an ``external_id``."""
+
+    if registry is None:
+        registry = settings.DEVICE_REGISTRY
+
+    changed = False
+    seen: set[str] = set()
+
+    for house in registry:
+        if not isinstance(house, dict):
+            continue
+        external_id = str(house.get("external_id") or "").strip()
+        if (
+            not external_id
+            or len(external_id) > settings.MAX_HOUSE_ID_LENGTH
+            or external_id in seen
+        ):
+            external_id = _generate_unique_external_id(seen)
+            house["external_id"] = external_id
+            changed = True
+        seen.add(external_id)
+
+    if changed and persist and registry is settings.DEVICE_REGISTRY:
+        save_registry()
+
+    return changed
+
+
+def _generate_unique_external_id(seen: set[str]) -> str:
+    while True:
+        candidate = generate_house_external_id()
+        if candidate not in seen:
+            seen.add(candidate)
+            return candidate
+
 
 def iter_nodes(registry: Optional[Registry] = None) -> Iterator[Tuple[House, Room, Node]]:
     """Yield (house, room, node) for every node in the registry."""
@@ -55,10 +111,49 @@ def iter_nodes(registry: Optional[Registry] = None) -> Iterator[Tuple[House, Roo
 
 
 def find_house(house_id: str) -> Optional[House]:
+    ensure_house_external_ids(persist=False)
+    if house_id is None:
+        return None
+
+    normalized = str(house_id)
+
     for house in settings.DEVICE_REGISTRY:
-        if house.get("id") == house_id:
+        external_id = house.get("external_id")
+        if isinstance(external_id, str) and external_id == normalized:
+            return house
+
+    for house in settings.DEVICE_REGISTRY:
+        legacy_id = house.get("id")
+        if isinstance(legacy_id, str) and legacy_id == normalized:
             return house
     return None
+
+
+def get_house_external_id(house: House) -> str:
+    """Return the public identifier for ``house``."""
+
+    ensure_house_external_ids(persist=False)
+    external_id = house.get("external_id")
+    if isinstance(external_id, str) and external_id:
+        return external_id
+    fallback = house.get("id")
+    return str(fallback) if fallback is not None else ""
+
+
+def get_house_slug(house: House) -> str:
+    """Return the legacy slug identifier for ``house``."""
+
+    raw = house.get("id")
+    return str(raw) if raw is not None else ""
+
+
+def require_house(house_id: str) -> Tuple[House, str]:
+    """Return ``(house, slug)`` or raise ``KeyError`` if not found."""
+
+    house = find_house(house_id)
+    if not house:
+        raise KeyError("house not found")
+    return house, get_house_slug(house)
 
 
 def find_room(house_id: str, room_id: str) -> Tuple[Optional[House], Optional[Room]]:
@@ -224,3 +319,7 @@ def remove_room(house_id: str, room_id: str) -> Room:
             return removed
 
     raise KeyError("room not found")
+
+
+# Ensure the default registry has opaque identifiers ready for use.
+ensure_house_external_ids(persist=False)
