@@ -59,7 +59,10 @@ static void service_manager_task(void *ctx) {
         }
         if (!s_services_running) {
           ul_mqtt_start();
-          ul_ws_engine_start();    // 60 FPS LED engine
+          bool ws_started = ul_ws_engine_start();    // 60 FPS LED engine
+          if (!ws_started) {
+            ESP_LOGE(TAG, "WS engine failed to start; running without it");
+          }
           ul_rgb_engine_start();   // RGB PWM engine
           ul_white_engine_start(); // 200 Hz smoothing
 #if CONFIG_UL_PIR_ENABLED

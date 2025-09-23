@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-void ul_ws_engine_start(void);
+bool ul_ws_engine_start(void);
 void ul_ws_engine_stop(void);
 
 typedef struct cJSON cJSON;
