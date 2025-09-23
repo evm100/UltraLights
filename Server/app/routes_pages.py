@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from . import registry
 from .auth.access import AccessPolicy, HouseContext, NodeContext, RoomContext
 from .auth.dependencies import get_current_user
-from .auth.models import House, HouseMembership, User
+from .auth.models import House, HouseMembership, HouseRole, RoomAccess, User
 from .auth.security import (
     SESSION_COOKIE_NAME,
     authenticate_user,
@@ -327,6 +327,11 @@ def _admin_template_context(
     status_house_id: Optional[str] = None,
     allow_remove: bool = False,
     house_rooms: Optional[List[Dict[str, Any]]] = None,
+    house_memberships: Optional[List[Dict[str, Any]]] = None,
+    house_member_options: Optional[List[Dict[str, Any]]] = None,
+    house_member_roles: Optional[List[Dict[str, str]]] = None,
+    house_member_manage_allowed: bool = False,
+    house_admin_external_id: Optional[str] = None,
 ):
     return {
         "request": request,
@@ -340,6 +345,11 @@ def _admin_template_context(
         "status_house_id": status_house_id,
         "allow_remove": allow_remove,
         "house_rooms": house_rooms,
+        "house_memberships": house_memberships,
+        "house_member_options": house_member_options,
+        "house_member_roles": house_member_roles,
+        "house_member_manage_allowed": house_member_manage_allowed,
+        "house_admin_external_id": house_admin_external_id,
     }
 
 
@@ -426,6 +436,57 @@ def admin_house_panel(
                     node_count += 1
         rooms.append({"id": room_id, "name": room_name, "node_count": node_count})
     rooms.sort(key=lambda item: item["name"].lower())
+    room_lookup = {room["id"]: room["name"] for room in rooms}
+    available_room_options = [{"id": room["id"], "name": room["name"]} for room in rooms]
+    memberships: List[Dict[str, Any]] = []
+    role_options = [
+        {"value": HouseRole.GUEST.value, "label": "Guest"},
+        {"value": HouseRole.ADMIN.value, "label": "House Admin"},
+    ]
+    house_db = house_ctx.access.house
+    if house_db is None:
+        house_db = session.exec(
+            select(House).where(House.external_id == house_ctx.external_id)
+        ).first()
+    if house_db is not None:
+        rows = session.exec(
+            select(HouseMembership, User)
+            .join(User, User.id == HouseMembership.user_id)
+            .where(HouseMembership.house_id == house_db.id)
+            .order_by(User.username)
+        ).all()
+        membership_ids = [membership.id for membership, _ in rows if membership.id is not None]
+        access_map: Dict[int, set[str]] = {}
+        if membership_ids:
+            for access in session.exec(
+                select(RoomAccess).where(RoomAccess.membership_id.in_(membership_ids))
+            ):
+                membership_id = access.membership_id
+                room_id = str(access.room_id)
+                if membership_id is None or not room_id:
+                    continue
+                access_map.setdefault(membership_id, set()).add(room_id)
+        for membership, user in rows:
+            assigned_ids = sorted(
+                access_map.get(membership.id, set()),
+                key=lambda rid: room_lookup.get(rid, rid).lower(),
+            )
+            memberships.append(
+                {
+                    "id": membership.id,
+                    "user_id": membership.user_id,
+                    "username": user.username,
+                    "role": membership.role.value,
+                    "role_label": "House Admin"
+                    if membership.role == HouseRole.ADMIN
+                    else "Guest",
+                    "server_admin": user.server_admin,
+                    "rooms": [
+                        {"id": rid, "name": room_lookup.get(rid, rid)}
+                        for rid in assigned_ids
+                    ],
+                }
+            )
     return templates.TemplateResponse(
         request,
         "admin.html",
@@ -439,6 +500,11 @@ def admin_house_panel(
             status_house_id=house_ctx.external_id,
             allow_remove=True,
             house_rooms=rooms,
+            house_memberships=memberships,
+            house_member_options=available_room_options,
+            house_member_roles=role_options,
+            house_member_manage_allowed=current_user.server_admin,
+            house_admin_external_id=house_ctx.external_id,
         ),
     )
 

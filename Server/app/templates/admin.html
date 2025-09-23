@@ -108,6 +108,176 @@
 
 <div id="statusError" class="mt-4 text-sm text-rose-400 hidden"></div>
 
+{% if house_memberships is not none %}
+<section
+  class="mt-12"
+  data-house-admin
+  data-house-id="{{ house_admin_external_id }}">
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+    <div>
+      <h3 class="text-2xl font-semibold">House Members</h3>
+      <p class="text-sm opacity-70">Manage user access for this house.</p>
+    </div>
+    {% if house_member_manage_allowed %}
+    <div class="text-xs opacity-60 md:text-right">
+      Accounts created here are limited to this house.
+    </div>
+    {% endif %}
+  </div>
+  <div class="mt-4 grid gap-4">
+    {% if house_memberships %}
+    {% for member in house_memberships %}
+    <div class="glass rounded-xl p-4" data-member-card="{{ member.id }}">
+      <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div>
+          <div class="text-lg font-semibold">{{ member.username }}</div>
+          <div class="text-xs opacity-70">
+            {{ member.role_label }}{% if member.server_admin %} • Server admin{% endif %}
+          </div>
+          {% if member.rooms %}
+          <div class="mt-2 text-xs opacity-70">
+            Rooms: {{ member.rooms | map(attribute='name') | join(', ') }}
+          </div>
+          {% elif member.role == 'guest' %}
+          <div class="mt-2 text-xs opacity-70">No rooms assigned.</div>
+          {% endif %}
+        </div>
+      </div>
+      {% if house_member_manage_allowed %}
+      <form class="mt-4 space-y-4" data-membership-form data-membership-id="{{ member.id }}">
+        <div class="grid gap-3 md:grid-cols-2">
+          <label class="block text-sm font-semibold">
+            <span>Role</span>
+            <select
+              name="role"
+              class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2"
+              data-role-select>
+              {% for role in house_member_roles or [] %}
+              <option value="{{ role.value }}"{% if role.value == member.role %} selected{% endif %}>{{ role.label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="block text-sm font-semibold">
+            <span>New password</span>
+            <input
+              type="password"
+              name="password"
+              placeholder="Leave blank to keep current"
+              class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2"
+              autocomplete="new-password">
+          </label>
+        </div>
+        {% if house_member_options %}
+        <div data-room-section>
+          <div class="text-xs opacity-70">Guest accounts can access the selected rooms.</div>
+          <div class="mt-2 grid gap-2 md:grid-cols-2">
+            {% set assigned_ids = member.rooms | map(attribute='id') | list %}
+            {% for room in house_member_options %}
+            <label class="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                value="{{ room.id }}"
+                class="w-4 h-4"
+                data-room-checkbox{% if room.id in assigned_ids %} checked{% endif %}>
+              <span>{{ room.name }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        <div class="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            class="px-4 py-2 pill bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold">
+            Save changes
+          </button>
+          <button
+            type="button"
+            class="px-4 py-2 pill bg-rose-600 hover:bg-rose-500 text-sm font-semibold"
+            data-membership-delete
+            data-username="{{ member.username }}">
+            Remove access
+          </button>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="glass rounded-xl p-6 text-center text-sm opacity-70">No accounts yet.</div>
+    {% endif %}
+  </div>
+  {% if not house_member_manage_allowed %}
+  <div class="mt-4 text-xs opacity-70">Contact a server administrator to modify access.</div>
+  {% endif %}
+  {% if house_member_manage_allowed %}
+  <div class="mt-8 glass rounded-xl p-4">
+    <h4 class="text-lg font-semibold">Invite a new account</h4>
+    <p class="text-xs opacity-70">New users receive access limited to this house.</p>
+    <form class="mt-4 space-y-4" data-membership-create>
+      <div class="grid gap-3 md:grid-cols-2">
+        <label class="block text-sm font-semibold">
+          <span>Username</span>
+          <input
+            type="text"
+            name="username"
+            required
+            class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2"
+            autocomplete="off">
+        </label>
+        <label class="block text-sm font-semibold">
+          <span>Password</span>
+          <input
+            type="password"
+            name="password"
+            required
+            class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2"
+            autocomplete="new-password">
+        </label>
+      </div>
+      <div class="grid gap-3 md:grid-cols-2">
+        <label class="block text-sm font-semibold">
+          <span>Role</span>
+          <select
+            name="role"
+            class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2"
+            data-role-select>
+            {% for role in house_member_roles or [] %}
+            <option value="{{ role.value }}">{{ role.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      {% if house_member_options %}
+      <div data-room-section>
+        <div class="text-xs opacity-70">Select rooms for guest accounts.</div>
+        <div class="mt-2 grid gap-2 md:grid-cols-2">
+          {% for room in house_member_options %}
+          <label class="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              value="{{ room.id }}"
+              class="w-4 h-4"
+              data-room-checkbox>
+            <span>{{ room.name }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      <div>
+        <button
+          type="submit"
+          class="px-4 py-2 pill bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold">
+          Create account
+        </button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
 <script>
 const STATUS_TIMEOUT = {{ status_timeout }};
 const STATUS_HOUSE_ID = {{ status_house_id|tojson }};
@@ -358,5 +528,210 @@ document.querySelectorAll('[data-node-remove]').forEach((btn) => {
     }
   });
 });
+
+async function readErrorMessage(response) {
+  try {
+    const data = await response.clone().json();
+    if (data && typeof data.detail === 'string') {
+      return data.detail;
+    }
+    if (data && Array.isArray(data.detail)) {
+      return data.detail
+        .map((item) => (typeof item === 'string' ? item : item.msg || item.detail || ''))
+        .filter((text) => text)
+        .join(', ');
+    }
+  } catch (err) {
+    // ignore parse errors
+  }
+  try {
+    const text = await response.text();
+    if (text) return text;
+  } catch (err) {
+    // ignore parse errors
+  }
+  return `HTTP ${response.status}`;
+}
+
+const houseAdminSection = document.querySelector('[data-house-admin]');
+if (houseAdminSection) {
+  const houseId = houseAdminSection.dataset.houseId;
+
+  const handleRoleVisibility = (select) => {
+    if (!select) return;
+    const form = select.closest('form');
+    if (!form) return;
+    const roomSection = form.querySelector('[data-room-section]');
+    if (!roomSection) return;
+    if (select.value === 'guest') {
+      roomSection.classList.remove('hidden');
+    } else {
+      roomSection.classList.add('hidden');
+      roomSection.querySelectorAll('[data-room-checkbox]').forEach((checkbox) => {
+        checkbox.checked = false;
+      });
+    }
+  };
+
+  houseAdminSection.querySelectorAll('[data-role-select]').forEach((select) => {
+    handleRoleVisibility(select);
+    select.addEventListener('change', () => handleRoleVisibility(select));
+  });
+
+  houseAdminSection.querySelectorAll('[data-membership-form]').forEach((form) => {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!houseId) {
+        alert('Missing house identifier.');
+        return;
+      }
+      const membershipId = form.dataset.membershipId;
+      if (!membershipId) {
+        alert('Missing membership identifier.');
+        return;
+      }
+      const roleField = form.querySelector('[name="role"]');
+      const roleValue = roleField ? roleField.value : 'guest';
+      const passwordField = form.querySelector('input[name="password"]');
+      const payload = { role: roleValue };
+      if (passwordField && passwordField.value.trim()) {
+        payload.password = passwordField.value;
+      }
+      if (roleValue === 'guest') {
+        payload.rooms = Array.from(
+          form.querySelectorAll('[data-room-checkbox]:checked')
+        )
+          .map((checkbox) => checkbox.value)
+          .filter((value) => value);
+      } else if (form.querySelector('[data-room-checkbox]')) {
+        payload.rooms = [];
+      }
+      const submitButton = form.querySelector('button[type="submit"]');
+      const originalText = submitButton ? submitButton.textContent : '';
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Saving…';
+      }
+      try {
+        const res = await fetch(
+          `/api/house-admin/${encodeURIComponent(houseId)}/members/${encodeURIComponent(membershipId)}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          },
+        );
+        if (!res.ok) {
+          const message = await readErrorMessage(res);
+          throw new Error(message);
+        }
+        location.reload();
+      } catch (err) {
+        console.error('Failed to update membership', err);
+        alert(`Failed to save changes: ${err.message}`);
+      } finally {
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = originalText || 'Save changes';
+        }
+      }
+    });
+  });
+
+  houseAdminSection.querySelectorAll('[data-membership-delete]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!houseId) {
+        alert('Missing house identifier.');
+        return;
+      }
+      const form = button.closest('[data-membership-form]');
+      const membershipId = form ? form.dataset.membershipId : null;
+      if (!membershipId) {
+        alert('Missing membership identifier.');
+        return;
+      }
+      const username = button.dataset.username || membershipId;
+      if (!confirm(`Remove access for ${username}?`)) {
+        return;
+      }
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Removing…';
+      try {
+        const res = await fetch(
+          `/api/house-admin/${encodeURIComponent(houseId)}/members/${encodeURIComponent(membershipId)}`,
+          { method: 'DELETE' },
+        );
+        if (!res.ok) {
+          const message = await readErrorMessage(res);
+          throw new Error(message);
+        }
+        location.reload();
+      } catch (err) {
+        console.error('Failed to remove membership', err);
+        alert(`Failed to remove access: ${err.message}`);
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    });
+  });
+
+  const createForm = houseAdminSection.querySelector('[data-membership-create]');
+  if (createForm) {
+    createForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!houseId) {
+        alert('Missing house identifier.');
+        return;
+      }
+      const formData = new FormData(createForm);
+      const username = (formData.get('username') || '').toString().trim();
+      const password = (formData.get('password') || '').toString();
+      const role = (formData.get('role') || 'guest').toString();
+      if (!username) {
+        alert('Username is required.');
+        return;
+      }
+      if (!password) {
+        alert('Password is required.');
+        return;
+      }
+      const rooms = role === 'guest'
+        ? Array.from(createForm.querySelectorAll('[data-room-checkbox]:checked'))
+            .map((checkbox) => checkbox.value)
+            .filter((value) => value)
+        : [];
+      const submitButton = createForm.querySelector('button[type="submit"]');
+      const originalText = submitButton ? submitButton.textContent : '';
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Creating…';
+      }
+      try {
+        const res = await fetch(
+          `/api/house-admin/${encodeURIComponent(houseId)}/members`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, role, rooms }),
+          },
+        );
+        if (!res.ok) {
+          const message = await readErrorMessage(res);
+          throw new Error(message);
+        }
+        location.reload();
+      } catch (err) {
+        console.error('Failed to create membership', err);
+        alert(`Failed to create account: ${err.message}`);
+      } finally {
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = originalText || 'Create account';
+        }
+      }
+    });
+  }
+}
 </script>
 {% endblock %}
