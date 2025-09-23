@@ -1,12 +1,14 @@
 """Service helpers for authentication storage."""
 from __future__ import annotations
 
+from typing import Any, Dict, Optional
+
 from sqlmodel import SQLModel, Session, select
 
 from .. import registry
 from ..config import settings
 from .. import database
-from .models import House, User
+from .models import AuditLog, House, User
 from .security import hash_password
 
 
@@ -80,4 +82,29 @@ def create_user(
     return user
 
 
-__all__ = ["create_user", "init_auth_storage"]
+def record_audit_event(
+    session: Session,
+    *,
+    actor: Optional[User],
+    action: str,
+    summary: Optional[str] = None,
+    data: Optional[Dict[str, Any]] = None,
+    commit: bool = False,
+) -> AuditLog:
+    """Persist an :class:`AuditLog` entry."""
+
+    entry = AuditLog(
+        actor_id=actor.id if actor and actor.id is not None else None,
+        action=action,
+        summary=summary,
+        data=data or {},
+    )
+    session.add(entry)
+    session.flush()
+    if commit:
+        session.commit()
+        session.refresh(entry)
+    return entry
+
+
+__all__ = ["create_user", "init_auth_storage", "record_audit_event"]

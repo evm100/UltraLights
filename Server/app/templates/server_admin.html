@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-6 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+  <div>
+    <h2 class="text-3xl font-semibold">Server Administration</h2>
+    <p class="text-sm opacity-70">Global overview of houses, nodes, and user accounts.</p>
+  </div>
+  <div class="glass rounded-xl px-4 py-2 text-sm opacity-80">
+    <div>Total houses: {{ houses|length }}</div>
+    <div>Total nodes: {{ total_nodes }}</div>
+  </div>
+</div>
+
+<section class="space-y-4" aria-labelledby="housesHeading">
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+    <div>
+      <h3 id="housesHeading" class="text-2xl font-semibold">Houses</h3>
+      <p class="text-sm opacity-70">Public identifiers should be rotated if exposed.</p>
+    </div>
+    <div class="text-xs opacity-60 md:text-right">
+      Reveal IDs only when necessary. Treat them as secrets for OTA access.
+    </div>
+  </div>
+  {% if houses %}
+  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-house-grid>
+    {% for house in houses %}
+    <div class="glass rounded-xl p-4 space-y-3" data-house-card data-current-id="{{ house.external_id }}">
+      <div class="flex flex-col gap-2">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-lg font-semibold">{{ house.name }}</div>
+            <div class="text-xs opacity-70">Slug: {{ house.slug or '—' }}</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="px-3 py-1 pill text-xs font-semibold bg-slate-700 hover:bg-slate-600"
+              data-reveal-id>
+              Reveal ID
+            </button>
+            <button
+              type="button"
+              class="px-3 py-1 pill text-xs font-semibold bg-amber-600 hover:bg-amber-500"
+              data-rotate-id
+              data-house-name="{{ house.name }}">
+              Rotate ID
+            </button>
+          </div>
+        </div>
+        <div class="text-xs opacity-70">Rooms: {{ house.room_count }} • Nodes: {{ house.node_count }}</div>
+      </div>
+      <div class="rounded bg-slate-900/60 border border-amber-500/60 px-3 py-2 text-xs space-y-2 hidden" data-id-panel>
+        <div class="text-amber-400 font-semibold">Warning: Rotating the ID invalidates existing links. Share with trusted admins only.</div>
+        <div class="font-mono break-words" data-id-value>{{ house.external_id }}</div>
+      </div>
+      <div class="space-y-2">
+        <div class="text-xs uppercase opacity-60">Nodes</div>
+        {% if house.nodes %}
+        <ul class="space-y-2 text-sm" data-node-list>
+          {% for node in house.nodes %}
+          <li class="border border-slate-800/60 rounded px-3 py-2" data-node-entry>
+            <div class="font-semibold">{{ node.name }}</div>
+            <div class="text-xs opacity-70">ID: <span class="font-mono">{{ node.id }}</span></div>
+            <div class="text-xs opacity-70">Room: {{ node.room }}{% if node.kind %} • {{ node.kind }}{% endif %}</div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="text-xs opacity-60">No nodes registered.</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="glass rounded-xl p-6 text-center text-sm opacity-70">No houses configured.</div>
+  {% endif %}
+</section>
+
+<section class="mt-12 grid gap-6 md:grid-cols-2" aria-labelledby="accountHeading">
+  <div class="space-y-4">
+    <div>
+      <h3 id="accountHeading" class="text-2xl font-semibold">Accounts</h3>
+      <p class="text-sm opacity-70">Server admins appear with a badge.</p>
+    </div>
+    <div class="space-y-3" data-account-list>
+      {% if accounts %}
+      {% for account in accounts %}
+      <div class="glass rounded-xl p-4">
+        <div class="flex flex-col gap-2">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="text-lg font-semibold">{{ account.username }}</div>
+              {% if account.server_admin %}
+              <div class="text-xs font-semibold text-amber-400">Server admin</div>
+              {% else %}
+              <div class="text-xs opacity-60">House member</div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="text-xs opacity-70">
+            {% if account.assignments %}
+            Houses: {{ account.assignments | map(attribute='house_name') | join(', ') }}
+            {% else %}
+            No house assignments.
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="glass rounded-xl p-4 text-sm opacity-70 text-center">No accounts found.</div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="glass rounded-xl p-4 space-y-4" data-create-admin>
+    <div>
+      <h4 class="text-xl font-semibold">Create house administrator</h4>
+      <p class="text-xs opacity-70">Creates a new account with full access to a selected house.</p>
+    </div>
+    <form class="space-y-4" data-create-admin-form>
+      <label class="block text-sm font-semibold">
+        <span>House</span>
+        <select name="house" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" required>
+          {% for option in house_options %}
+          <option value="{{ option.id }}">{{ option.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="block text-sm font-semibold">
+        <span>Username</span>
+        <input type="text" name="username" required class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" autocomplete="off">
+      </label>
+      <label class="block text-sm font-semibold">
+        <span>Password</span>
+        <input type="password" name="password" required class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" autocomplete="new-password">
+      </label>
+      <div class="flex items-center gap-3">
+        <button type="submit" class="px-4 py-2 pill bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold">Create admin</button>
+        <div class="text-xs opacity-70" data-create-admin-status></div>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="mt-12 space-y-3" aria-labelledby="auditHeading">
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+    <div>
+      <h3 id="auditHeading" class="text-2xl font-semibold">Recent audit log</h3>
+      <p class="text-sm opacity-70">Latest privileged actions are recorded for accountability.</p>
+    </div>
+    <div class="text-xs opacity-60 md:text-right">Only the last 10 entries are shown.</div>
+  </div>
+  {% if audit_entries %}
+  <div class="grid gap-3">
+    {% for entry in audit_entries %}
+    <div class="glass rounded-xl p-4 text-sm">
+      <div class="flex flex-col gap-1">
+        <div class="font-semibold">{{ entry.summary or entry.action }}</div>
+        <div class="text-xs opacity-70">{{ entry.created_at }}{% if entry.actor %} • {{ entry.actor }}{% endif %}</div>
+        {% if entry.data %}
+        <div class="text-xs font-mono break-words opacity-70">{{ entry.data | tojson }}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="glass rounded-xl p-4 text-sm opacity-70 text-center">No audit entries yet.</div>
+  {% endif %}
+</section>
+
+<script>
+const houseCards = Array.from(document.querySelectorAll('[data-house-card]'));
+houseCards.forEach((card) => {
+  const revealButton = card.querySelector('[data-reveal-id]');
+  const panel = card.querySelector('[data-id-panel]');
+  const rotateButton = card.querySelector('[data-rotate-id]');
+
+  if (revealButton && panel) {
+    revealButton.addEventListener('click', () => {
+      panel.classList.remove('hidden');
+      revealButton.classList.add('hidden');
+    });
+  }
+
+  if (rotateButton) {
+    rotateButton.addEventListener('click', async () => {
+      const houseName = rotateButton.dataset.houseName || 'this house';
+      const currentId = card.getAttribute('data-current-id');
+      if (!currentId) return;
+      const confirmed = window.confirm(`Rotate the public ID for ${houseName}? This will invalidate existing bookmarks.`);
+      if (!confirmed) return;
+      rotateButton.disabled = true;
+      rotateButton.textContent = 'Rotating…';
+      try {
+        const res = await fetch(`/api/server-admin/houses/${encodeURIComponent(currentId)}/rotate-id`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({confirm: true})
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        card.setAttribute('data-current-id', data.newId);
+        const idValue = card.querySelector('[data-id-value]');
+        if (idValue) {
+          idValue.textContent = data.newId;
+        }
+        window.alert('House ID rotated. Page will refresh to update references.');
+        window.location.reload();
+      } catch (err) {
+        console.error('Failed to rotate house id', err);
+        window.alert('Unable to rotate house id. Please try again.');
+      } finally {
+        rotateButton.disabled = false;
+        rotateButton.textContent = 'Rotate ID';
+      }
+    });
+  }
+});
+
+const createForm = document.querySelector('[data-create-admin-form]');
+if (createForm) {
+  const statusLabel = createForm.querySelector('[data-create-admin-status]');
+  createForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const formData = new FormData(createForm);
+    const houseId = formData.get('house');
+    const username = formData.get('username');
+    const password = formData.get('password');
+    if (!houseId || !username || !password) {
+      return;
+    }
+    const confirmed = window.confirm(`Create a new administrator '${username}' for this house?`);
+    if (!confirmed) return;
+    statusLabel.textContent = 'Creating…';
+    try {
+      const res = await fetch(`/api/server-admin/houses/${encodeURIComponent(houseId)}/admins`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username, password})
+      });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || `HTTP ${res.status}`);
+      }
+      statusLabel.textContent = 'Admin created';
+      createForm.reset();
+      window.setTimeout(() => {
+        statusLabel.textContent = '';
+      }, 3000);
+    } catch (err) {
+      console.error('Failed to create house admin', err);
+      statusLabel.textContent = 'Failed to create admin';
+    }
+  });
+}
+</script>
+{% endblock %}

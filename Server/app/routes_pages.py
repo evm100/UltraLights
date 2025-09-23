@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from . import registry
 from .auth.access import AccessPolicy, HouseContext, NodeContext, RoomContext
 from .auth.dependencies import get_current_user
-from .auth.models import House, HouseMembership, HouseRole, RoomAccess, User
+from .auth.models import AuditLog, House, HouseMembership, HouseRole, RoomAccess, User
 from .auth.security import (
     SESSION_COOKIE_NAME,
     authenticate_user,
@@ -181,6 +181,7 @@ def dashboard(
             "title": "Dashboard",
             "subtitle": None,
             "show_admin": policy.manages_any_house(),
+            "show_server_admin": current_user.server_admin,
             "can_all_off": current_user.server_admin,
         },
     )
@@ -379,6 +380,134 @@ def admin_panel(
             heading="Admin Panel",
             allow_remove=current_user.server_admin,
         ),
+    )
+
+
+@router.get("/server-admin", response_class=HTMLResponse)
+def server_admin_panel(
+    request: Request,
+    current_user: User = Depends(_require_current_user),
+    session: Session = Depends(get_session),
+):
+    if not current_user.server_admin:
+        return templates.TemplateResponse(
+            request,
+            "base.html",
+            {"request": request, "content": "Forbidden"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    registry.ensure_house_external_ids(persist=False)
+    houses_summary: List[Dict[str, Any]] = []
+    total_nodes = 0
+
+    for house in settings.DEVICE_REGISTRY:
+        if not isinstance(house, dict):
+            continue
+        external_id = registry.get_house_external_id(house)
+        slug = registry.get_house_slug(house)
+        name_value = house.get("name") or house.get("id") or external_id
+        house_name = str(name_value)
+        room_entries = house.get("rooms") or []
+        node_entries: List[Dict[str, Any]] = []
+        room_count = 0
+        for room in room_entries:
+            if not isinstance(room, dict):
+                continue
+            room_count += 1
+            room_name = str(room.get("name") or room.get("id") or "").strip()
+            if not room_name:
+                room_name = str(room.get("id") or "Room")
+            node_list = room.get("nodes") or []
+            for node in node_list:
+                if not isinstance(node, dict):
+                    continue
+                node_id = str(node.get("id") or "").strip()
+                if not node_id:
+                    continue
+                node_name = str(node.get("name") or node_id)
+                node_kind = str(node.get("kind") or "").strip() or None
+                node_entries.append(
+                    {
+                        "id": node_id,
+                        "name": node_name,
+                        "room": room_name,
+                        "kind": node_kind,
+                    }
+                )
+        node_entries.sort(key=lambda item: item["name"].lower())
+        node_count = len(node_entries)
+        total_nodes += node_count
+        houses_summary.append(
+            {
+                "name": house_name,
+                "external_id": external_id,
+                "slug": slug,
+                "room_count": room_count,
+                "node_count": node_count,
+                "nodes": node_entries,
+            }
+        )
+
+    user_rows = session.exec(select(User).order_by(User.username)).all()
+    membership_rows = session.exec(
+        select(HouseMembership, House)
+        .join(House, House.id == HouseMembership.house_id)
+    ).all()
+    memberships_by_user: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    for membership, house in membership_rows:
+        memberships_by_user[membership.user_id].append(
+            {
+                "house_name": house.display_name,
+                "house_id": house.external_id,
+                "role": membership.role.value,
+            }
+        )
+    accounts_summary: List[Dict[str, Any]] = []
+    user_lookup = {user.id: user.username for user in user_rows if user.id is not None}
+    for user in user_rows:
+        assignments = memberships_by_user.get(user.id or -1, [])
+        assignments.sort(key=lambda item: item["house_name"].lower())
+        accounts_summary.append(
+            {
+                "id": user.id,
+                "username": user.username,
+                "server_admin": user.server_admin,
+                "assignments": assignments,
+            }
+        )
+
+    audit_rows = session.exec(
+        select(AuditLog).order_by(AuditLog.created_at.desc()).limit(10)
+    ).all()
+    audit_entries = [
+        {
+            "id": entry.id,
+            "action": entry.action,
+            "summary": entry.summary,
+            "data": entry.data,
+            "created_at": entry.created_at.isoformat() if entry.created_at else None,
+            "actor": user_lookup.get(entry.actor_id),
+        }
+        for entry in audit_rows
+    ]
+
+    return templates.TemplateResponse(
+        request,
+        "server_admin.html",
+        {
+            "request": request,
+            "title": "Server Administration",
+            "subtitle": "Global controls",
+            "houses": houses_summary,
+            "house_options": [
+                {"id": house["external_id"], "name": house["name"]}
+                for house in houses_summary
+            ],
+            "accounts": accounts_summary,
+            "audit_entries": audit_entries,
+            "total_nodes": total_nodes,
+        },
     )
 
 
