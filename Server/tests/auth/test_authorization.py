@@ -13,7 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app import database
-from app.auth.models import House, HouseMembership, HouseRole, RoomAccess, User
+from app.auth.models import AuditLog, House, HouseMembership, HouseRole, RoomAccess, User
 from app.auth.security import SESSION_COOKIE_NAME
 from app.auth.service import create_user
 from app.config import settings
@@ -151,6 +151,7 @@ def test_guest_restricted_to_assigned_rooms(client: TestClient):
     assert "Alpha House" in body
     assert "Beta House" not in body
     assert "Admin Panel" not in body
+    assert "Server Admin" not in body
 
     house_page = client.get("/house/alpha-public")
     assert house_page.status_code == 200
@@ -195,6 +196,7 @@ def test_house_admin_has_admin_access(client: TestClient):
     dashboard = client.get("/dashboard")
     assert dashboard.status_code == 200
     assert "Admin Panel" in dashboard.text
+    assert "Server Admin" not in dashboard.text
 
     admin_house = client.get("/admin/house/alpha-public")
     assert admin_house.status_code == 200
@@ -212,3 +214,110 @@ def test_server_admin_retains_global_control(client: TestClient):
 
     api = client.post("/api/all-off")
     assert api.status_code == 200
+
+    server_admin_page = client.get("/server-admin")
+    assert server_admin_page.status_code == 200
+    assert "Server Administration" in server_admin_page.text
+
+
+def test_house_admin_blocked_from_server_admin(client: TestClient):
+    _create_user(
+        "manager",
+        "house-pass",
+        memberships=[("alpha-public", HouseRole.ADMIN, None)],
+    )
+
+    _login(client, "manager", "house-pass")
+
+    page = client.get("/server-admin")
+    assert page.status_code == 403
+
+    response = client.post(
+        "/api/server-admin/houses/alpha-public/rotate-id",
+        json={"confirm": True},
+    )
+    assert response.status_code == 403
+
+
+def test_server_admin_rotate_house_id(client: TestClient):
+    _create_user("root", "root-pass", server_admin=True)
+
+    _login(client, "root", "root-pass")
+
+    response = client.post(
+        "/api/server-admin/houses/alpha-public/rotate-id",
+        json={"confirm": True},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["houseId"] == "alpha-public"
+    assert payload["newId"] != "alpha-public"
+
+    from app.config import settings as settings_module
+
+    assert (
+        settings_module.DEVICE_REGISTRY[0]["external_id"]
+        == payload["newId"]
+    )
+
+    with database.SessionLocal() as session:
+        house_row = session.exec(
+            select(House).where(House.external_id == payload["newId"])
+        ).one()
+        assert house_row.display_name == "Alpha House"
+
+        audit_row = session.exec(
+            select(AuditLog).order_by(AuditLog.id.desc())
+        ).first()
+        assert audit_row is not None
+        assert audit_row.action == "house_id_rotated"
+        assert audit_row.data["new"] == payload["newId"]
+
+
+def test_server_admin_create_house_admin(client: TestClient):
+    _create_user("root", "root-pass", server_admin=True)
+
+    _login(client, "root", "root-pass")
+
+    response = client.post(
+        "/api/server-admin/houses/alpha-public/admins",
+        json={"username": "alpha-admin", "password": "secret"},
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["houseId"] == "alpha-public"
+    assert payload["username"] == "alpha-admin"
+
+    with database.SessionLocal() as session:
+        user_row = session.exec(
+            select(User).where(User.username == "alpha-admin")
+        ).one()
+        assert not user_row.server_admin
+        membership_row = session.exec(
+            select(HouseMembership)
+            .join(House, House.id == HouseMembership.house_id)
+            .where(HouseMembership.user_id == user_row.id)
+        ).one()
+        assert membership_row.role == HouseRole.ADMIN
+
+        audit_row = session.exec(
+            select(AuditLog).order_by(AuditLog.id.desc())
+        ).first()
+        assert audit_row is not None
+        assert audit_row.action == "house_admin_created"
+
+
+def test_non_admin_cannot_create_house_admin(client: TestClient):
+    _create_user(
+        "guest",
+        "guest-pass",
+        memberships=[("alpha-public", HouseRole.GUEST, ["alpha-room"])],
+    )
+
+    _login(client, "guest", "guest-pass")
+
+    response = client.post(
+        "/api/server-admin/houses/alpha-public/admins",
+        json={"username": "blocked", "password": "secret"},
+    )
+    assert response.status_code == 403

@@ -100,6 +100,28 @@ def _generate_unique_external_id(seen: set[str]) -> str:
             return candidate
 
 
+def rotate_house_external_id(house_id: str) -> str:
+    """Assign a new external id to ``house_id`` and persist the change."""
+
+    ensure_house_external_ids(persist=False)
+    house = find_house(house_id)
+    if not house:
+        raise KeyError("house not found")
+
+    seen: set[str] = set()
+    for entry in settings.DEVICE_REGISTRY:
+        if not isinstance(entry, dict) or entry is house:
+            continue
+        raw_id = entry.get("external_id")
+        if isinstance(raw_id, str) and raw_id:
+            seen.add(raw_id)
+
+    new_id = _generate_unique_external_id(seen)
+    house["external_id"] = new_id
+    save_registry()
+    return new_id
+
+
 def iter_nodes(registry: Optional[Registry] = None) -> Iterator[Tuple[House, Room, Node]]:
     """Yield (house, room, node) for every node in the registry."""
     if registry is None:

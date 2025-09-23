@@ -3,9 +3,16 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Dict, Optional
 
-from sqlalchemy import Column, DateTime, Enum as SAEnum, String, UniqueConstraint
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Enum as SAEnum,
+    JSON,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.sql import func
 from sqlmodel import Field, SQLModel
 
@@ -98,4 +105,30 @@ class RoomAccess(SQLModel, table=True):
         default_factory=datetime.utcnow, sa_column=_timestamp_column(onupdate=True)
     )
 
-__all__ = ["House", "HouseMembership", "HouseRole", "RoomAccess", "User"]
+class AuditLog(SQLModel, table=True):
+    __tablename__ = "audit_logs"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    actor_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    action: str = Field(sa_column=Column(String(120), nullable=False))
+    summary: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+    )
+    data: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False, default=dict),
+    )
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=_timestamp_column()
+    )
+
+
+__all__ = [
+    "AuditLog",
+    "House",
+    "HouseMembership",
+    "HouseRole",
+    "RoomAccess",
+    "User",
+]

@@ -17,6 +17,7 @@ from .ota import router as ota_router
 from .routes_api import router as api_router
 from .routes_house_admin import router as house_admin_router
 from .routes_pages import router as pages_router
+from .routes_server_admin import router as server_admin_router
 from .status_monitor import status_monitor
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -88,6 +89,7 @@ app.add_middleware(
 app.include_router(pages_router)
 app.include_router(api_router)
 app.include_router(house_admin_router)
+app.include_router(server_admin_router)
 app.include_router(ota_router)
 
 
