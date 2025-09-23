@@ -81,7 +81,6 @@ void app_main(void) {
     ESP_LOGE(TAG, "Failed to obtain IP address");
   }
   ul_core_sntp_start();
-  ul_core_schedule_daily_reboot();
 
   // Status heartbeat via MQTT
   while (true) {
