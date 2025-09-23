@@ -49,6 +49,8 @@ static ul_health_state_t s_state;
 static ul_health_config_t s_config;
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static TaskHandle_t s_health_task;
+static uint32_t s_last_sntp_retry_log_count;
+static uint64_t s_last_sntp_retry_log_us;
 
 static void health_task(void *arg);
 static void health_take_snapshot(ul_health_state_t *state_out, ul_health_config_t *cfg_out);
@@ -318,6 +320,32 @@ static void health_task(void *arg) {
           }
         }
       }
+    }
+
+    bool sntp_running = ul_core_is_sntp_resync_active();
+    uint32_t sntp_failures = ul_core_get_sntp_retry_attempts();
+    if (!sntp_running && sntp_failures > 0) {
+      uint64_t first_failure_us = ul_core_get_sntp_first_failure_us();
+      uint64_t last_failure_us = ul_core_get_sntp_last_failure_us();
+      uint64_t failing_for_us = 0;
+      if (first_failure_us && now_us > first_failure_us)
+        failing_for_us = now_us - first_failure_us;
+      uint64_t since_last_attempt_us = 0;
+      if (last_failure_us && now_us > last_failure_us)
+        since_last_attempt_us = now_us - last_failure_us;
+      if (sntp_failures != s_last_sntp_retry_log_count ||
+          now_us - s_last_sntp_retry_log_us >= UL_HEALTH_LOG_INTERVAL_US) {
+        ESP_LOGW(TAG,
+                 "SNTP resync task creation failed %u time%s (failing for %llus, last attempt %llus ago)",
+                 (unsigned)sntp_failures, sntp_failures == 1 ? "" : "s",
+                 failing_for_us / 1000000ULL,
+                 since_last_attempt_us / 1000000ULL);
+        s_last_sntp_retry_log_count = sntp_failures;
+        s_last_sntp_retry_log_us = now_us;
+      }
+    } else {
+      s_last_sntp_retry_log_count = 0;
+      s_last_sntp_retry_log_us = 0;
     }
 
     if (snapshot.time_sync_seen) {
