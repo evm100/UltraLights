@@ -9,6 +9,7 @@ static int g_health_notify_calls = 0;
 static bool g_health_last_state = true;
 static int g_init_calls = 0;
 static int g_register_calls = 0;
+static int g_register_failures_remaining = 0;
 static int g_start_calls = 0;
 static int g_stop_calls = 0;
 static int g_destroy_calls = 0;
@@ -79,6 +80,11 @@ esp_err_t esp_mqtt_client_register_event(esp_mqtt_client_handle_t client,
   (void)event_id;
   (void)event_data;
   g_register_calls++;
+  if (g_register_failures_remaining > 0) {
+    g_register_failures_remaining--;
+    g_registered_handler = NULL;
+    return ESP_FAIL;
+  }
   g_registered_handler = handler;
   return ESP_OK;
 }
@@ -125,27 +131,24 @@ static void fire_retry_timer(void) {
   }
 }
 
-static void reset_state(void) {
+static void reset_metrics(void) {
   g_health_notify_calls = 0;
   g_health_last_state = true;
   g_init_calls = 0;
   g_register_calls = 0;
+  g_register_failures_remaining = 0;
   g_start_calls = 0;
   g_stop_calls = 0;
   g_destroy_calls = 0;
   g_vtaskdelay_last = -1;
-  g_init_failures_remaining = 1;
-  g_timer_created = false;
-  g_timer.callback = NULL;
-  g_timer.arg = NULL;
-  g_timer.active = false;
-  g_timer.timeout_us = 0;
+  g_init_failures_remaining = 0;
   g_registered_handler = NULL;
 }
 
-int main(void) {
-  reset_state();
+static void test_init_failure_retry(void) {
+  reset_metrics();
   g_core_connected = true;
+  g_init_failures_remaining = 1;
 
   ul_mqtt_start();
 
@@ -153,6 +156,7 @@ int main(void) {
   assert(ul_mqtt_test_get_client_handle() == NULL);
   assert(g_register_calls == 0);
   assert(g_start_calls == 0);
+  assert(g_destroy_calls == 0);
   assert(g_health_notify_calls == 1);
   assert(g_health_last_state == false);
   assert(g_timer_created);
@@ -179,6 +183,50 @@ int main(void) {
   assert(g_destroy_calls == 1);
   assert(g_health_notify_calls == 3);
   assert(g_health_last_state == false);
+}
+
+static void test_register_failure_retry(void) {
+  reset_metrics();
+  g_core_connected = true;
+  g_register_failures_remaining = 1;
+
+  ul_mqtt_start();
+
+  assert(g_init_calls == 1);
+  assert(g_register_calls == 1);
+  assert(g_start_calls == 0);
+  assert(g_destroy_calls == 1);
+  assert(ul_mqtt_test_get_client_handle() == NULL);
+  assert(g_registered_handler == NULL);
+  assert(g_health_notify_calls == 1);
+  assert(g_health_last_state == false);
+  assert(ul_mqtt_test_retry_pending());
+  assert(g_timer.active);
+
+  fire_retry_timer();
+
+  assert(g_init_calls == 2);
+  assert(g_register_calls == 2);
+  assert(g_start_calls == 1);
+  assert(g_destroy_calls == 1);
+  assert(g_registered_handler != NULL);
+  assert(ul_mqtt_test_get_client_handle() == &g_client);
+  assert(!ul_mqtt_test_retry_pending());
+  assert(!g_timer.active);
+  assert(g_health_notify_calls == 2);
+  assert(g_health_last_state == false);
+
+  ul_mqtt_stop();
+  assert(ul_mqtt_test_get_client_handle() == NULL);
+  assert(g_stop_calls == 1);
+  assert(g_destroy_calls == 2);
+  assert(g_health_notify_calls == 3);
+  assert(g_health_last_state == false);
+}
+
+int main(void) {
+  test_init_failure_retry();
+  test_register_failure_retry();
 
   printf("ul_mqtt_retry_test passed\n");
   return 0;
