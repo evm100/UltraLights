@@ -7,7 +7,6 @@
 #include "esp_sntp.h"
 #include "esp_netif_sntp.h"
 #include "esp_timer.h"
-#include "esp_system.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 #include "ul_task.h"
@@ -24,7 +23,6 @@ static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_MAX_BACKOFF_MS 30000
 
 static esp_timer_handle_t s_reconnect_timer;
-static esp_timer_handle_t s_reboot_timer;
 static int s_backoff_ms = 1000;
 
 const char *ul_core_get_node_id(void) { return s_node_id; }
@@ -48,8 +46,6 @@ static void wifi_reconnect_timer_cb(void *arg) {
   if (s_backoff_ms > WIFI_MAX_BACKOFF_MS)
     s_backoff_ms = WIFI_MAX_BACKOFF_MS;
 }
-
-static void reboot_timer_cb(void *arg) { esp_restart(); }
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data) {
@@ -157,36 +153,6 @@ void ul_core_wifi_stop(void) {
   }
 }
 
-void ul_core_schedule_daily_reboot(void) {
-  if (!s_reboot_timer) {
-    const esp_timer_create_args_t reboot_timer_args = {
-        .callback = &reboot_timer_cb,
-        .name = "daily_reboot",
-    };
-    ESP_ERROR_CHECK(esp_timer_create(&reboot_timer_args, &s_reboot_timer));
-  } else {
-    esp_timer_stop(s_reboot_timer);
-  }
-
-  time_t now = time(NULL);
-  struct tm tm_now;
-  localtime_r(&now, &tm_now);
-
-  struct tm tm_next = tm_now;
-  tm_next.tm_hour = 12;
-  tm_next.tm_min = 0;
-  tm_next.tm_sec = 0;
-
-  time_t next = mktime(&tm_next);
-  if (next <= now) {
-    tm_next.tm_mday += 1;
-    next = mktime(&tm_next);
-  }
-
-  uint64_t delay_us = (uint64_t)(next - now) * 1000000ULL;
-  ESP_ERROR_CHECK(esp_timer_start_once(s_reboot_timer, delay_us));
-}
-
 static void sntp_sync_task(void *arg) {
   const TickType_t interval =
       pdMS_TO_TICKS(CONFIG_UL_SNTP_SYNC_INTERVAL_S * 1000);
@@ -199,8 +165,6 @@ static void sntp_sync_task(void *arg) {
     esp_err_t err = esp_netif_sntp_start();
     if (err != ESP_OK) {
       ESP_LOGW(TAG, "SNTP resync failed: %s", esp_err_to_name(err));
-    } else {
-      ul_core_schedule_daily_reboot();
     }
   }
 }
