@@ -6,9 +6,10 @@ from typing import Any, AsyncIterator, Optional
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
 from . import registry
-from .auth import init_auth_storage
+from .auth import SESSION_TOKEN_TTL_SECONDS, init_auth_storage
 from .config import settings
 from .database import get_session
 from .motion import motion_manager
@@ -17,7 +18,7 @@ from .routes_api import router as api_router
 from .routes_pages import router as pages_router
 from .status_monitor import status_monitor
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 # Optional embedded broker
 try:
@@ -72,7 +73,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="UltraLights Hub", version="2.0", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SESSION_SECRET,
+    session_cookie="ultralights_state",
+    max_age=SESSION_TOKEN_TTL_SECONDS,
+    same_site="lax",
+    https_only=settings.PUBLIC_BASE.startswith("https://"),
+)
 
 app.include_router(pages_router)
 app.include_router(api_router)

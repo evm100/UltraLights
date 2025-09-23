@@ -10,11 +10,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app import registry
+from app import database as database_module
 from app.auth.passwords import hash_password, verify_password
 from app.auth.service import create_user, init_auth_storage
 from app.auth.models import User
 from app.config import settings
-from app.database import SessionLocal, reset_session_factory
 
 
 def test_hash_and_verify_password() -> None:
@@ -33,10 +33,10 @@ def test_init_auth_storage_seeds_admin(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(settings, "INITIAL_ADMIN_USERNAME", "seed-admin")
     monkeypatch.setattr(settings, "INITIAL_ADMIN_PASSWORD", "ultra-secret")
 
-    reset_session_factory(db_url)
+    database_module.reset_session_factory(db_url)
     try:
         init_auth_storage()
-        with SessionLocal() as session:
+        with database_module.SessionLocal() as session:
             admin = session.exec(select(User).where(User.server_admin.is_(True))).one()
             assert admin.username == "seed-admin"
             assert admin.hashed_password != settings.INITIAL_ADMIN_PASSWORD
@@ -46,7 +46,7 @@ def test_init_auth_storage_seeds_admin(tmp_path, monkeypatch) -> None:
             assert guest.id is not None
             assert verify_password("guest-pass", guest.hashed_password)
     finally:
-        reset_session_factory(original_url)
+        database_module.reset_session_factory(original_url)
 
 
 def test_generate_house_external_ids_random_and_unique(monkeypatch) -> None:
