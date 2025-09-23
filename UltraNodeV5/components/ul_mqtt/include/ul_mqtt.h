@@ -9,6 +9,7 @@ extern "C" {
 
 void ul_mqtt_start(void);
 void ul_mqtt_stop(void);
+void ul_mqtt_restart(void);
 void ul_mqtt_publish_status(void);
 void ul_mqtt_publish_status_now(void);
 // Publish a motion event for a specific sensor. The event is published on

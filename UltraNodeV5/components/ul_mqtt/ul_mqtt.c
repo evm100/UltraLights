@@ -7,11 +7,14 @@
 #include "mqtt_client.h"
 #include "sdkconfig.h"
 #include "ul_core.h"
+#include "ul_health.h"
 #include "ul_state.h"
 #include "ul_ota.h"
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
 #include "ul_rgb_engine.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
@@ -827,6 +830,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_CONNECTED: {
     ESP_LOGI(TAG, "MQTT connected");
     s_ready = true;
+    ul_health_notify_mqtt(true);
     restore_all_lights();
     if (ul_core_is_connected()) {
       char topic[128];
@@ -840,6 +844,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGW(TAG, "MQTT disconnected");
     s_ready = false;
+    ul_health_notify_mqtt(false);
     dim_all_lights();
     break;
   case MQTT_EVENT_DATA:
@@ -851,8 +856,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 }
 
 void ul_mqtt_start(void) {
+  if (s_client) {
+    ESP_LOGW(TAG, "MQTT start requested but client already running");
+    return;
+  }
   if (!ul_core_is_connected()) {
     ESP_LOGW(TAG, "Network not connected; MQTT not started");
+    ul_health_notify_mqtt(false);
     return;
   }
   // MQTT runs at modest priority. On the ESP32-C3 all tasks share the
@@ -868,16 +878,32 @@ void ul_mqtt_start(void) {
   esp_mqtt_client_register_event(s_client, ESP_EVENT_ANY_ID, mqtt_event_handler,
                                  NULL);
   esp_mqtt_client_start(s_client);
+  ul_health_notify_mqtt(false);
 }
 
 void ul_mqtt_stop(void) {
   motion_fade_cancel();
-  if (!s_client)
-    return;
-  esp_mqtt_client_stop(s_client);
-  esp_mqtt_client_destroy(s_client);
-  s_client = NULL;
+  if (s_client) {
+    esp_mqtt_client_stop(s_client);
+    esp_mqtt_client_destroy(s_client);
+    s_client = NULL;
+  }
   s_ready = false;
+  ul_health_notify_mqtt(false);
+}
+
+void ul_mqtt_restart(void) {
+  ESP_LOGW(TAG, "Restarting MQTT client");
+  bool had_client = s_client != NULL;
+  ul_mqtt_stop();
+  if (!ul_core_is_connected()) {
+    ESP_LOGW(TAG, "Skip MQTT restart (network offline)");
+    return;
+  }
+  if (had_client) {
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
+  ul_mqtt_start();
 }
 
 bool ul_mqtt_is_connected(void) { return s_ready; }

@@ -9,9 +9,11 @@
 #include "esp_timer.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "ul_task.h"
 #include <string.h>
 #include <time.h>
+#include <sys/time.h>
 
 static const char *TAG = "ul_core";
 
@@ -24,6 +26,10 @@ static EventGroupHandle_t s_wifi_event_group;
 
 static esp_timer_handle_t s_reconnect_timer;
 static int s_backoff_ms = 1000;
+static SemaphoreHandle_t s_wifi_restart_mutex;
+
+static ul_core_time_sync_cb_t s_time_sync_cb = NULL;
+static void *s_time_sync_ctx = NULL;
 
 const char *ul_core_get_node_id(void) { return s_node_id; }
 
@@ -33,6 +39,11 @@ static void *s_conn_ctx = NULL;
 void ul_core_register_connectivity_cb(ul_core_conn_cb_t cb, void *ctx) {
   s_conn_cb = cb;
   s_conn_ctx = ctx;
+}
+
+void ul_core_register_time_sync_cb(ul_core_time_sync_cb_t cb, void *ctx) {
+  s_time_sync_cb = cb;
+  s_time_sync_ctx = ctx;
 }
 
 static void wifi_reconnect_timer_cb(void *arg) {
@@ -72,6 +83,13 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
 void ul_core_wifi_start(void) {
   s_wifi_event_group = xEventGroupCreate();
+
+  if (!s_wifi_restart_mutex) {
+    s_wifi_restart_mutex = xSemaphoreCreateMutex();
+    if (!s_wifi_restart_mutex) {
+      ESP_LOGE(TAG, "Failed to allocate Wi-Fi restart mutex");
+    }
+  }
 
   const esp_timer_create_args_t reconnect_timer_args = {
       .callback = &wifi_reconnect_timer_cb,
@@ -137,6 +155,10 @@ void ul_core_wifi_stop(void) {
     s_reconnect_timer = NULL;
   }
 
+  if (s_conn_cb) {
+    s_conn_cb(false, s_conn_ctx);
+  }
+
   ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, WIFI_EVENT_STA_START,
                                                &wifi_event_handler));
   ESP_ERROR_CHECK(esp_event_handler_unregister(
@@ -151,6 +173,28 @@ void ul_core_wifi_stop(void) {
     vEventGroupDelete(s_wifi_event_group);
     s_wifi_event_group = NULL;
   }
+}
+
+void ul_core_wifi_restart(void) {
+  if (!s_wifi_restart_mutex) {
+    s_wifi_restart_mutex = xSemaphoreCreateMutex();
+    if (!s_wifi_restart_mutex) {
+      ESP_LOGE(TAG, "Wi-Fi restart requested but mutex allocation failed");
+      return;
+    }
+  }
+
+  if (xSemaphoreTake(s_wifi_restart_mutex, pdMS_TO_TICKS(10000)) != pdTRUE) {
+    ESP_LOGW(TAG, "Failed to obtain Wi-Fi restart mutex");
+    return;
+  }
+
+  ESP_LOGW(TAG, "Restarting Wi-Fi stack");
+  ul_core_wifi_stop();
+  vTaskDelay(pdMS_TO_TICKS(200));
+  ul_core_wifi_start();
+
+  xSemaphoreGive(s_wifi_restart_mutex);
 }
 
 static void sntp_sync_task(void *arg) {
@@ -169,6 +213,11 @@ static void sntp_sync_task(void *arg) {
   }
 }
 
+static void sntp_time_sync_notification_cb(struct timeval *tv) {
+  if (s_time_sync_cb)
+    s_time_sync_cb(s_time_sync_ctx);
+}
+
 void ul_core_sntp_start(void) {
   const char *tz = CONFIG_UL_TIMEZONE;
   if (tz[0] == '\0') {
@@ -179,6 +228,7 @@ void ul_core_sntp_start(void) {
 
   esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
   esp_netif_sntp_init(&config);
+  esp_sntp_set_time_sync_notification_cb(sntp_time_sync_notification_cb);
   ESP_ERROR_CHECK(esp_netif_sntp_start());
 
   // Wait until time is set (epoch > 1700000000 ~ 2023)
@@ -194,6 +244,8 @@ void ul_core_sntp_start(void) {
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
   ESP_LOGI(TAG, "Time sync: %ld", now);
+  if (s_time_sync_cb)
+    s_time_sync_cb(s_time_sync_ctx);
   ul_task_create(sntp_sync_task, "sntp_sync", 2048, NULL, tskIDLE_PRIORITY,
                  NULL, 0);
 }
