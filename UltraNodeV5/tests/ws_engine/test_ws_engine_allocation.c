@@ -23,6 +23,9 @@ static size_t g_heap_caps_malloc_last_size = 0;
 
 static led_strip_stub_t g_led_strip_storage[4];
 static int g_led_strip_storage_count = 0;
+static int g_led_strip_new_call_count = 0;
+static int g_led_strip_new_fail_call = -1;
+static esp_err_t g_led_strip_new_fail_err = -1;
 static int g_led_strip_del_calls = 0;
 static int g_led_strip_set_pixel_total = 0;
 static int g_led_strip_refresh_total = 0;
@@ -50,6 +53,7 @@ static int g_effect_init_calls = 0;
 // Forward declarations for helpers
 static void reset_test_state(void);
 static void test_set_heap_caps_malloc_fail_call(int call);
+static void test_set_led_strip_new_fail_call(int call, esp_err_t err);
 static void test_set_task_create_fail_call(int call);
 static void assert_engine_disabled(void);
 
@@ -58,6 +62,12 @@ static void assert_engine_disabled(void);
 void test_set_heap_caps_malloc_fail_call(int call) {
     g_heap_caps_malloc_fail_call = call;
     g_heap_caps_malloc_call_count = 0;
+}
+
+void test_set_led_strip_new_fail_call(int call, esp_err_t err) {
+    g_led_strip_new_fail_call = call;
+    g_led_strip_new_fail_err = err;
+    g_led_strip_new_call_count = 0;
 }
 
 void test_set_task_create_fail_call(int call) {
@@ -81,6 +91,14 @@ esp_err_t led_strip_new_spi_device(const led_strip_config_t* config,
                                    led_strip_handle_t* out_handle) {
     (void)config;
     (void)spi_config;
+    g_led_strip_new_call_count++;
+    if (g_led_strip_new_fail_call > 0 &&
+        g_led_strip_new_call_count == g_led_strip_new_fail_call) {
+        if (out_handle) {
+            *out_handle = NULL;
+        }
+        return g_led_strip_new_fail_err;
+    }
     if (!out_handle) {
         return -1;
     }
@@ -250,6 +268,9 @@ static void reset_test_state(void) {
     ul_ws_engine_stop();
     memset(g_led_strip_storage, 0, sizeof(g_led_strip_storage));
     g_led_strip_storage_count = 0;
+    g_led_strip_new_call_count = 0;
+    g_led_strip_new_fail_call = -1;
+    g_led_strip_new_fail_err = -1;
     g_led_strip_del_calls = 0;
     g_led_strip_set_pixel_total = 0;
     g_led_strip_refresh_total = 0;
@@ -295,26 +316,31 @@ static void test_allocation_failure_second_strip(void) {
     reset_test_state();
     test_set_heap_caps_malloc_fail_call(2);
 
-    ul_ws_engine_start();
-
-    assert_strip_enabled(0, CONFIG_UL_WS0_PIXELS);
-    assert_strip_disabled(1);
-    assert(g_led_strip_del_calls == 1);
+    bool started = ul_ws_engine_start();
+    assert(!started);
+    assert_engine_disabled();
+    assert(g_led_strip_del_calls == 2);
     assert(g_heap_caps_malloc_call_count == 2);
     assert(g_heap_caps_malloc_last_size == (size_t)(CONFIG_UL_WS1_PIXELS * 3));
-    assert(ul_ws_get_strip_count() == 1);
 
-    ul_ws_strip_status_t status = {0};
-    assert(ul_ws_get_status(0, &status));
-    assert(status.enabled);
-    assert(status.pixels == CONFIG_UL_WS0_PIXELS);
-
+    ul_ws_strip_status_t status;
     memset(&status, 0xAA, sizeof(status));
-    assert(!ul_ws_get_status(1, &status));
-    // status should have been cleared by ul_ws_get_status when strip disabled
+    assert(!ul_ws_get_status(0, &status));
     for (size_t i = 0; i < sizeof(status); ++i) {
         assert(((uint8_t*)&status)[i] == 0);
     }
+
+    memset(&status, 0xAA, sizeof(status));
+    assert(!ul_ws_get_status(1, &status));
+    for (size_t i = 0; i < sizeof(status); ++i) {
+        assert(((uint8_t*)&status)[i] == 0);
+    }
+
+    test_set_heap_caps_malloc_fail_call(-1);
+    bool restarted = ul_ws_engine_start();
+    assert(restarted);
+    assert_strip_enabled(0, CONFIG_UL_WS0_PIXELS);
+    assert_strip_enabled(1, CONFIG_UL_WS1_PIXELS);
 
     int pixel_calls_before = g_led_strip_set_pixel_total;
     render_one(&s_strips[0], 0);
@@ -323,15 +349,37 @@ static void test_allocation_failure_second_strip(void) {
 
     pixel_calls_before = g_led_strip_set_pixel_total;
     render_one(&s_strips[1], 1);
-    assert(g_led_strip_set_pixel_total == pixel_calls_before);
+    assert(g_led_strip_set_pixel_total == pixel_calls_before + CONFIG_UL_WS1_PIXELS);
+
+    ul_ws_engine_stop();
+    assert_engine_disabled();
+}
+
+static void test_led_strip_device_failure(void) {
+    reset_test_state();
+    test_set_led_strip_new_fail_call(2, -1);
+
+    bool started = ul_ws_engine_start();
+    assert(!started);
+    assert_engine_disabled();
+    assert(g_led_strip_new_call_count == 2);
+    assert(g_led_strip_del_calls == 1);
+
+    test_set_led_strip_new_fail_call(-1, -1);
+    bool restarted = ul_ws_engine_start();
+    assert(restarted);
+    assert_strip_enabled(0, CONFIG_UL_WS0_PIXELS);
+    assert_strip_enabled(1, CONFIG_UL_WS1_PIXELS);
+
+    ul_ws_engine_stop();
+    assert_engine_disabled();
 }
 
 static void test_task_create_failure_first_task(void) {
     reset_test_state();
     test_set_task_create_fail_call(1);
 
-    ul_ws_engine_start();
-
+    assert(!ul_ws_engine_start());
     assert_engine_disabled();
     assert(g_led_strip_del_calls == 2);
     assert(g_semaphore_count == 1);
@@ -339,8 +387,7 @@ static void test_task_create_failure_first_task(void) {
     assert(g_task_create_calls == 1);
 
     test_set_task_create_fail_call(-1);
-    ul_ws_engine_start();
-
+    assert(ul_ws_engine_start());
     assert_strip_enabled(0, CONFIG_UL_WS0_PIXELS);
     assert_strip_enabled(1, CONFIG_UL_WS1_PIXELS);
     assert(s_refresh_sem != NULL);
@@ -357,8 +404,7 @@ static void test_task_create_failure_second_task(void) {
     reset_test_state();
     test_set_task_create_fail_call(2);
 
-    ul_ws_engine_start();
-
+    assert(!ul_ws_engine_start());
     assert_engine_disabled();
     assert(g_led_strip_del_calls == 2);
     assert(g_semaphore_count == 1);
@@ -366,8 +412,7 @@ static void test_task_create_failure_second_task(void) {
     assert(g_task_create_calls == 2);
 
     test_set_task_create_fail_call(-1);
-    ul_ws_engine_start();
-
+    assert(ul_ws_engine_start());
     assert_strip_enabled(0, CONFIG_UL_WS0_PIXELS);
     assert_strip_enabled(1, CONFIG_UL_WS1_PIXELS);
     assert(s_refresh_sem != NULL);
@@ -382,6 +427,7 @@ static void test_task_create_failure_second_task(void) {
 
 int main(void) {
     test_allocation_failure_second_strip();
+    test_led_strip_device_failure();
     test_task_create_failure_first_task();
     test_task_create_failure_second_task();
     ul_ws_engine_stop();

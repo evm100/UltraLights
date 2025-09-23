@@ -9,7 +9,7 @@
 
 int ul_ws_effect_current_strip(void) { return -1; }
 
-void ul_ws_engine_start(void) {}
+bool ul_ws_engine_start(void) { return true; }
 
 void ul_ws_engine_stop(void) {}
 
@@ -103,6 +103,7 @@ static TaskHandle_t s_ws_task = NULL;
 int ul_ws_effect_current_strip(void) { return s_current_strip_idx; }
 
 static ws_strip_t* get_strip(int idx);
+static void deinit_strip(int idx);
 
 void ul_ws_apply_json(cJSON* root) {
     if (!root) return;
@@ -149,19 +150,18 @@ static const ws_effect_t* find_effect_by_name(const char* name) {
     return NULL;
 }
 
-static void init_strip(int idx, int gpio, int pixels, bool enabled) {
-    if (!enabled) {
-        s_strips[idx].pixels = 0;
-        s_strips[idx].handle = NULL;
-        s_strips[idx].frame = NULL;
-        s_strips[idx].eff = NULL;
-        s_strips[idx].solid_r = 0;
-        s_strips[idx].solid_g = 0;
-        s_strips[idx].solid_b = 0;
-        s_strips[idx].brightness = 0;
-        s_strips[idx].frame_pos = 0.0f;
-        return;
+static bool init_strip(int idx, int gpio, int pixels, bool enabled) {
+    if (idx < 0 || idx >= (int)(sizeof(s_strips) / sizeof(s_strips[0]))) {
+        return false;
     }
+
+    ws_strip_t* strip = &s_strips[idx];
+    deinit_strip(idx);
+
+    if (!enabled) {
+        return true;
+    }
+
     led_strip_config_t strip_config = {
         .strip_gpio_num = gpio,
         .max_leds = pixels,
@@ -180,44 +180,41 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
             .with_dma = true,
         },
     };
-    ESP_ERROR_CHECK(led_strip_new_spi_device(&strip_config, &spi_config, &s_strips[idx].handle));
-    if (!s_strips[idx].handle) {
+
+    esp_err_t err = led_strip_new_spi_device(&strip_config, &spi_config, &strip->handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize LED strip %d (err=%d)", idx, (int)err);
+        strip->handle = NULL;
+        return false;
+    }
+    if (!strip->handle) {
         ESP_LOGE(TAG, "Failed to initialize LED strip handle for strip %d", idx);
-        s_strips[idx].pixels = 0;
-        s_strips[idx].handle = NULL;
-        s_strips[idx].eff = NULL;
-        s_strips[idx].frame = NULL;
-        s_strips[idx].solid_r = 0;
-        s_strips[idx].solid_g = 0;
-        s_strips[idx].solid_b = 0;
-        s_strips[idx].brightness = 0;
-        s_strips[idx].frame_pos = 0.0f;
-        return;
+        deinit_strip(idx);
+        return false;
     }
-    led_strip_clear(s_strips[idx].handle);
-    s_strips[idx].pixels = pixels;
-    s_strips[idx].frame = (uint8_t*)heap_caps_malloc(pixels*3, MALLOC_CAP_8BIT);
-    if (!s_strips[idx].frame) {
+
+    led_strip_clear(strip->handle);
+
+    strip->frame = (uint8_t*)heap_caps_malloc(pixels * 3, MALLOC_CAP_8BIT);
+    if (!strip->frame) {
         ESP_LOGE(TAG, "Failed to allocate frame buffer for strip %d", idx);
-        led_strip_del(s_strips[idx].handle);
-        s_strips[idx].handle = NULL;
-        s_strips[idx].pixels = 0;
-        s_strips[idx].frame = NULL;
-        s_strips[idx].eff = NULL;
-        s_strips[idx].solid_r = 0;
-        s_strips[idx].solid_g = 0;
-        s_strips[idx].solid_b = 0;
-        s_strips[idx].brightness = 0;
-        s_strips[idx].frame_pos = 0.0f;
-        return;
+        deinit_strip(idx);
+        return false;
     }
-    memset(s_strips[idx].frame, 0, pixels*3);
-    // defaults
-    int n=0; const ws_effect_t* tbl = ul_ws_get_effects(&n);
-    s_strips[idx].eff = &tbl[0]; // solid
-    s_strips[idx].solid_r = s_strips[idx].solid_g = s_strips[idx].solid_b = 0;
-    s_strips[idx].brightness = 255;
-    s_strips[idx].frame_pos = 0.0f;
+
+    strip->pixels = pixels;
+    memset(strip->frame, 0, pixels * 3);
+
+    int n = 0;
+    const ws_effect_t* tbl = ul_ws_get_effects(&n);
+    strip->eff = (n > 0) ? &tbl[0] : NULL; // solid
+    strip->solid_r = 0;
+    strip->solid_g = 0;
+    strip->solid_b = 0;
+    strip->brightness = 255;
+    strip->frame_pos = 0.0f;
+
+    return true;
 }
 
 static void deinit_strip(int idx) {
@@ -325,32 +322,48 @@ static void ws_engine_shutdown(void) {
     }
 }
 
-void ul_ws_engine_start(void)
+bool ul_ws_engine_start(void)
 {
     if (!ul_core_is_connected()) {
         ESP_LOGW(TAG, "Network not connected; WS engine not started");
-        return;
+        return false;
     }
+
+    bool strip0_requested = false;
+    bool strip0_ok = true;
 #if CONFIG_UL_WS0_ENABLED
-    init_strip(0, CONFIG_UL_WS0_GPIO, CONFIG_UL_WS0_PIXELS, true);
+    strip0_requested = true;
+    strip0_ok = init_strip(0, CONFIG_UL_WS0_GPIO, CONFIG_UL_WS0_PIXELS, true);
 #else
-    init_strip(0, 0, 0, false);
+    strip0_ok = init_strip(0, 0, 0, false);
 #endif
+
+    bool strip1_requested = false;
+    bool strip1_ok = true;
 #if !CONFIG_UL_IS_ESP32C3
 #if CONFIG_UL_WS1_ENABLED
-    init_strip(1, CONFIG_UL_WS1_GPIO, CONFIG_UL_WS1_PIXELS, true);
+    strip1_requested = true;
+    strip1_ok = init_strip(1, CONFIG_UL_WS1_GPIO, CONFIG_UL_WS1_PIXELS, true);
 #else
-    init_strip(1, 0, 0, false);
+    strip1_ok = init_strip(1, 0, 0, false);
 #endif
 #else
-    init_strip(1, 0, 0, false);
+    strip1_ok = init_strip(1, 0, 0, false);
 #endif
+
+    bool strip_failure = (strip0_requested && !strip0_ok) ||
+                         (strip1_requested && !strip1_ok);
+    if (strip_failure) {
+        ESP_LOGE(TAG, "WS engine failed to initialize strips; keeping engine offline");
+        ws_engine_shutdown();
+        return false;
+    }
+
     s_refresh_sem = xSemaphoreCreateBinary();
     if (!s_refresh_sem) {
         ESP_LOGE(TAG, "Failed to create WS refresh semaphore");
-        deinit_strip(0);
-        deinit_strip(1);
-        return;
+        ws_engine_shutdown();
+        return false;
     }
     // Pixel refresh tasks pin to core 1 on multi-core targets to free core 0
     // for networking and other work.
@@ -360,7 +373,7 @@ void ul_ws_engine_start(void)
         ESP_LOGE(TAG, "Failed to create WS refresh task (%ld)", (long)rc);
         s_refresh_task = NULL;
         ws_engine_shutdown();
-        return;
+        return false;
     }
     rc = ul_task_create(ws_task, "ws60fps", 6144, NULL, 23, &s_ws_task, 1);
     if (rc != pdPASS) {
@@ -371,9 +384,10 @@ void ul_ws_engine_start(void)
         }
         s_ws_task = NULL;
         ws_engine_shutdown();
-        return;
+        return false;
     }
     if (s_refresh_sem) xSemaphoreGive(s_refresh_sem);
+    return true;
 }
 
 void ul_ws_engine_stop(void)
