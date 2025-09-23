@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 load_dotenv()  # reads .env in the project root
 
 class Settings:
+    DATA_DIR = Path(os.getenv("DATA_DIR", "./data")).expanduser().resolve()
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
     WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")
     WEB_PORT = int(os.getenv("WEB_PORT", "443"))
     PUBLIC_BASE = os.getenv("PUBLIC_BASE", "https://lights.evm100.org")
@@ -20,6 +23,14 @@ class Settings:
 
     API_BEARER = os.getenv("API_BEARER", "")
     MANIFEST_HMAC_SECRET = os.getenv("MANIFEST_HMAC_SECRET", "")
+
+    MAX_HOUSE_ID_LENGTH = int(os.getenv("MAX_HOUSE_ID_LENGTH", "22"))
+    AUTH_DB_URL = os.getenv(
+        "AUTH_DB_URL", f"sqlite:///{DATA_DIR / 'auth.sqlite3'}"
+    )
+    SESSION_SECRET = os.getenv("SESSION_SECRET", "dev-session-secret")
+    INITIAL_ADMIN_USERNAME = os.getenv("INITIAL_ADMIN_USERNAME", "")
+    INITIAL_ADMIN_PASSWORD = os.getenv("INITIAL_ADMIN_PASSWORD", "")
 
     # ------------------------------------------------------------------
     # Device registry ---------------------------------------------------
@@ -95,5 +106,11 @@ class Settings:
     else:
         DEVICE_REGISTRY = DEFAULT_REGISTRY
         REGISTRY_FILE.write_text(json.dumps(DEVICE_REGISTRY, indent=2))
+
+    def resolve_data_path(self, path: str | os.PathLike[str]) -> Path:
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = self.DATA_DIR / candidate
+        return candidate.expanduser().resolve()
 
 settings = Settings()

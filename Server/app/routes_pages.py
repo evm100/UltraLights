@@ -35,6 +35,7 @@ NODE_MODULE_TEMPLATES = ["ws", "rgb", "white", "ota", "motion"]
 
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
+    registry.ensure_house_external_ids(persist=False)
     houses = settings.DEVICE_REGISTRY
     return templates.TemplateResponse(
         "index.html",
@@ -138,8 +139,10 @@ def _build_motion_config(
 def _collect_admin_nodes(house_id: Optional[str] = None) -> List[Dict[str, Any]]:
     nodes: List[Dict[str, Any]] = []
     for house, room, node in registry.iter_nodes():
-        if house_id and house and house.get("id") != house_id:
-            continue
+        if house_id:
+            slug = registry.get_house_slug(house) if house else None
+            if slug != house_id:
+                continue
         house_name = ""
         room_name = ""
         node_name = ""
@@ -206,15 +209,17 @@ def admin_panel(request: Request):
 
 @router.get("/admin/house/{house_id}", response_class=HTMLResponse)
 def admin_house_panel(request: Request, house_id: str):
-    house = registry.find_house(house_id)
-    if not house:
+    try:
+        house, house_slug = registry.require_house(house_id)
+    except KeyError:
         return templates.TemplateResponse(
             "base.html",
             {"request": request, "content": "Unknown house"},
             status_code=404,
         )
-    house_name = house.get("name") or house.get("id") or house_id
-    nodes = _collect_admin_nodes(house_id)
+    house_name = house.get("name") or registry.get_house_slug(house) or house_id
+    nodes = _collect_admin_nodes(house_slug)
+    public_house_id = registry.get_house_external_id(house)
     rooms: List[Dict[str, Any]] = []
     seen_ids: set[str] = set()
     for entry in house.get("rooms", []) or []:
@@ -248,7 +253,7 @@ def admin_house_panel(request: Request, house_id: str):
             subtitle=f"{house_name} status",
             heading=f"{house_name} Admin",
             description=f"Monitor node heartbeats for {house_name}.",
-            status_house_id=house_id,
+            status_house_id=public_house_id,
             allow_remove=True,
             house_rooms=rooms,
         ),
@@ -264,11 +269,13 @@ def house_page(request: Request, house_id: str):
             {"request": request, "content": "Unknown house"},
             status_code=404,
         )
+    public_house_id = registry.get_house_external_id(house)
     return templates.TemplateResponse(
         "house.html",
         {
             "request": request,
             "house": house,
+            "house_public_id": public_house_id,
             "title": house.get("name", house_id),
             "subtitle": house.get("name", house_id),
         },
@@ -284,14 +291,17 @@ def room_page(request: Request, house_id: str, room_id: str):
             {"request": request, "content": "Unknown room"},
             status_code=404,
         )
+    house_slug = registry.get_house_slug(house)
+    public_house_id = registry.get_house_external_id(house)
     title = f"{house.get('name', house_id)} - {room.get('name', room_id)}"
-    presets = get_room_presets(house_id, room_id)
-    motion_config = _build_motion_config(house_id, room_id, presets)
+    presets = get_room_presets(house_slug, room_id)
+    motion_config = _build_motion_config(house_slug, room_id, presets)
     return templates.TemplateResponse(
         "room.html",
         {
             "request": request,
             "house": house,
+            "house_public_id": public_house_id,
             "room": room,
             "title": title,
             "subtitle": title,

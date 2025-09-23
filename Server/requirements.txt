@@ -3,3 +3,5 @@ uvicorn[standard]
 jinja2
 paho-mqtt
 python-dotenv
+sqlmodel
+passlib[bcrypt]

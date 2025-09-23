@@ -1,0 +1,101 @@
+"""SQLModel tables for authentication and authorization."""
+from __future__ import annotations
+
+from datetime import datetime
+from enum import Enum
+from typing import Optional
+
+from sqlalchemy import Column, DateTime, Enum as SAEnum, String, UniqueConstraint
+from sqlalchemy.sql import func
+from sqlmodel import Field, SQLModel
+
+from ..config import settings
+
+
+class HouseRole(str, Enum):
+    ADMIN = "admin"
+    GUEST = "guest"
+
+
+def _timestamp_column(*, onupdate: bool = False) -> Column:
+    return Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now() if onupdate else None,
+    )
+
+
+class User(SQLModel, table=True):
+    __tablename__ = "users"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    username: str = Field(
+        sa_column=Column(String(64), unique=True, index=True, nullable=False)
+    )
+    hashed_password: str = Field(
+        sa_column=Column(String(255), nullable=False)
+    )
+    server_admin: bool = Field(default=False, nullable=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=_timestamp_column())
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=_timestamp_column(onupdate=True)
+    )
+
+class House(SQLModel, table=True):
+    __tablename__ = "houses"
+    __table_args__ = (
+        UniqueConstraint("external_id", name="uq_houses_external_id"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    display_name: str = Field(
+        sa_column=Column(String(120), nullable=False)
+    )
+    external_id: str = Field(
+        sa_column=Column(
+            String(settings.MAX_HOUSE_ID_LENGTH),
+            unique=True,
+            nullable=False,
+            index=True,
+        )
+    )
+    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=_timestamp_column())
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=_timestamp_column(onupdate=True)
+    )
+
+class HouseMembership(SQLModel, table=True):
+    __tablename__ = "house_memberships"
+    __table_args__ = (
+        UniqueConstraint("user_id", "house_id", name="uq_memberships_user_house"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", nullable=False)
+    house_id: int = Field(foreign_key="houses.id", nullable=False)
+    role: HouseRole = Field(
+        sa_column=Column(SAEnum(HouseRole, name="house_role"), nullable=False)
+    )
+    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=_timestamp_column())
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=_timestamp_column(onupdate=True)
+    )
+
+class RoomAccess(SQLModel, table=True):
+    __tablename__ = "room_access"
+    __table_args__ = (
+        UniqueConstraint(
+            "membership_id", "room_id", name="uq_roomaccess_membership_room"
+        ),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    membership_id: int = Field(foreign_key="house_memberships.id", nullable=False)
+    room_id: str = Field(sa_column=Column(String(120), nullable=False))
+    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=_timestamp_column())
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=_timestamp_column(onupdate=True)
+    )
+
+__all__ = ["House", "HouseMembership", "HouseRole", "RoomAccess", "User"]
