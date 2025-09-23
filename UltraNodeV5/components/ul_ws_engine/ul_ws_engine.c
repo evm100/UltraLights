@@ -150,7 +150,18 @@ static const ws_effect_t* find_effect_by_name(const char* name) {
 }
 
 static void init_strip(int idx, int gpio, int pixels, bool enabled) {
-    if (!enabled) { s_strips[idx].pixels = 0; return; }
+    if (!enabled) {
+        s_strips[idx].pixels = 0;
+        s_strips[idx].handle = NULL;
+        s_strips[idx].frame = NULL;
+        s_strips[idx].eff = NULL;
+        s_strips[idx].solid_r = 0;
+        s_strips[idx].solid_g = 0;
+        s_strips[idx].solid_b = 0;
+        s_strips[idx].brightness = 0;
+        s_strips[idx].frame_pos = 0.0f;
+        return;
+    }
     led_strip_config_t strip_config = {
         .strip_gpio_num = gpio,
         .max_leds = pixels,
@@ -170,9 +181,36 @@ static void init_strip(int idx, int gpio, int pixels, bool enabled) {
         },
     };
     ESP_ERROR_CHECK(led_strip_new_spi_device(&strip_config, &spi_config, &s_strips[idx].handle));
+    if (!s_strips[idx].handle) {
+        ESP_LOGE(TAG, "Failed to initialize LED strip handle for strip %d", idx);
+        s_strips[idx].pixels = 0;
+        s_strips[idx].handle = NULL;
+        s_strips[idx].eff = NULL;
+        s_strips[idx].frame = NULL;
+        s_strips[idx].solid_r = 0;
+        s_strips[idx].solid_g = 0;
+        s_strips[idx].solid_b = 0;
+        s_strips[idx].brightness = 0;
+        s_strips[idx].frame_pos = 0.0f;
+        return;
+    }
     led_strip_clear(s_strips[idx].handle);
     s_strips[idx].pixels = pixels;
     s_strips[idx].frame = (uint8_t*)heap_caps_malloc(pixels*3, MALLOC_CAP_8BIT);
+    if (!s_strips[idx].frame) {
+        ESP_LOGE(TAG, "Failed to allocate frame buffer for strip %d", idx);
+        led_strip_del(s_strips[idx].handle);
+        s_strips[idx].handle = NULL;
+        s_strips[idx].pixels = 0;
+        s_strips[idx].frame = NULL;
+        s_strips[idx].eff = NULL;
+        s_strips[idx].solid_r = 0;
+        s_strips[idx].solid_g = 0;
+        s_strips[idx].solid_b = 0;
+        s_strips[idx].brightness = 0;
+        s_strips[idx].frame_pos = 0.0f;
+        return;
+    }
     memset(s_strips[idx].frame, 0, pixels*3);
     // defaults
     int n=0; const ws_effect_t* tbl = ul_ws_get_effects(&n);
@@ -191,7 +229,7 @@ static void apply_brightness(uint8_t* f, int count, uint8_t bri) {
 }
 
 static void render_one(ws_strip_t* s, int idx) {
-    if (!s->pixels || !s->handle) return;
+    if (!s->pixels || !s->handle || !s->frame) return;
     s_current_strip_idx = idx;
     // Produce frame
     memset(s->frame, 0, s->pixels*3);
