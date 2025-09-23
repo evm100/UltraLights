@@ -3,11 +3,12 @@
 
 #if !(CONFIG_UL_WHT0_ENABLED || CONFIG_UL_WHT1_ENABLED || CONFIG_UL_WHT2_ENABLED || CONFIG_UL_WHT3_ENABLED)
 
+#include <stdbool.h>
 #include <string.h>
 
 int ul_white_effect_current_channel(void) { return -1; }
 
-void ul_white_engine_start(void) {}
+bool ul_white_engine_start(void) { return true; }
 
 void ul_white_engine_stop(void) {}
 
@@ -39,6 +40,7 @@ bool ul_white_get_status(int ch, ul_white_ch_status_t* out) {
 #include "freertos/task.h"
 #include "driver/ledc.h"
 #include "ul_task.h"
+#include "ul_health.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "string.h"
@@ -68,7 +70,13 @@ typedef struct {
 static white_ch_t s_ch[4];
 static int s_count = 0;
 static TaskHandle_t s_white_task = NULL;
-static int s_current_ch_idx = 0;
+static int s_current_ch_idx = -1;
+
+static void reset_channels_state(void) {
+    memset(s_ch, 0, sizeof(s_ch));
+    s_count = 0;
+    s_current_ch_idx = -1;
+}
 
 static const white_effect_t* find_eff(const char* name) {
     int n=0; const white_effect_t* t = ul_white_get_effects(&n);
@@ -142,8 +150,15 @@ static void white_task(void*)
     }
 }
 
-void ul_white_engine_start(void)
+bool ul_white_engine_start(void)
 {
+    if (s_white_task) {
+        ESP_LOGW(TAG, "White engine already running");
+        return true;
+    }
+
+    reset_channels_state();
+
     // Channel 0..3 from Kconfig (only enabling those flagged)
 #if CONFIG_UL_WHT0_ENABLED
     ch_init(0, true, CONFIG_UL_WHT0_GPIO, CONFIG_UL_WHT0_LEDC_CH, CONFIG_UL_WHT0_PWM_HZ);
@@ -160,7 +175,22 @@ void ul_white_engine_start(void)
     // Run at slightly lower priority than the pixel refresh task; on
     // multi-core targets this pins to core 1 so core 0 can handle network
     // traffic.
-    ul_task_create(white_task, "white200hz", 4096, NULL, 23, &s_white_task, 1);
+    if (s_count == 0) {
+        ul_health_notify_white_engine_ok();
+        return true;
+    }
+
+    BaseType_t rc = ul_task_create(white_task, "white200hz", 4096, NULL, 23, &s_white_task, 1);
+    if (rc != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create white smoothing task (%ld)", (long)rc);
+        s_white_task = NULL;
+        ul_health_notify_white_engine_failure();
+        reset_channels_state();
+        return false;
+    }
+
+    ul_health_notify_white_engine_ok();
+    return true;
 }
 
 void ul_white_engine_stop(void)
@@ -169,7 +199,7 @@ void ul_white_engine_stop(void)
         vTaskDelete(s_white_task);
         s_white_task = NULL;
     }
-    s_count = 0;
+    reset_channels_state();
 }
 
 static white_ch_t* get_ch(int ch) {
