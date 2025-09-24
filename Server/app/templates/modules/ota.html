@@ -1,8 +1,0 @@
-<section class="glass rounded-2xl p-6">
-  <h3 class="text-lg font-semibold mb-3">OTA Update</h3>
-  <button id="btnCheck" class="px-5 py-2 pill bg-amber-500 hover:bg-amber-400 text-white">Check Now</button>
-</section>
-<script>
-async function post(path,body){const res=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)});if(!res.ok){alert('Request failed');}}
-document.getElementById('btnCheck').onclick=async()=>{await post(`/api/node/{{ node.id }}/ota/check`,{});};
-</script>

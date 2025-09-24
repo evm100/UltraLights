@@ -80,6 +80,13 @@
             Server Admin
           </a>
           {% endif %}
+          {% if nav.can_all_off and nav.all_off_url %}
+          <button
+            type="button"
+            class="w-full text-center rounded-xl border border-rose-500/60 bg-rose-500/20 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            data-nav-all-off
+            data-nav-all-off-url="{{ nav.all_off_url }}">All Off</button>
+          {% endif %}
           <a href="{{ nav.logout_url }}" class="w-full text-center rounded-xl border border-slate-800/70 bg-slate-950/70 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-indigo-100" data-nav-logout>
             Sign out
           </a>
@@ -107,5 +114,43 @@
       <footer class="text-center text-xs opacity-60 py-6">Made with ✨ FastAPI • MQTT • HTTPS</footer>
     </div>
   </div>
+  {% if nav and nav.can_all_off and nav.all_off_url %}
+  <script>
+    (() => {
+      const button = document.querySelector('[data-nav-all-off]');
+      if (!button) return;
+      const url = button.dataset.navAllOffUrl;
+      if (!url) return;
+      let busy = false;
+      const defaultText = button.textContent.trim() || 'All Off';
+      button.addEventListener('click', async () => {
+        if (busy) return;
+        busy = true;
+        button.disabled = true;
+        button.textContent = 'Turning off…';
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          button.textContent = 'All off sent';
+          window.setTimeout(() => {
+            button.textContent = defaultText;
+          }, 1600);
+        } catch (error) {
+          console.error('Failed to send all-off command', error);
+          window.alert('Failed to turn everything off. Please try again.');
+          button.textContent = defaultText;
+        } finally {
+          busy = false;
+          button.disabled = false;
+        }
+      });
+    })();
+  </script>
+  {% endif %}
 </body>
 </html>
