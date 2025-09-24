@@ -8,7 +8,7 @@
         "name": "Cocina",
         "nodes": [
           {
-            "id": "del-sur-kitchen",
+            "id": "1j1mmiwwxw2eg9jlbmjric",
             "name": "Kitchen",
             "kind": "ultranode",
             "modules": [
@@ -16,10 +16,11 @@
               "rgb",
               "white",
               "ota"
-            ]
+            ],
+            "download_id": "FH8ME2oulLnj0BtUhS7qQP"
           },
           {
-            "id": "del-sur-sala",
+            "id": "vs6l65mvud2kwmpinv1aj4",
             "name": "Sala",
             "kind": "ultranode",
             "modules": [
@@ -27,7 +28,8 @@
               "rgb",
               "white",
               "ota"
-            ]
+            ],
+            "download_id": "3KIeE6s9eHCFrsTHhjEMvk"
           }
         ]
       },
@@ -36,7 +38,7 @@
         "name": "Master",
         "nodes": [
           {
-            "id": "del-sur-master-tv",
+            "id": "b9na9ask79lvd42vy0102l",
             "name": "Master TV",
             "kind": "ultranode",
             "modules": [
@@ -44,10 +46,11 @@
               "rgb",
               "white",
               "ota"
-            ]
+            ],
+            "download_id": "fr537pB3AvXIDWOWDtSN0o"
           },
           {
-            "id": "del-sur-master-closet",
+            "id": "q5h9cx9anfvbr7gkqxrr2f",
             "name": "Master Closet",
             "kind": "ultranode",
             "modules": [
@@ -55,7 +58,8 @@
               "rgb",
               "white",
               "ota"
-            ]
+            ],
+            "download_id": "afcuWQ8BAQsptL6FVjIKA6"
           }
         ]
       },
@@ -64,7 +68,7 @@
         "name": "Edgar",
         "nodes": [
           {
-            "id": "del-sur-amp-lights",
+            "id": "wl63q4b3dsw4gbh1faq9lx",
             "name": "Amp Lights",
             "kind": "ultranode",
             "modules": [
@@ -72,7 +76,8 @@
               "rgb",
               "white",
               "ota"
-            ]
+            ],
+            "download_id": "YChhrHRqFjBCEFOz6Yyjg4"
           }
         ]
       }
