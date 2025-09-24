@@ -25,20 +25,40 @@ router = APIRouter()
 FIRMWARE_DIR = settings.FIRMWARE_DIR
 LAN_PUBLIC_BASE = os.getenv("LAN_PUBLIC_BASE", "")  # e.g. https://lan.lights.evm100.org
 
-def latest_symlink_for(dev_id: str) -> Path:
-    return settings.FIRMWARE_DIR / f"{dev_id}_latest.bin"
+def _resolve_latest(device_id: str, download_id: Optional[str]) -> Path:
+    candidates: list[Path] = []
 
-def _resolve_latest(device_id: str) -> Path:
-    # 1) flat symlink:  /srv/firmware/UltraNode2_latest.bin
+    if download_id:
+        download_dir = FIRMWARE_DIR / download_id
+        candidates.append(download_dir / "latest.bin")
+        candidates.append(download_dir)
+
     flat = FIRMWARE_DIR / f"{device_id}_latest.bin"
-    # 2) nested file:   /srv/firmware/UltraNode2/latest.bin
-    nested = FIRMWARE_DIR / device_id / "latest.bin"
+    device_dir = FIRMWARE_DIR / device_id
+    candidates.extend([
+        flat,
+        device_dir / "latest.bin",
+        device_dir,
+    ])
 
-    for p in (flat, nested):
-        if p.exists():
-            target = p.resolve() if p.is_symlink() else p
-            if target.exists():
-                return target
+    for path in candidates:
+        target = path
+        if target.is_dir():
+            target = target / "latest.bin"
+
+        if not target.exists():
+            continue
+
+        resolved = target.resolve() if target.is_symlink() else target
+        if resolved.is_dir():
+            nested = resolved / "latest.bin"
+            if not nested.exists():
+                continue
+            resolved = nested
+
+        if resolved.exists():
+            return resolved
+
     raise HTTPException(status_code=404, detail=f"No firmware for device_id={device_id}")
 
 def _authenticate_request(
@@ -176,7 +196,7 @@ def _manifest_sig(body: dict) -> Optional[str]:
 
 
 def _build_manifest_response(device_id: str, download_id: Optional[str]) -> JSONResponse:
-    target = _resolve_latest(device_id)
+    target = _resolve_latest(device_id, download_id)
     size = target.stat().st_size
     sha = _sha256_hex(target)
     name = target.name
@@ -291,10 +311,10 @@ def api_latest_bin(
     request: Request,
     authorization: Optional[str] = Header(None),
 ):
-    resolved_device_id, _, _ = _resolve_access_context(
+    resolved_device_id, resolved_download_id, _ = _resolve_access_context(
         authorization=authorization,
         device_id=None,
         download_id=download_id,
     )
-    target = _resolve_latest(resolved_device_id)
+    target = _resolve_latest(resolved_device_id, resolved_download_id)
     return _serve_file(target, request)
