@@ -360,6 +360,7 @@ def update_member(
 @router.delete(
     "/{house_id}/members/{membership_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
     response_class=Response,
 )
 def delete_member(
