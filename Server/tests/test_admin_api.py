@@ -1,5 +1,6 @@
 import importlib
 import json
+import re
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -12,6 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from app import registry
 
 class _NoopBus:
     def pub(self, *args, **kwargs):  # pragma: no cover - noop
@@ -42,15 +44,6 @@ class _NoopBus:
         pass
 
 
-class _StubSession:
-    def exec(self, *_args, **_kwargs):  # pragma: no cover - simple stub
-        class _Result:
-            def all(self_inner):  # pragma: no cover - simple stub
-                return []
-
-        return _Result()
-
-
 @pytest.fixture(autouse=True)
 def _stub_mqtt(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.mqtt_bus
@@ -59,10 +52,27 @@ def _stub_mqtt(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def admin_user_session():
+def admin_user_session(tmp_path, monkeypatch):
+    from app import database, ota
     from app.auth.models import User
+    from app.auth.service import init_auth_storage
+    from app.config import settings
 
-    return User(id=1, username="admin", hashed_password="", server_admin=True), _StubSession()
+    original_db_url = settings.AUTH_DB_URL
+    db_path = tmp_path / "auth.sqlite3"
+    db_url = f"sqlite:///{db_path}"
+
+    database.reset_session_factory(db_url)
+    monkeypatch.setattr(settings, "AUTH_DB_URL", db_url)
+    monkeypatch.setattr(ota.settings, "AUTH_DB_URL", db_url)
+    init_auth_storage()
+
+    session = database.SessionLocal()
+    try:
+        yield User(id=1, username="admin", hashed_password="", server_admin=True), session
+    finally:
+        session.close()
+        database.reset_session_factory(original_db_url)
 
 
 def test_registry_remove_room(monkeypatch, tmp_path):
@@ -220,7 +230,7 @@ def test_api_delete_room_missing(monkeypatch, admin_user_session):
     assert excinfo.value.status_code == 404
 
 
-def test_api_add_node_house_prefixed_id(monkeypatch, tmp_path, admin_user_session):
+def test_api_add_node_generates_opaque_id(monkeypatch, tmp_path, admin_user_session):
     import app.routes_api as routes_api
     from app.config import settings
 
@@ -247,9 +257,22 @@ def test_api_add_node_house_prefixed_id(monkeypatch, tmp_path, admin_user_sessio
     )
 
     assert result["ok"] is True
-    assert result["node"]["id"] == "del-sur-kitchen-node"
+    node_id = result["node"]["id"]
+    assert re.fullmatch(r"[a-z0-9]{22}", node_id)
+    assert node_id != "del-sur-kitchen-node"
+
     stored_nodes = settings.DEVICE_REGISTRY[0]["rooms"][0]["nodes"]
-    assert stored_nodes[0]["id"] == "del-sur-kitchen-node"
+    assert stored_nodes[0]["id"] == node_id
+
+    credentials = result["credentials"]
+    assert credentials["downloadId"]
+    assert credentials["manifestUrl"].endswith(
+        f"/firmware/{credentials['downloadId']}/manifest"
+    )
+    assert credentials["binaryUrl"].endswith(
+        f"/firmware/{credentials['downloadId']}/latest.bin"
+    )
+    assert stored_nodes[0][registry.NODE_DOWNLOAD_ID_KEY] == credentials["downloadId"]
 
 
 def test_api_add_node_duplicate_name(monkeypatch, tmp_path, admin_user_session):
@@ -289,10 +312,9 @@ def test_api_add_node_duplicate_name(monkeypatch, tmp_path, admin_user_session):
     assert "already exists" in str(excinfo.value.detail)
 
 
-def test_api_add_node_rejects_long_id(monkeypatch, tmp_path, admin_user_session):
+def test_api_add_node_allows_long_display_name(monkeypatch, tmp_path, admin_user_session):
     import app.routes_api as routes_api
     from app.config import settings
-    from fastapi import HTTPException
 
     test_registry = [
         {
@@ -307,17 +329,16 @@ def test_api_add_node_rejects_long_id(monkeypatch, tmp_path, admin_user_session)
     monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
     monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
 
-    with pytest.raises(HTTPException) as excinfo:
-        routes_api.api_add_node(
-            "del-sur",
-            "kitchen",
-            {"name": "x" * 50},
-            current_user=admin_user_session[0],
-            session=admin_user_session[1],
-        )
+    result = routes_api.api_add_node(
+        "del-sur",
+        "kitchen",
+        {"name": "x" * 50},
+        current_user=admin_user_session[0],
+        session=admin_user_session[1],
+    )
 
-    assert excinfo.value.status_code == 400
-    assert str(excinfo.value.detail) == "node id too long (max 31 characters)"
+    assert result["ok"] is True
+    assert re.fullmatch(r"[a-z0-9]{22}", result["node"]["id"])
 
 
 def test_api_set_node_name(monkeypatch, tmp_path, admin_user_session):
