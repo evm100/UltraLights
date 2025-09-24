@@ -124,11 +124,41 @@ class AuditLog(SQLModel, table=True):
     )
 
 
+class NodeCredential(SQLModel, table=True):
+    __tablename__ = "node_credentials"
+    __table_args__ = (
+        UniqueConstraint("download_id", name="uq_node_credentials_download_id"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    node_id: str = Field(
+        sa_column=Column(String(64), unique=True, nullable=False, index=True)
+    )
+    house_slug: str = Field(sa_column=Column(String(64), nullable=False))
+    room_id: str = Field(sa_column=Column(String(120), nullable=False))
+    display_name: str = Field(sa_column=Column(String(120), nullable=False))
+    download_id: str = Field(
+        sa_column=Column(String(64), unique=True, nullable=False, index=True)
+    )
+    token_hash: str = Field(sa_column=Column(String(64), nullable=False))
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=_timestamp_column()
+    )
+    token_issued_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=_timestamp_column(onupdate=True)
+    )
+    provisioned_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+
+
 __all__ = [
     "AuditLog",
     "House",
     "HouseMembership",
     "HouseRole",
+    "NodeCredential",
     "RoomAccess",
     "User",
 ]
