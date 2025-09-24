@@ -1,68 +1,99 @@
-# /etc/nginx/sites-available/lights.evm100.org
-
-# --- HTTP -> HTTPS ---
+# -------- HTTP -> HTTPS redirect --------
 server {
     listen 80;
     listen [::]:80;
-    server_name lights.evm100.org lan.lights.evm100.org;
-    return 301 https://$host$request_uri;
+    server_name lights.evm100.org;
+
+    # Allow certbot challenges over HTTP
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        default_type text/plain;
+    }
+
+    location / { return 301 https://$host$request_uri; }
 }
 
-# --- HTTPS ---
+# -------- HTTPS site --------
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-    server_name lights.evm100.org lan.lights.evm100.org;
+    server_name lights.evm100.org;
 
-    # TLS
+    # Certbot-managed certs
     ssl_certificate     /etc/letsencrypt/live/lights.evm100.org/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/lights.evm100.org/privkey.pem;
-    ssl_session_cache   shared:SSL:20m;
-    ssl_session_timeout 10m;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-    ssl_ciphers         HIGH:!aNULL:!MD5;
 
-    # Basic security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    # Use Certbot’s strong TLS defaults (avoid duplicating ssl_* directives)
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    # If present on your system, Certbot may also reference:
+    # ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    # Large downloads / OTA-friendly
-    client_max_body_size 64m;
-    sendfile on;
-    tcp_nopush on;
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy no-referrer-when-downgrade always;
 
-    # Static assets served by Nginx
-    location /static/ {
-        alias /home/evm100/Documents/UltraLights/UltraLights/Server/static/;
-        access_log off;
-        expires 7d;
-        add_header Cache-Control "public, max-age=604800";
-        try_files $uri =404;
+    # Logs (optional)
+    access_log /var/log/nginx/lights.access.log;
+    error_log  /var/log/nginx/lights.error.log warn;
+
+    client_max_body_size 50m;
+
+    # ---- OTA firmware (static files) ----
+    # URL: https://lights.evm100.org/firmware/UltraLights/<nodeID>/latest.bin
+    # FS:  /srv/firmware/UltraLights/<nodeID>/latest.bin
+    location ^~ /firmware/ {
+        # OPTIONAL AUTH (Bearer). Enable later if you want:
+        # if ($http_authorization !~* "^Bearer\s+YOUR_LONG_RANDOM_TOKEN$") {
+        #     add_header WWW-Authenticate 'Bearer realm="OTA"';
+        #     return 401;
+        # }
+
+        alias /srv/firmware/;   # /firmware/... -> /srv/firmware/...
+        autoindex off;
+
+        types {
+            application/octet-stream  bin;
+            application/json          json;
+        }
+        default_type application/octet-stream;
+
+        add_header Cache-Control "no-store" always;
+        add_header Accept-Ranges bytes always;
+
+        # TEMP DEBUG: shows the resolved file path (remove after verifying)
+        add_header X-OTA-Resolved-Path $request_filename always;
+
+        sendfile on;
+        tcp_nopush on;
+
+        limit_except GET HEAD { deny all; }
     }
 
-    # Everything else -> FastAPI (uvicorn on 127.0.0.1:8000)
+    # ---- Reverse proxy to FastAPI (uvicorn on 127.0.0.1:8000) ----
     location / {
         proxy_pass http://127.0.0.1:8000;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support
         proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        # If your global nginx.conf defines this map, it will work; otherwise fallback to "upgrade/close"
+        proxy_set_header Connection $connection_upgrade;
 
-        # pass client info
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-
-        # OTA/range streaming friendly
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
-        proxy_buffering off;
-        proxy_request_buffering off;
+        proxy_connect_timeout 30s;
+        proxy_send_timeout    60s;
+        proxy_read_timeout    60s;
     }
 
-    location = /favicon.ico {
-    	alias /home/evm100/Documents/UltraLights/UltraLights/Server/static/favicon.ico;
-    	access_log off;
-    	expires 7d;
-    	add_header Cache-Control "public, max-age=604800";
+    # Simple healthcheck
+    location = /healthz {
+        return 200 "ok\n";
+        add_header Content-Type text/plain;
     }
 }
