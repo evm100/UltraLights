@@ -1,0 +1,25 @@
+{
+  "del-sur-amp-lights": {
+    "ws": {
+      "0": "WS2812B"
+    },
+    "white": {
+      "0": "Guitar",
+      "1": "Amp"
+    }
+  },
+  "del-sur-master-tv": {
+    "ws": {
+      "0": "Color"
+    },
+    "white": {
+      "0": "Blanco"
+    }
+  },
+  "del-sur-master-closet": {
+    "white": {
+      "0": "Piso ⬇️",
+      "1": "Espejo 🪞"
+    }
+  }
+}

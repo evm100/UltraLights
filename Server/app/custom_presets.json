@@ -1,458 +1,79 @@
 {
   "del-sur": {
-    "room-1": [
-      {
-        "id": "white-swell-100",
-        "name": "White Swell 0\u2192100",
-        "actions": [
-          {
-            "node": "del-sur-room-1-node1",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "del-sur-room-1-node1",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "del-sur-room-1-node1",
-            "module": "white",
-            "channel": 2,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "del-sur-room-1-node1",
-            "module": "white",
-            "channel": 3,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "node",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "node",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "node",
-            "module": "white",
-            "channel": 2,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "node",
-            "module": "white",
-            "channel": 3,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      }
-    ],
-    "kitchen": [
-      {
-        "id": "on",
-        "name": "On \ud83d\udfe2",
-        "actions": [
-          {
-            "node": "kitchen",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "kitchen",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "sala",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
-        "id": "medium",
-        "name": "Medium \ud83d\udfe1",
-        "actions": [
-          {
-            "node": "kitchen",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 150,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "kitchen",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 150,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "sala",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 150,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
-        "id": "off",
-        "name": "Off \ud83d\udd34",
-        "actions": [
-          {
-            "node": "kitchen",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 0,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "kitchen",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 0,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "sala",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 0,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
-        "id": "midnight-snack",
-        "name": "Midnight Snack \ud83c\udf20",
-        "actions": [
-          {
-            "node": "kitchen",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 4,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "kitchen",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 0,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      }
-    ],
-    "master": [
-      {
-        "id": "on",
-        "name": "On \ud83d\udfe2",
-        "actions": [
-          {
-            "node": "master-closet",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "master-closet",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
-        "id": "off",
-        "name": "Off \ud83d\udd34",
-        "actions": [
-          {
-            "node": "master-closet",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 0,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "master-closet",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 0,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
-        "id": "half-bright",
-        "name": "Half Bright \ud83c\udf17",
-        "actions": [
-          {
-            "node": "master-closet",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 50,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "master-closet",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 50,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
-        "id": "floor",
-        "name": "Floor \u25fb\ufe0f",
-        "actions": [
-          {
-            "node": "master-closet",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 100,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "master-closet",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 5,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
-        "id": "nightlight",
-        "name": "Night Light \ud83c\udf19",
-        "actions": [
-          {
-            "node": "master-closet",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 4,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      }
-    ],
     "edgar": [
       {
-        "id": "swell-on",
-        "name": "On",
+        "source": "custom",
+        "id": "purple",
+        "name": "Purple",
         "actions": [
           {
-            "node": "amp-lights",
-            "module": "white",
-            "channel": 0,
+            "enabled": true,
             "effect": "swell",
             "brightness": 255,
             "params": [],
-            "_action_type": "white.swell"
+            "name": "Guitar",
+            "channel": 0,
+            "node": "del-sur-amp-lights",
+            "module": "white"
           },
           {
-            "node": "amp-lights",
-            "module": "white",
-            "channel": 1,
+            "enabled": true,
             "effect": "swell",
-            "brightness": 255,
+            "brightness": 20,
             "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
-        "id": "blue",
-        "name": "Blue",
-        "actions": [
+            "name": "Amp",
+            "channel": 1,
+            "node": "del-sur-amp-lights",
+            "module": "white"
+          },
           {
-            "node": "amp-lights",
-            "module": "ws",
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              187.0,
+              0.0,
+              255.0
+            ],
+            "color": [
+              187,
+              0,
+              255
+            ],
+            "name": "WS2812B",
             "strip": 0,
-            "effect": "color_swell",
-            "brightness": 255,
-            "params": [20, 0, 255],
-            "_action_type": "ws.color_swell"
+            "node": "del-sur-amp-lights",
+            "module": "ws"
           }
-        ],
-        "source": "seed"
+        ]
       },
       {
-        "id": "guitar",
-        "name": "Guitar",
+        "source": "custom",
+        "id": "off",
+        "name": "Off \ud83d\udd34",
         "actions": [
           {
-            "node": "amp-lights",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "amp-lights",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 6,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
-        "id": "guitar-no-amp",
-        "name": "Guitar No Amp",
-        "actions": [
-          {
-            "node": "amp-lights",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "amp-lights",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
+            "enabled": true,
+            "effect": "solid",
             "brightness": 0,
             "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
-        "id": "nightlight",
-        "name": "Night Light",
-        "actions": [
-          {
-            "node": "amp-lights",
-            "module": "white",
+            "name": "Guitar",
             "channel": 0,
-            "effect": "swell",
-            "brightness": 50,
-            "params": [],
-            "_action_type": "white.swell"
+            "node": "del-sur-amp-lights",
+            "module": "white"
           },
           {
-            "node": "amp-lights",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
+            "enabled": true,
+            "effect": "solid",
             "brightness": 0,
             "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
-        "id": "all-off",
-        "name": "Off",
-        "actions": [
+            "name": "Amp",
+            "channel": 1,
+            "node": "del-sur-amp-lights",
+            "module": "white"
+          },
           {
-            "node": "amp-lights",
-            "module": "ws",
-            "strip": 0,
+            "enabled": true,
             "effect": "solid",
             "brightness": 255,
             "params": [
@@ -460,159 +81,409 @@
               0.0,
               0.0
             ],
-            "_action_type": "ws.solid"
-          },
-          {
-            "node": "amp-lights",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 0,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "amp-lights",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 0,
-            "params": [],
-            "_action_type": "white.swell"
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "name": "WS2812B",
+            "strip": 0,
+            "node": "del-sur-amp-lights",
+            "module": "ws"
           }
-        ],
-        "source": "seed"
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "full-white",
+        "name": "Full White",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "name": "Guitar",
+            "channel": 0,
+            "node": "del-sur-amp-lights",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 71,
+            "params": [],
+            "name": "Amp",
+            "channel": 1,
+            "node": "del-sur-amp-lights",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "name": "WS2812B",
+            "strip": 0,
+            "node": "del-sur-amp-lights",
+            "module": "ws"
+          }
+        ]
       }
-    ]
-  },
-  "sdsu": {
-    "kitchen": [
+    ],
+    "master": [
       {
-        "id": "on",
-        "name": "On \ud83d\udfe2",
-        "actions": [
-          {
-            "node": "sdsu-kitchen-node1",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "sdsu-kitchen-node1",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "sala",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
-        "id": "medium",
-        "name": "Medium \ud83d\udfe1",
-        "actions": [
-          {
-            "node": "sdsu-kitchen-node1",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 150,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "sdsu-kitchen-node1",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
-            "brightness": 150,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "sala",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 150,
-            "params": [],
-            "_action_type": "white.swell"
-          }
-        ],
-        "source": "seed"
-      },
-      {
+        "source": "custom",
         "id": "off",
         "name": "Off \ud83d\udd34",
         "actions": [
           {
-            "node": "sdsu-kitchen-node1",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
+            "enabled": true,
+            "effect": "solid",
             "brightness": 0,
             "params": [],
-            "_action_type": "white.swell"
+            "name": "Blanco",
+            "channel": 0,
+            "node": "del-sur-master-tv",
+            "module": "white"
           },
           {
-            "node": "sdsu-kitchen-node1",
-            "module": "white",
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "name": "Color",
+            "strip": 0,
+            "node": "del-sur-master-tv",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "del-sur-master-closet",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
             "channel": 1,
-            "effect": "swell",
-            "brightness": 0,
-            "params": [],
-            "_action_type": "white.swell"
-          },
-          {
-            "node": "sala",
-            "module": "white",
-            "channel": 0,
-            "effect": "swell",
-            "brightness": 0,
-            "params": [],
-            "_action_type": "white.swell"
+            "node": "del-sur-master-closet",
+            "module": "white"
           }
-        ],
-        "source": "seed"
+        ]
       },
       {
-        "id": "midnight-snack",
-        "name": "Midnight Snack \ud83c\udf20",
+        "source": "custom",
+        "id": "preset-2",
+        "name": "\u26aa\ud83d\udca1\ud83d\udda5\ufe0f",
         "actions": [
           {
-            "node": "sdsu-kitchen-node1",
-            "module": "white",
-            "channel": 0,
+            "enabled": true,
             "effect": "swell",
-            "brightness": 4,
+            "brightness": 255,
             "params": [],
-            "_action_type": "white.swell"
+            "name": "Blanco",
+            "channel": 0,
+            "node": "del-sur-master-tv",
+            "module": "white"
           },
           {
-            "node": "sdsu-kitchen-node1",
-            "module": "white",
-            "channel": 1,
-            "effect": "swell",
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "name": "Color",
+            "strip": 0,
+            "node": "del-sur-master-tv",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
             "brightness": 0,
             "params": [],
-            "_action_type": "white.swell"
+            "channel": 0,
+            "node": "del-sur-master-closet",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "del-sur-master-closet",
+            "module": "white"
           }
-        ],
-        "source": "seed"
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "preset",
+        "name": "\ud83d\udd35",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "name": "Blanco",
+            "channel": 0,
+            "node": "del-sur-master-tv",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "color_swell",
+            "brightness": 255,
+            "params": [
+              0.0,
+              17.0,
+              255.0
+            ],
+            "color": [
+              30,
+              0,
+              255
+            ],
+            "name": "Color",
+            "strip": 0,
+            "node": "del-sur-master-tv",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "del-sur-master-closet",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "del-sur-master-closet",
+            "module": "white"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "preset-3",
+        "name": "\u2728\ud83c\udf19",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "name": "Blanco",
+            "channel": 0,
+            "node": "del-sur-master-tv",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "name": "Color",
+            "strip": 0,
+            "node": "del-sur-master-tv",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 5,
+            "params": [],
+            "name": "Piso \u2b07\ufe0f",
+            "channel": 0,
+            "node": "del-sur-master-closet",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "name": "Espejo \ud83e\ude9e",
+            "channel": 1,
+            "node": "del-sur-master-closet",
+            "module": "white"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "preset-4",
+        "name": "\ud83d\udca1\ud83d\udc57\ud83d\udc55\u2600\ufe0f",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "name": "Blanco",
+            "channel": 0,
+            "node": "del-sur-master-tv",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "name": "Color",
+            "strip": 0,
+            "node": "del-sur-master-tv",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "name": "Piso \u2b07\ufe0f",
+            "channel": 0,
+            "node": "del-sur-master-closet",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 10,
+            "params": [],
+            "name": "Espejo \ud83e\ude9e",
+            "channel": 1,
+            "node": "del-sur-master-closet",
+            "module": "white"
+          }
+        ]
+      }
+    ],
+    "kitchen": [
+      {
+        "source": "custom",
+        "id": "on",
+        "name": "On \ud83d\udfe2",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "channel": 0,
+            "node": "del-sur-kitchen",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "channel": 1,
+            "node": "del-sur-kitchen",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "channel": 0,
+            "node": "del-sur-sala",
+            "module": "white"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "off",
+        "name": "Off \ud83d\udd34",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "del-sur-kitchen",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "del-sur-kitchen",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "del-sur-sala",
+            "module": "white"
+          }
+        ]
       }
     ]
   }

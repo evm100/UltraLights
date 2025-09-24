@@ -1,7 +1,6 @@
 [
   {
     "id": "del-sur",
-    "external_id": "DyBfmDmTxEPGabwR",
     "name": "Del Sur",
     "rooms": [
       {
@@ -9,19 +8,23 @@
         "name": "Cocina",
         "nodes": [
           {
-            "id": "kitchen",
-            "name": "Cocina",
+            "id": "del-sur-kitchen",
+            "name": "Kitchen",
             "kind": "ultranode",
             "modules": [
+              "ws",
+              "rgb",
               "white",
               "ota"
             ]
           },
           {
-            "id": "sala",
+            "id": "del-sur-sala",
             "name": "Sala",
             "kind": "ultranode",
             "modules": [
+              "ws",
+              "rgb",
               "white",
               "ota"
             ]
@@ -33,10 +36,23 @@
         "name": "Master",
         "nodes": [
           {
-            "id": "master-closet",
+            "id": "del-sur-master-tv",
+            "name": "Master TV",
+            "kind": "ultranode",
+            "modules": [
+              "ws",
+              "rgb",
+              "white",
+              "ota"
+            ]
+          },
+          {
+            "id": "del-sur-master-closet",
             "name": "Master Closet",
             "kind": "ultranode",
             "modules": [
+              "ws",
+              "rgb",
               "white",
               "ota"
             ]
@@ -48,23 +64,25 @@
         "name": "Edgar",
         "nodes": [
           {
-            "id": "amp-lights",
+            "id": "del-sur-amp-lights",
             "name": "Amp Lights",
             "kind": "ultranode",
             "modules": [
               "ws",
+              "rgb",
               "white",
               "ota"
             ]
           }
         ]
       }
-    ]
+    ],
+    "external_id": "s0G9dieo7ba2LobaHpohya"
   },
   {
     "id": "sdsu",
-    "external_id": "vPvpjnurt8M6nnyE",
     "name": "SDSU",
-    "rooms": []
+    "rooms": [],
+    "external_id": "e1dIqTMNiL6pERy8SD08Op"
   }
 ]
