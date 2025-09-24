@@ -8,7 +8,7 @@
         "name": "Cocina",
         "nodes": [
           {
-            "id": "5em8uwkm21uq7qynosd0b3bwstg970q",
+            "id": "8ez5evvir1dy86twmeglmyg9r2gzp19",
             "name": "Cocina",
             "kind": "ultranode",
             "modules": [
@@ -17,10 +17,10 @@
               "white",
               "ota"
             ],
-            "download_id": "3DJO6NGxmtio7ThJIgBw1zi4Ah9LiHSA1Y4cbSuL4Ug9h6P8"
+            "download_id": "0A2LcZ6FRPMXn0OgIqRHHhSBPz7FQ7X9j2gJ59fZbFdoTx37"
           },
           {
-            "id": "ehzsvqmgs3ftmt0c35vhxjfigtq50ej",
+            "id": "44r9iy1w0ufe8v5zi0f6w3jwiv7v044",
             "name": "Sala",
             "kind": "ultranode",
             "modules": [
@@ -29,7 +29,7 @@
               "white",
               "ota"
             ],
-            "download_id": "voeVqnT38TxdbjGsrEDWo9n90K3Q5xQ6gJEhIMQcxrTpH3Ic"
+            "download_id": "TXecpyBvLT0uVFTC9h8L6WouREQNyHqzXfr6D6PMFer989xk"
           }
         ]
       },
@@ -38,7 +38,7 @@
         "name": "Master",
         "nodes": [
           {
-            "id": "nyg32zh7czfw021a7ujs3ta4ry9mn34",
+            "id": "gzb8fo5q1rf9q55y92oodcc9cxsxayu",
             "name": "Master TV",
             "kind": "ultranode",
             "modules": [
@@ -47,10 +47,10 @@
               "white",
               "ota"
             ],
-            "download_id": "mtUB43zw3nSXETQfcOWQVWETaS16p2NfI5ZciLgnlDmgKQuO"
+            "download_id": "OM1LFGdxUYVWzwiz50v5RO2VYUH3WVNbiyyT4MLf6LstsIbx"
           },
           {
-            "id": "0w39y26b4whvg5dlsayi1o3kgond8s2",
+            "id": "ohsxmeqpyw9z7sb20tt8eld85ez2dxk",
             "name": "Master Closet",
             "kind": "ultranode",
             "modules": [
@@ -59,7 +59,7 @@
               "white",
               "ota"
             ],
-            "download_id": "kJ2dy94DxCoC58mJDYNeUmyniN8l3MfKs4CjobJGAZL4F1oB"
+            "download_id": "wWW19hNYfmXNQ02GpR8bvZXpK9g16NY0HvWxu0NCKBteixCV"
           }
         ]
       },
@@ -68,7 +68,7 @@
         "name": "Edgar",
         "nodes": [
           {
-            "id": "t5mhcj3k4s6j2javbaygo7xcusp1024",
+            "id": "bz6zpm1z59hw94xg4mse5i1touedm8a",
             "name": "Amp Lights",
             "kind": "ultranode",
             "modules": [
@@ -77,7 +77,7 @@
               "white",
               "ota"
             ],
-            "download_id": "2DNmC6alzn7x72sBpKQ86ww4BRFmuV6CMKxSeUQ1ehVD4z6G"
+            "download_id": "yRIMbQW4uXDPf1GRBgr6JQPfNUZujkqPxOjtgzH9MZP1PnEz"
           }
         ]
       }

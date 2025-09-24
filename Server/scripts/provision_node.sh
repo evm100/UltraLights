@@ -26,7 +26,8 @@ fi
 
 # Run the Python script with the provided values
 .venv/bin/python3 scripts/provision_node_firmware.py "$nodeid" \
-  --config "$config_path" >> "../../Configs/secrets.txt"
+  --config "$config_path" >> "../../Configs/secrets.txt" \
+  --allow-reprovision
 
 # Confirm completion
 if [[ $? -eq 0 ]]; then
