@@ -7,16 +7,16 @@ import argparse
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlmodel import select  # noqa: E402
+from sqlmodel import Session, select  # noqa: E402
 
 from app import database, node_credentials, registry  # noqa: E402
-from app.auth.models import NodeCredential  # noqa: E402
+from app.auth.models import AuditLog, NodeCredential, User  # noqa: E402
 from app.auth.service import init_auth_storage  # noqa: E402
 from app.config import settings  # noqa: E402
 
@@ -89,23 +89,99 @@ def _format_timestamp(value: Optional[datetime]) -> str:
     return value.isoformat(timespec="seconds")
 
 
+def _actor_lookup(session: Session) -> Dict[int, str]:
+    """Return a mapping of user ids to usernames."""
+
+    users = session.exec(select(User.id, User.username)).all()
+    mapping: Dict[int, str] = {}
+    for user_id, username in users:
+        if user_id is None:
+            continue
+        mapping[user_id] = str(username)
+    return mapping
+
+
+def _extract_node_id(data: Any) -> Optional[str]:
+    """Best-effort attempt to find a node id within ``data``."""
+
+    if isinstance(data, dict):
+        for key in ("node_id", "nodeId", "node"):
+            value = data.get(key)
+            if isinstance(value, str):
+                clean = value.strip()
+                if clean:
+                    return clean
+
+        nodes_value = data.get("nodes")
+        if isinstance(nodes_value, dict):
+            candidate = _extract_node_id(nodes_value)
+            if candidate:
+                return candidate
+        elif isinstance(nodes_value, Iterable) and not isinstance(
+            nodes_value, (str, bytes)
+        ):
+            for item in nodes_value:
+                candidate = _extract_node_id(item)
+                if candidate:
+                    return candidate
+
+    elif isinstance(data, (list, tuple)):
+        for item in data:
+            candidate = _extract_node_id(item)
+            if candidate:
+                return candidate
+
+    return None
+
+
+def _load_node_creators(session: Session) -> Dict[str, str]:
+    """Return a mapping of node ids to usernames based on audit logs."""
+
+    actor_names = _actor_lookup(session)
+    creators: Dict[str, str] = {}
+
+    audit_entries = session.exec(select(AuditLog).order_by(AuditLog.created_at)).all()
+    for entry in audit_entries:
+        node_id = _extract_node_id(entry.data)
+        if not node_id:
+            continue
+
+        action = (entry.action or "").lower()
+        if not any(keyword in action for keyword in ("create", "add", "register")):
+            continue
+
+        if node_id in creators:
+            continue
+
+        if entry.actor_id is None:
+            creators[node_id] = "—"
+        else:
+            creators[node_id] = actor_names.get(entry.actor_id, f"User #{entry.actor_id}")
+
+    return creators
+
+
 def _list_nodes() -> int:
     init_auth_storage()
     with database.SessionLocal() as session:
         node_credentials.sync_registry_nodes(session)
         entries = session.exec(select(NodeCredential)).all()
+        creators = _load_node_creators(session)
 
     if not entries:
         print("No nodes registered.")
         return 0
 
-    print("Node ID                          Name                         Provisioned")
-    print("-" * 72)
+    print(
+        "Node ID                          Name                         Created By                  Provisioned"
+    )
+    print("-" * 100)
     for entry in entries:
         mark = "" if entry.provisioned_at is None else "*"
         name = entry.display_name or "—"
+        created_by = creators.get(entry.node_id, "—")
         print(
-            f"{entry.node_id:<30} {name:<27} {_format_timestamp(entry.provisioned_at)}{mark}"
+            f"{entry.node_id:<30} {name:<27} {created_by:<27} {_format_timestamp(entry.provisioned_at)}{mark}"
         )
     print("\n* indicates firmware already provisioned")
     return 0
