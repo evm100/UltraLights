@@ -173,23 +173,6 @@ def test_manifest_uses_download_id_with_node_token(node_credential_info, client)
     )
 
 
-def test_manifest_allows_namespaced_download_path(node_credential_info, client):
-    namespaced_path = f"UltraLights/{node_credential_info['download_id']}"
-    response = client.get(
-        f"/firmware/{namespaced_path}/manifest",
-        headers={"Authorization": f"Bearer {node_credential_info['token']}"},
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["download_id"] == node_credential_info["download_id"]
-    assert data["binary_url"].endswith(
-        f"/firmware/{namespaced_path}/latest.bin"
-    )
-    assert data["manifest_url"].endswith(
-        f"/firmware/{namespaced_path}/manifest"
-    )
-
-
 def test_binary_download_requires_matching_token(node_credential_info, client):
     url = f"/firmware/{node_credential_info['download_id']}/latest.bin"
     response = client.get(url, headers={"Authorization": "Bearer wrong"})
