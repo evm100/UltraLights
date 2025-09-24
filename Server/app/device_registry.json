@@ -8,8 +8,8 @@
         "name": "Cocina",
         "nodes": [
           {
-            "id": "1j1mmiwwxw2eg9jlbmjric",
-            "name": "Kitchen",
+            "id": "5em8uwkm21uq7qynosd0b3bwstg970q",
+            "name": "Cocina",
             "kind": "ultranode",
             "modules": [
               "ws",
@@ -17,10 +17,10 @@
               "white",
               "ota"
             ],
-            "download_id": "FH8ME2oulLnj0BtUhS7qQP"
+            "download_id": "3DJO6NGxmtio7ThJIgBw1zi4Ah9LiHSA1Y4cbSuL4Ug9h6P8"
           },
           {
-            "id": "vs6l65mvud2kwmpinv1aj4",
+            "id": "ehzsvqmgs3ftmt0c35vhxjfigtq50ej",
             "name": "Sala",
             "kind": "ultranode",
             "modules": [
@@ -29,7 +29,7 @@
               "white",
               "ota"
             ],
-            "download_id": "3KIeE6s9eHCFrsTHhjEMvk"
+            "download_id": "voeVqnT38TxdbjGsrEDWo9n90K3Q5xQ6gJEhIMQcxrTpH3Ic"
           }
         ]
       },
@@ -38,7 +38,7 @@
         "name": "Master",
         "nodes": [
           {
-            "id": "b9na9ask79lvd42vy0102l",
+            "id": "nyg32zh7czfw021a7ujs3ta4ry9mn34",
             "name": "Master TV",
             "kind": "ultranode",
             "modules": [
@@ -47,10 +47,10 @@
               "white",
               "ota"
             ],
-            "download_id": "fr537pB3AvXIDWOWDtSN0o"
+            "download_id": "mtUB43zw3nSXETQfcOWQVWETaS16p2NfI5ZciLgnlDmgKQuO"
           },
           {
-            "id": "q5h9cx9anfvbr7gkqxrr2f",
+            "id": "0w39y26b4whvg5dlsayi1o3kgond8s2",
             "name": "Master Closet",
             "kind": "ultranode",
             "modules": [
@@ -59,7 +59,7 @@
               "white",
               "ota"
             ],
-            "download_id": "afcuWQ8BAQsptL6FVjIKA6"
+            "download_id": "kJ2dy94DxCoC58mJDYNeUmyniN8l3MfKs4CjobJGAZL4F1oB"
           }
         ]
       },
@@ -68,7 +68,7 @@
         "name": "Edgar",
         "nodes": [
           {
-            "id": "wl63q4b3dsw4gbh1faq9lx",
+            "id": "t5mhcj3k4s6j2javbaygo7xcusp1024",
             "name": "Amp Lights",
             "kind": "ultranode",
             "modules": [
@@ -77,7 +77,7 @@
               "white",
               "ota"
             ],
-            "download_id": "YChhrHRqFjBCEFOz6Yyjg4"
+            "download_id": "2DNmC6alzn7x72sBpKQ86ww4BRFmuV6CMKxSeUQ1ehVD4z6G"
           }
         ]
       }
@@ -89,5 +89,11 @@
     "name": "SDSU",
     "rooms": [],
     "external_id": "e1dIqTMNiL6pERy8SD08Op"
+  },
+  {
+    "id": "exampleHouse",
+    "name": "Example House",
+    "rooms": [],
+    "external_id": "Nbsw0Ag8pZhZeKv6S3x8vYogkFp12ZGlgBulNEa3NeNEBTuwGzfhV87pXSApI7nI"
   }
 ]

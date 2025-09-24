@@ -39,9 +39,6 @@ class _NoopBus:
     def ota_check(self, *args, **kwargs):  # pragma: no cover - noop
         pass
 
-    def all_off(self):  # pragma: no cover - noop
-        pass
-
 
 @pytest.fixture(autouse=True)
 def _stub_mqtt(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,7 +120,7 @@ def test_registry_remove_orphan_node(monkeypatch, tmp_path):
     assert house["id"] == "house"
     assert room is None
     assert node["id"] == "orphan-node"
-
+    
     removed = registry.remove_node("orphan-node")
     assert removed["id"] == "orphan-node"
     assert settings.DEVICE_REGISTRY[0]["nodes"] == []
