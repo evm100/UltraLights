@@ -79,6 +79,8 @@ esp_err_t esp_mqtt_client_destroy(esp_mqtt_client_handle_t client);
 bool ul_core_is_connected(void);
 void ul_health_notify_mqtt(bool connected);
 
+typedef uint32_t TickType_t;
+
 #define pdMS_TO_TICKS(ms) (ms)
 void vTaskDelay(int ticks);
 

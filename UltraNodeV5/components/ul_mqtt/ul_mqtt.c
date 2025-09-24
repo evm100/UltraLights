@@ -19,6 +19,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/event_groups.h"
 #endif
 
 #include <ctype.h>
@@ -29,6 +30,26 @@
 static const char *TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
+
+#ifndef UL_MQTT_TESTING
+static EventGroupHandle_t s_state_event_group;
+static portMUX_TYPE s_state_event_group_lock = portMUX_INITIALIZER_UNLOCKED;
+#define UL_MQTT_READY_BIT BIT0
+
+static EventGroupHandle_t mqtt_state_event_group(void) {
+  portENTER_CRITICAL(&s_state_event_group_lock);
+  EventGroupHandle_t group = s_state_event_group;
+  if (!group) {
+    group = xEventGroupCreate();
+    if (group)
+      s_state_event_group = group;
+  }
+  portEXIT_CRITICAL(&s_state_event_group_lock);
+  if (!group)
+    ESP_LOGE(TAG, "Failed to create MQTT state event group");
+  return group;
+}
+#endif
 
 #ifndef UL_MQTT_TESTING
 #define UL_MQTT_PUBLISH_ACK_QUEUE_LENGTH 8
@@ -890,6 +911,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     ESP_LOGI(TAG, "MQTT connected");
     s_ready = true;
 #ifndef UL_MQTT_TESTING
+    EventGroupHandle_t group = mqtt_state_event_group();
+    if (group)
+      xEventGroupSetBits(group, UL_MQTT_READY_BIT);
     if (s_publish_ack_queue)
       xQueueReset(s_publish_ack_queue);
 #endif
@@ -931,6 +955,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     ul_health_notify_mqtt(false);
     dim_all_lights();
 #ifndef UL_MQTT_TESTING
+    EventGroupHandle_t group = mqtt_state_event_group();
+    if (group)
+      xEventGroupClearBits(group, UL_MQTT_READY_BIT);
     if (s_publish_ack_queue)
       xQueueReset(s_publish_ack_queue);
 #endif
@@ -1007,6 +1034,9 @@ void ul_mqtt_start(void) {
   cancel_mqtt_retry();
 
 #ifndef UL_MQTT_TESTING
+  EventGroupHandle_t group = mqtt_state_event_group();
+  if (group)
+    xEventGroupClearBits(group, UL_MQTT_READY_BIT);
   if (s_publish_ack_queue) {
     xQueueReset(s_publish_ack_queue);
   } else {
@@ -1066,6 +1096,11 @@ void ul_mqtt_start(void) {
 void ul_mqtt_stop(void) {
   cancel_mqtt_retry();
   motion_fade_cancel();
+#ifndef UL_MQTT_TESTING
+  EventGroupHandle_t group = mqtt_state_event_group();
+  if (group)
+    xEventGroupClearBits(group, UL_MQTT_READY_BIT);
+#endif
   if (s_client) {
     esp_mqtt_client_stop(s_client);
     esp_mqtt_client_destroy(s_client);
@@ -1092,6 +1127,22 @@ void ul_mqtt_restart(void) {
 bool ul_mqtt_is_connected(void) { return s_ready; }
 
 bool ul_mqtt_is_ready(void) { return s_ready; }
+
+bool ul_mqtt_wait_for_ready(TickType_t timeout_ticks) {
+#ifdef UL_MQTT_TESTING
+  (void)timeout_ticks;
+  return s_ready;
+#else
+  if (s_ready)
+    return true;
+  EventGroupHandle_t group = mqtt_state_event_group();
+  if (!group)
+    return false;
+  EventBits_t bits =
+      xEventGroupWaitBits(group, UL_MQTT_READY_BIT, pdFALSE, pdFALSE, timeout_ticks);
+  return (bits & UL_MQTT_READY_BIT) != 0;
+#endif
+}
 
 #ifndef UL_MQTT_TESTING
 void ul_mqtt_publish_status_now(void) { publish_status_snapshot(); }

@@ -1,5 +1,6 @@
 #pragma once
 #include "esp_err.h"
+#include "freertos/FreeRTOS.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -18,6 +19,7 @@ void ul_mqtt_publish_motion(const char *sensor, const char *state);
 void ul_mqtt_publish_ota_event(const char *status, const char *detail);
 bool ul_mqtt_is_ready(void);
 bool ul_mqtt_is_connected(void);
+bool ul_mqtt_wait_for_ready(TickType_t timeout_ticks);
 
 // Execute a command locally without publishing over MQTT. The path should match
 // the suffix of a normal command topic (e.g. "ws/set").
