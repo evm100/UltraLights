@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlmodel import Session, delete, select
 
@@ -357,7 +357,11 @@ def update_member(
     return _serialize_member(membership, user, room_map, assigned_rooms)
 
 
-@router.delete("/{house_id}/members/{membership_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{house_id}/members/{membership_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 def delete_member(
     house_id: str,
     membership_id: int,
