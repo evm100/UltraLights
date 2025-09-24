@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 from sqlmodel import SQLModel, Session, select
 
-from .. import registry
+from .. import node_credentials, registry
 from ..config import settings
 from .. import database
 from .models import AuditLog, House, User
@@ -20,6 +20,7 @@ def init_auth_storage() -> None:
     with database.SessionLocal() as session:
         _seed_initial_admin(session)
         _sync_registry_houses(session)
+        _sync_registry_nodes(session)
 
 
 def _seed_initial_admin(session: Session) -> None:
@@ -60,6 +61,12 @@ def _sync_registry_houses(session: Session) -> None:
         session.add(House(display_name=display_name, external_id=external_id))
 
     session.commit()
+
+
+def _sync_registry_nodes(session: Session) -> None:
+    """Ensure credential rows exist for every registry node."""
+
+    node_credentials.sync_registry_nodes(session)
 
 
 def create_user(
