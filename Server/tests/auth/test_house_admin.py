@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app import database
-from app.auth.models import HouseMembership, RoomAccess, User
+from app.auth.models import House, HouseMembership, HouseRole, RoomAccess, User
 from app.auth.security import SESSION_COOKIE_NAME
 from app.auth.service import create_user, init_auth_storage
 from app.config import settings
@@ -113,6 +113,42 @@ def _create_server_admin(username: str, password: str) -> None:
         create_user(session, username, password, server_admin=True)
 
 
+def _create_house_member(
+    username: str,
+    password: str,
+    *,
+    house_external_id: str,
+    role: HouseRole,
+) -> None:
+    with database.SessionLocal() as session:
+        house = session.exec(
+            select(House).where(House.external_id == house_external_id)
+        ).first()
+        assert house is not None, f"House {house_external_id} missing in database"
+        user = create_user(session, username, password, server_admin=False)
+        membership = HouseMembership(user_id=user.id, house_id=house.id, role=role)
+        session.add(membership)
+        session.commit()
+
+
+def _create_house_admin(username: str, password: str, *, house_external_id: str) -> None:
+    _create_house_member(
+        username,
+        password,
+        house_external_id=house_external_id,
+        role=HouseRole.ADMIN,
+    )
+
+
+def _create_house_guest(username: str, password: str, *, house_external_id: str) -> None:
+    _create_house_member(
+        username,
+        password,
+        house_external_id=house_external_id,
+        role=HouseRole.GUEST,
+    )
+
+
 def _membership_rooms(session, membership_id: int) -> set[str]:
     rows = session.exec(
         select(RoomAccess).where(RoomAccess.membership_id == membership_id)
@@ -208,6 +244,58 @@ def test_role_changes_and_room_constraints(client: TestClient):
         json={"role": "guest"},
     )
     assert wrong_house.status_code == 404
+
+
+def test_house_admin_can_manage_memberships(client: TestClient):
+    _create_house_admin("alpha-manager", "manager-pass", house_external_id="alpha-public")
+    _login(client, "alpha-manager", "manager-pass")
+
+    create_response = client.post(
+        "/api/house-admin/alpha-public/members",
+        json={
+            "username": "managed-guest",
+            "password": "guest-pass",
+            "role": "guest",
+            "rooms": ["alpha-room"],
+        },
+    )
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["role"] == "guest"
+    assert {room["id"] for room in created["rooms"]} == {"alpha-room"}
+    membership_id = created["membershipId"]
+
+    update_response = client.patch(
+        f"/api/house-admin/alpha-public/members/{membership_id}",
+        json={"rooms": ["alpha-room", "alpha-denied"]},
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["role"] == "guest"
+    assert {room["id"] for room in updated["rooms"]} == {"alpha-room", "alpha-denied"}
+
+    with database.SessionLocal() as session:
+        membership = session.exec(
+            select(HouseMembership).where(HouseMembership.id == membership_id)
+        ).one()
+        assert membership.role == HouseRole.GUEST
+        assert _membership_rooms(session, membership_id) == {"alpha-room", "alpha-denied"}
+
+
+def test_house_guest_cannot_manage_memberships(client: TestClient):
+    _create_house_guest("alpha-guest-user", "guest-pass", house_external_id="alpha-public")
+    _login(client, "alpha-guest-user", "guest-pass")
+
+    response = client.post(
+        "/api/house-admin/alpha-public/members",
+        json={
+            "username": "another-user",
+            "password": "temp-pass",
+            "role": "guest",
+            "rooms": ["alpha-room"],
+        },
+    )
+    assert response.status_code == 403
 
 
 def test_invalid_room_rejected_on_create(client: TestClient):

@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlmodel import Session, delete, select
 
-from . import registry
-from .auth.dependencies import require_admin
+from .auth.access import AccessPolicy, HouseContext
+from .auth.dependencies import get_current_user
 from .auth.models import House, HouseMembership, HouseRole, RoomAccess, User
 from .auth.security import hash_password
 from .auth.service import create_user
@@ -16,6 +16,27 @@ from .database import get_session
 
 
 router = APIRouter(prefix="/api/house-admin", tags=["house-admin"])
+
+
+def _require_house_manager(
+    house_id: str,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> HouseContext:
+    """Ensure the current user can manage the requested house."""
+
+    policy = AccessPolicy.from_session(session, current_user)
+    try:
+        house_ctx = policy.ensure_house(house_id)
+    except LookupError as exc:  # pragma: no cover - defensive
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown house") from exc
+    except PermissionError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden") from exc
+
+    if not house_ctx.access.can_manage(current_user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
+
+    return house_ctx
 
 
 def _normalize_room_list(value: Any) -> Optional[List[str]]:
@@ -117,12 +138,9 @@ def _get_house(session: Session, house_id: str) -> House:
     return house
 
 
-def _room_lookup(house_id: str) -> Dict[str, str]:
-    house = registry.find_house(house_id)
-    if not house:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown house")
+def _room_lookup(house_ctx: HouseContext) -> Dict[str, str]:
     mapping: Dict[str, str] = {}
-    for entry in house.get("rooms", []) or []:
+    for entry in house_ctx.filtered.get("rooms", []) or []:
         if not isinstance(entry, dict):
             continue
         room_id = str(entry.get("id") or "").strip()
@@ -232,11 +250,11 @@ def _get_membership(
 @router.get("/{house_id}/members", response_model=MembershipListResponse)
 def list_members(
     house_id: str,
-    _admin: User = Depends(require_admin),
+    house_ctx: HouseContext = Depends(_require_house_manager),
     session: Session = Depends(get_session),
 ) -> MembershipListResponse:
-    house = _get_house(session, house_id)
-    room_map = _room_lookup(house_id)
+    house = _get_house(session, house_ctx.external_id)
+    room_map = _room_lookup(house_ctx)
     rows = session.exec(
         select(HouseMembership, User)
         .join(User, User.id == HouseMembership.user_id)
@@ -264,11 +282,11 @@ def list_members(
 def create_member(
     house_id: str,
     payload: MembershipCreate,
-    _admin: User = Depends(require_admin),
+    house_ctx: HouseContext = Depends(_require_house_manager),
     session: Session = Depends(get_session),
 ) -> HouseMember:
-    house = _get_house(session, house_id)
-    room_map = _room_lookup(house_id)
+    house = _get_house(session, house_ctx.external_id)
+    room_map = _room_lookup(house_ctx)
     username = payload.username.strip()
     _ensure_unique_username(session, username)
 
@@ -306,11 +324,11 @@ def update_member(
     house_id: str,
     membership_id: int,
     payload: MembershipUpdate,
-    _admin: User = Depends(require_admin),
+    house_ctx: HouseContext = Depends(_require_house_manager),
     session: Session = Depends(get_session),
 ) -> HouseMember:
-    house = _get_house(session, house_id)
-    room_map = _room_lookup(house_id)
+    house = _get_house(session, house_ctx.external_id)
+    room_map = _room_lookup(house_ctx)
     membership, user = _get_membership(session, house.id, membership_id)
 
     if payload.role is not None:
@@ -343,10 +361,10 @@ def update_member(
 def delete_member(
     house_id: str,
     membership_id: int,
-    _admin: User = Depends(require_admin),
+    house_ctx: HouseContext = Depends(_require_house_manager),
     session: Session = Depends(get_session),
 ) -> None:
-    house = _get_house(session, house_id)
+    house = _get_house(session, house_ctx.external_id)
     membership, user = _get_membership(session, house.id, membership_id)
     session.exec(
         delete(RoomAccess).where(RoomAccess.membership_id == membership.id)
