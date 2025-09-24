@@ -3,13 +3,17 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
 
 # --- CONFIG ---
 CONFIG_ROOT="${CONFIG_ROOT:-../../Configs}"
-FIRMWARE_DIR="${FIRMWARE_DIR:-${PROJECT_ROOT}/firmware}"
-FIRMWARE_ARCHIVE_DIR="${FIRMWARE_ARCHIVE_DIR:-${PROJECT_ROOT}/firmware_artifacts}"
+FIRMWARE_DIR="${PROJECT_ROOT}/firmware"
+FIRMWARE_ARCHIVE_DIR="${PROJECT_ROOT}/firmware_artifacts"
+
+# Ensure firmware is always stored inside the project tree, regardless of
+# previous environment overrides that pointed to the public symlink directory.
+mkdir -p "${FIRMWARE_DIR}"
 
 mkdir -p "${FIRMWARE_ARCHIVE_DIR}"
 
