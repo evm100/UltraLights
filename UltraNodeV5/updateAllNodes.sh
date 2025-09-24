@@ -3,9 +3,15 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
 # --- CONFIG ---
-CONFIG_ROOT="../../Configs"
-FIRMWARE_DIR="/srv/firmware/UltraLights"
+CONFIG_ROOT="${CONFIG_ROOT:-../../Configs}"
+FIRMWARE_DIR="${FIRMWARE_DIR:-/srv/firmware/UltraLights}"
+FIRMWARE_ARCHIVE_DIR="${FIRMWARE_ARCHIVE_DIR:-${PROJECT_ROOT}/firmware_artifacts}"
+
+mkdir -p "${FIRMWARE_ARCHIVE_DIR}"
 
 # --- VERSION INPUT ---
 # Pass the desired firmware version as the first argument, or the script will prompt for it.
@@ -50,13 +56,73 @@ safe_rm_build() {
   fi
 }
 
+copy_file_to_private_archive() {
+  local src="$1"
+  local dest="$2"
+  local dest_dir
+  dest_dir="$(dirname "$dest")"
+
+  mkdir -p "$dest_dir"
+
+  local tmp
+  tmp="$(mktemp "$dest_dir/.tmp.XXXXXX")"
+
+  if [[ -r "$src" ]]; then
+    cat "$src" >"$tmp"
+  else
+    sudo cat "$src" >"$tmp"
+  fi
+
+  chmod 644 "$tmp" 2>/dev/null || sudo chmod 644 "$tmp" 2>/dev/null || true
+  mv -f "$tmp" "$dest"
+}
+
+remove_file_with_sudo() {
+  local path="$1"
+  if [[ ! -e "$path" ]]; then
+    return
+  fi
+
+  if rm -f "$path" 2>/dev/null; then
+    return
+  fi
+
+  sudo rm -f "$path"
+}
+
+migrate_legacy_archives() {
+  local nodeid="$1"
+  local node_dir="$FIRMWARE_DIR/$nodeid"
+  local archive_node_dir="$FIRMWARE_ARCHIVE_DIR/$nodeid"
+
+  mkdir -p "$archive_node_dir"
+
+  local legacy_file
+  for legacy_file in "$node_dir"/*.bin; do
+    local base
+    base="$(basename "$legacy_file")"
+
+    if [[ "$base" == "latest.bin" ]]; then
+      continue
+    fi
+
+    echo "Migrating legacy firmware artifact $base for $nodeid to private archive"
+    copy_file_to_private_archive "$legacy_file" "$archive_node_dir/$base"
+    remove_file_with_sudo "$legacy_file"
+  done
+}
+
 archive_and_update_latest() {
   local nodeid="$1"
   local node_dir="$FIRMWARE_DIR/$nodeid"
+  local archive_node_dir="$FIRMWARE_ARCHIVE_DIR/$nodeid"
   local new_bin="build/ultralights.bin"
   local manifest_path="$node_dir/manifest.json"
 
   mkdir -p "$node_dir"
+  mkdir -p "$archive_node_dir"
+
+  migrate_legacy_archives "$nodeid"
 
   local previous_version=""
   if [[ -f "$manifest_path" ]]; then
@@ -84,7 +150,7 @@ PY
 )
   fi
 
-  # Move previous latest.bin -> <previous_version>.bin if it exists
+  # Move previous latest.bin into the private archive if it exists
   if [[ -f "$node_dir/latest.bin" ]]; then
     if [[ -n "$previous_version" ]]; then
       local safe_prev_version
@@ -92,14 +158,10 @@ PY
 
       if [[ -n "$safe_prev_version" ]]; then
         local archived_path
-        archived_path="$node_dir/${safe_prev_version}.bin"
+        archived_path="$archive_node_dir/${safe_prev_version}.bin"
 
-        if [[ "$archived_path" == "$node_dir/latest.bin" ]]; then
-          echo "WARNING: Previous manifest version for $nodeid resolves to latest.bin; skipping archive rename."
-        else
-          echo "Archiving previous latest.bin -> ${safe_prev_version}.bin (version $previous_version)"
-          sudo mv "$node_dir/latest.bin" "$archived_path"
-        fi
+        echo "Archiving previous latest.bin for $nodeid -> ${safe_prev_version}.bin (version $previous_version) in private storage"
+        copy_file_to_private_archive "$node_dir/latest.bin" "$archived_path"
       else
         echo "WARNING: Previous manifest version for $nodeid sanitized to empty; skipping archive rename."
       fi
@@ -114,6 +176,18 @@ PY
   if [[ -f "$new_bin" ]]; then
     echo "Updating latest.bin for $nodeid"
     sudo cp "$new_bin" "$node_dir/latest.bin"
+    sudo chmod 644 "$node_dir/latest.bin" 2>/dev/null || true
+
+    local safe_current_version
+    safe_current_version="$(sanitize_version "$FIRMWARE_VERSION")"
+    if [[ -n "$safe_current_version" ]]; then
+      local current_archive_path
+      current_archive_path="$archive_node_dir/${safe_current_version}.bin"
+      echo "Saving firmware build for $nodeid version $FIRMWARE_VERSION to private archive"
+      copy_file_to_private_archive "$new_bin" "$current_archive_path"
+    else
+      echo "WARNING: Firmware version '$FIRMWARE_VERSION' sanitized to empty; skipping private archive copy."
+    fi
   else
     echo "WARNING: $new_bin not found. Skipping latest.bin update for $nodeid."
   fi
