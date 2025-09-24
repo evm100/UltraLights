@@ -799,7 +799,7 @@ def admin_house_panel(
             house_memberships=memberships,
             house_member_options=available_room_options,
             house_member_roles=role_options,
-            house_member_manage_allowed=current_user.server_admin,
+            house_member_manage_allowed=house_ctx.access.can_manage(current_user),
             house_admin_external_id=house_ctx.external_id,
         )
         | nav_context,
