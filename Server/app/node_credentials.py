@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List, Optional, Tuple
 
 from sqlmodel import Session, select
@@ -21,7 +21,9 @@ class NodeCredentialWithToken:
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    """Return a timezone-aware UTC timestamp."""
+
+    return datetime.now(timezone.utc)
 
 
 def _first_result(result: Any) -> Any:

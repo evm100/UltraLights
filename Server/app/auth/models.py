@@ -1,7 +1,7 @@
 """SQLModel tables for authentication and authorization."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional
 
@@ -24,6 +24,12 @@ class HouseRole(str, Enum):
     GUEST = "guest"
 
 
+def _utcnow() -> datetime:
+    """Return a timezone-aware UTC timestamp."""
+
+    return datetime.now(timezone.utc)
+
+
 def _timestamp_column(*, onupdate: bool = False) -> Column:
     return Column(
         DateTime(timezone=True),
@@ -44,9 +50,9 @@ class User(SQLModel, table=True):
         sa_column=Column(String(255), nullable=False)
     )
     server_admin: bool = Field(default=False, nullable=False)
-    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=_timestamp_column())
+    created_at: datetime = Field(default_factory=_utcnow, sa_column=_timestamp_column())
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow, sa_column=_timestamp_column(onupdate=True)
+        default_factory=_utcnow, sa_column=_timestamp_column(onupdate=True)
     )
 
 class House(SQLModel, table=True):
@@ -67,9 +73,9 @@ class House(SQLModel, table=True):
             index=True,
         )
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=_timestamp_column())
+    created_at: datetime = Field(default_factory=_utcnow, sa_column=_timestamp_column())
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow, sa_column=_timestamp_column(onupdate=True)
+        default_factory=_utcnow, sa_column=_timestamp_column(onupdate=True)
     )
 
 class HouseMembership(SQLModel, table=True):
@@ -84,9 +90,9 @@ class HouseMembership(SQLModel, table=True):
     role: HouseRole = Field(
         sa_column=Column(SAEnum(HouseRole, name="house_role"), nullable=False)
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=_timestamp_column())
+    created_at: datetime = Field(default_factory=_utcnow, sa_column=_timestamp_column())
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow, sa_column=_timestamp_column(onupdate=True)
+        default_factory=_utcnow, sa_column=_timestamp_column(onupdate=True)
     )
 
 class RoomAccess(SQLModel, table=True):
@@ -100,9 +106,9 @@ class RoomAccess(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     membership_id: int = Field(foreign_key="house_memberships.id", nullable=False)
     room_id: str = Field(sa_column=Column(String(120), nullable=False))
-    created_at: datetime = Field(default_factory=datetime.utcnow, sa_column=_timestamp_column())
+    created_at: datetime = Field(default_factory=_utcnow, sa_column=_timestamp_column())
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow, sa_column=_timestamp_column(onupdate=True)
+        default_factory=_utcnow, sa_column=_timestamp_column(onupdate=True)
     )
 
 class AuditLog(SQLModel, table=True):
@@ -119,8 +125,33 @@ class AuditLog(SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(JSON, nullable=False, default=dict),
     )
-    created_at: datetime = Field(
-        default_factory=datetime.utcnow, sa_column=_timestamp_column()
+    created_at: datetime = Field(default_factory=_utcnow, sa_column=_timestamp_column())
+
+
+class NodeCredential(SQLModel, table=True):
+    __tablename__ = "node_credentials"
+    __table_args__ = (
+        UniqueConstraint("download_id", name="uq_node_credentials_download_id"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    node_id: str = Field(
+        sa_column=Column(String(64), unique=True, nullable=False, index=True)
+    )
+    house_slug: str = Field(sa_column=Column(String(64), nullable=False))
+    room_id: str = Field(sa_column=Column(String(120), nullable=False))
+    display_name: str = Field(sa_column=Column(String(120), nullable=False))
+    download_id: str = Field(
+        sa_column=Column(String(64), unique=True, nullable=False, index=True)
+    )
+    token_hash: str = Field(sa_column=Column(String(64), nullable=False))
+    created_at: datetime = Field(default_factory=_utcnow, sa_column=_timestamp_column())
+    token_issued_at: datetime = Field(
+        default_factory=_utcnow, sa_column=_timestamp_column(onupdate=True)
+    )
+    provisioned_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
     )
 
 
