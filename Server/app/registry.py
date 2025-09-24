@@ -486,6 +486,17 @@ def remove_node(node_id: str) -> Node:
                     removed = nodes.pop(idx)
                     save_registry()
                     return removed
+
+        # Some legacy registry entries may contain nodes that are not yet
+        # associated with a room.  Clean those up as well so operators can
+        # remove orphaned nodes.
+        orphan_nodes = house.get("nodes")
+        if isinstance(orphan_nodes, list):
+            for idx, node in enumerate(orphan_nodes):
+                if isinstance(node, dict) and node.get("id") == node_id:
+                    removed = orphan_nodes.pop(idx)
+                    save_registry()
+                    return removed
     raise KeyError("node not found")
 
 
