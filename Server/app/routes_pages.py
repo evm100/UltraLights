@@ -194,8 +194,6 @@ def _navigation_context(
             "show_server_admin": current_user.server_admin,
             "username": current_user.username,
             "logout_url": "/logout",
-            "can_all_off": current_user.server_admin,
-            "all_off_url": "/api/all-off" if current_user.server_admin else None,
         }
     }
 
@@ -581,14 +579,6 @@ def server_admin_panel(
 ):
     policy = AccessPolicy.from_session(session, current_user)
     nav_context = _navigation_context(policy, current_user=current_user)
-    # The global "All Off" control is unnecessary within the server
-    # administration interface because the page already focuses on
-    # management tasks rather than direct lighting controls. Remove the
-    # button by clearing the navigation flags for this view.
-    nav = nav_context.get("nav")
-    if isinstance(nav, dict):
-        nav["can_all_off"] = False
-        nav["all_off_url"] = None
     if not current_user.server_admin:
         return templates.TemplateResponse(
             request,

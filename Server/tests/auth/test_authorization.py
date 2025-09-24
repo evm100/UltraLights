@@ -226,7 +226,7 @@ def test_house_admin_has_admin_access(client: TestClient):
     assert "Manage Rooms" in admin_house.text
 
 
-def test_server_admin_retains_global_control(client: TestClient):
+def test_server_admin_sees_server_admin_navigation(client: TestClient):
     _create_user("root", "root-pass", server_admin=True)
 
     _login(client, "root", "root-pass")
@@ -237,10 +237,6 @@ def test_server_admin_retains_global_control(client: TestClient):
     assert "Admin Panel" in body
     assert _has_nav_marker(body, "nav-admin-link")
     assert _has_nav_marker(body, "nav-server-admin-link")
-    assert _has_nav_marker(body, "nav-all-off")
-
-    api = client.post("/api/all-off")
-    assert api.status_code == 200
 
     server_admin_page = client.get("/server-admin")
     assert server_admin_page.status_code == 200

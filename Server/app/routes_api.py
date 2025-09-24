@@ -362,16 +362,6 @@ def api_set_node_name(
     return {"ok": True, "node": node}
 
 
-@router.post("/api/all-off")
-def api_all_off(
-    *,
-    current_user: User = Depends(get_current_user),
-):
-    if not current_user.server_admin:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
-    get_bus().all_off()
-    return {"ok": True}
-
 @router.post("/api/house/{house_id}/rooms")
 def api_add_room(
     house_id: str,

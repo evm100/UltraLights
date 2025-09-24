@@ -39,9 +39,6 @@ class _NoopBus:
     def motion_off(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - noop
         pass
 
-    def all_off(self) -> None:  # pragma: no cover - noop
-        pass
-
 
 class _TestMotionPrefs:
     def __init__(self) -> None:

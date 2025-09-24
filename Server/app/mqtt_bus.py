@@ -4,7 +4,6 @@ import time
 from typing import Optional, List, Dict, Union, Tuple
 import paho.mqtt.client as paho
 from .config import settings
-from . import registry
 
 def topic_cmd(node_id: str, path: str) -> str:
     return f"ul/{node_id}/cmd/{path}"
@@ -225,13 +224,4 @@ class MqttBus:
     def ota_check(self, node_id: str):
         """Trigger an OTA update check without retaining the command."""
         self.pub(topic_cmd(node_id, "ota/check"), {}, retain=False)
-
-    def all_off(self):
-        """Turn off all known nodes."""
-        for _, _, n in registry.iter_nodes():
-            nid = n["id"]
-            for i in range(4):
-                self.ws_set(nid, i, "solid", 255, [0, 0, 0])
-                self.rgb_set(nid, i, "solid", 0, [0, 0, 0])
-                self.white_set(nid, i, "solid", 0)
 
