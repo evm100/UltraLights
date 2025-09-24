@@ -19,6 +19,8 @@ from .auth.security import (
     set_session_cookie,
     verify_session_token,
 )
+from .auth.service import record_audit_event
+from .auth.throttling import get_login_rate_limiter
 from .config import settings
 from .database import get_session
 from .effects import (
@@ -220,21 +222,79 @@ def login_submit(
     password: str = Form(...),
     session: Session = Depends(get_session),
 ):
-    user = authenticate_user(session, username, password)
-    if not user:
+    limiter = get_login_rate_limiter()
+    client_host = request.client.host if request.client else "unknown"
+    state = limiter.status(client_host)
+    if state.blocked:
+        record_audit_event(
+            session,
+            actor=None,
+            action="login_rate_limited",
+            summary=f"Rate limit hit for {username}",
+            data={"username": username, "ip": client_host, "retry_after": state.retry_after},
+            commit=True,
+        )
         response = templates.TemplateResponse(
             request,
             "login.html",
             {
                 "request": request,
                 "title": "Sign in",
-                "error": "Invalid username or password",
+                "error": "Too many login attempts. Try again shortly.",
             },
-            status_code=400,
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         )
         clear_session_cookie(response)
         return response
 
+    user = authenticate_user(session, username, password)
+    if not user:
+        failure_state = limiter.register_failure(client_host)
+        record_audit_event(
+            session,
+            actor=None,
+            action="login_failed",
+            summary=f"Failed login for {username}",
+            data={
+                "username": username,
+                "ip": client_host,
+                "rate_limited": failure_state.blocked,
+                "retry_after": failure_state.retry_after,
+            },
+            commit=True,
+        )
+        error_message = (
+            "Too many login attempts. Try again shortly."
+            if failure_state.blocked
+            else "Invalid username or password"
+        )
+        status_code = (
+            status.HTTP_429_TOO_MANY_REQUESTS
+            if failure_state.blocked
+            else status.HTTP_400_BAD_REQUEST
+        )
+        response = templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "request": request,
+                "title": "Sign in",
+                "error": error_message,
+            },
+            status_code=status_code,
+        )
+        clear_session_cookie(response)
+        return response
+
+    limiter.register_success(client_host)
+    record_audit_event(
+        session,
+        actor=user,
+        action="login_success",
+        summary=f"User {user.username} signed in",
+        data={"ip": client_host},
+        commit=True,
+    )
     redirect = RedirectResponse(_default_house_path(session, user), status_code=303)
     token = create_session_token(user)
     set_session_cookie(redirect, token)
@@ -242,7 +302,22 @@ def login_submit(
 
 
 @router.get("/logout")
-def logout():
+def logout(request: Request, session: Session = Depends(get_session)):
+    actor: Optional[User] = None
+    token_value = request.cookies.get(SESSION_COOKIE_NAME)
+    if token_value:
+        token_data = verify_session_token(token_value)
+        if token_data is not None:
+            actor = session.exec(select(User).where(User.id == token_data.user_id)).first()
+
+    record_audit_event(
+        session,
+        actor=actor,
+        action="logout",
+        summary=f"User {actor.username if actor else 'unknown'} signed out",
+        data={"ip": request.client.host if request.client else "unknown"},
+        commit=True,
+    )
     response = RedirectResponse(url="/login", status_code=303)
     clear_session_cookie(response)
     return response

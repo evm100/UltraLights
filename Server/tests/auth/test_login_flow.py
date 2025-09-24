@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,9 @@ def client(tmp_path, monkeypatch: pytest.MonkeyPatch):
     db_url = f"sqlite:///{db_path}"
     database_module.reset_session_factory(db_url)
     monkeypatch.setattr(settings, "PUBLIC_BASE", "https://testserver")
+    monkeypatch.setattr(settings, "LOGIN_ATTEMPT_LIMIT", 2, raising=False)
+    monkeypatch.setattr(settings, "LOGIN_ATTEMPT_WINDOW", 60, raising=False)
+    monkeypatch.setattr(settings, "LOGIN_BACKOFF_SECONDS", 1, raising=False)
 
     import app.mqtt_bus
 
@@ -45,6 +49,10 @@ def client(tmp_path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(app.motion.motion_manager, "stop", lambda: None)
     monkeypatch.setattr(app.status_monitor.status_monitor, "start", lambda: None)
     monkeypatch.setattr(app.status_monitor.status_monitor, "stop", lambda: None)
+
+    from app.auth.throttling import reset_login_rate_limiter
+
+    reset_login_rate_limiter()
 
     from app.main import app as fastapi_app
 
@@ -134,3 +142,36 @@ def test_logout_clears_cookie_and_blocks_access(client: TestClient) -> None:
     )
     assert protected.status_code == 303
     assert protected.headers["location"] == "/login"
+
+
+def test_login_rate_limit_blocks_and_expires(client: TestClient) -> None:
+    _create_user("login-user", "super-secret")
+
+    first = client.post(
+        "/login",
+        data={"username": "login-user", "password": "wrong-pass"},
+    )
+    assert first.status_code == 400
+
+    second = client.post(
+        "/login",
+        data={"username": "login-user", "password": "wrong-pass"},
+    )
+    assert second.status_code == 429
+    assert "Too many login attempts" in second.text
+
+    blocked = client.post(
+        "/login",
+        data={"username": "login-user", "password": "super-secret"},
+        follow_redirects=False,
+    )
+    assert blocked.status_code == 429
+
+    time.sleep(1.2)
+
+    recovery = client.post(
+        "/login",
+        data={"username": "login-user", "password": "super-secret"},
+        follow_redirects=False,
+    )
+    assert recovery.status_code == 303
