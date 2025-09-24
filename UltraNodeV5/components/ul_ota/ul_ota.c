@@ -122,6 +122,8 @@ static esp_err_t manifest_http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
+static esp_err_t _http_client_init_cb(esp_http_client_handle_t http_client);
+
 static esp_err_t ul_ota_fetch_manifest(const esp_http_client_config_t *base_cfg,
                                        ul_ota_manifest_t *out_manifest)
 {
