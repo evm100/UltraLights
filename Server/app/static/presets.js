@@ -260,8 +260,8 @@ if (container) {
     container.appendChild(fragment);
   };
 
-  const fetchJson = async (url, options) => {
-    const response = await fetch(url, options);
+  const fetchJson = async (url, options = {}) => {
+    const response = await fetch(url, { credentials: 'same-origin', ...options });
     let data = null;
     try {
       data = await response.json();

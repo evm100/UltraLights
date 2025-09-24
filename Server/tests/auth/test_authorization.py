@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -136,6 +137,15 @@ def _login(client: TestClient, username: str, password: str) -> None:
     assert SESSION_COOKIE_NAME in response.cookies
 
 
+def _extract_nav_ids(html: str, attribute: str) -> set[str]:
+    pattern = rf'data-{attribute}="([^"]+)"'
+    return set(re.findall(pattern, html))
+
+
+def _has_nav_marker(html: str, marker: str) -> bool:
+    return f'data-{marker}' in html
+
+
 def test_guest_restricted_to_assigned_rooms(client: TestClient):
     _create_user(
         "guest",
@@ -152,11 +162,19 @@ def test_guest_restricted_to_assigned_rooms(client: TestClient):
     assert "Beta House" not in body
     assert "Admin Panel" not in body
     assert "Server Admin" not in body
+    assert _extract_nav_ids(body, "nav-house") == {"alpha-public"}
+    nav_rooms = _extract_nav_ids(body, "nav-room-id")
+    assert "alpha-room" in nav_rooms
+    assert "alpha-denied" not in nav_rooms
+    assert not _has_nav_marker(body, "nav-admin-link")
+    assert not _has_nav_marker(body, "nav-server-admin-link")
+    assert _has_nav_marker(body, "nav-logout")
 
     house_page = client.get("/house/alpha-public")
     assert house_page.status_code == 200
-    assert "Alpha Room" in house_page.text
-    assert "Alpha Hidden" not in house_page.text
+    house_nav_rooms = _extract_nav_ids(house_page.text, "nav-room-id")
+    assert "alpha-room" in house_nav_rooms
+    assert "alpha-denied" not in house_nav_rooms
 
     forbidden_room = client.get("/house/alpha-public/room/alpha-denied")
     assert forbidden_room.status_code == 403
@@ -195,8 +213,13 @@ def test_house_admin_has_admin_access(client: TestClient):
 
     dashboard = client.get("/dashboard")
     assert dashboard.status_code == 200
-    assert "Admin Panel" in dashboard.text
-    assert "Server Admin" not in dashboard.text
+    body = dashboard.text
+    assert "Admin Panel" in body
+    assert "Server Admin" not in body
+    assert _has_nav_marker(body, "nav-admin-link")
+    assert not _has_nav_marker(body, "nav-server-admin-link")
+    assert "alpha-public" in _extract_nav_ids(body, "nav-house")
+    assert "alpha-public" in _extract_nav_ids(body, "nav-house-admin")
 
     admin_house = client.get("/admin/house/alpha-public")
     assert admin_house.status_code == 200
@@ -210,14 +233,20 @@ def test_server_admin_retains_global_control(client: TestClient):
 
     response = client.get("/admin")
     assert response.status_code == 200
-    assert "Admin Panel" in response.text
+    body = response.text
+    assert "Admin Panel" in body
+    assert _has_nav_marker(body, "nav-admin-link")
+    assert _has_nav_marker(body, "nav-server-admin-link")
+    assert _has_nav_marker(body, "nav-all-off")
 
     api = client.post("/api/all-off")
     assert api.status_code == 200
 
     server_admin_page = client.get("/server-admin")
     assert server_admin_page.status_code == 200
-    assert "Server Administration" in server_admin_page.text
+    server_body = server_admin_page.text
+    assert "Server Administration" in server_body
+    assert _has_nav_marker(server_body, "nav-server-admin-link")
 
 
 def test_house_admin_blocked_from_server_admin(client: TestClient):

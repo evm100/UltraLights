@@ -197,6 +197,7 @@ houseCards.forEach((card) => {
         const res = await fetch(`/api/server-admin/houses/${encodeURIComponent(currentId)}/rotate-id`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
+          credentials: 'same-origin',
           body: JSON.stringify({confirm: true})
         });
         if (!res.ok) {
@@ -240,6 +241,7 @@ if (createForm) {
       const res = await fetch(`/api/server-admin/houses/${encodeURIComponent(houseId)}/admins`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
         body: JSON.stringify({username, password})
       });
       if (!res.ok) {

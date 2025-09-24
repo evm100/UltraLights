@@ -31,7 +31,10 @@ if(addRoomButton){
     const name = prompt('New room name');
     if(!name) return;
     const res = await fetch('/api/house/{{ house_public_id }}/rooms', {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name})
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials: 'same-origin',
+      body: JSON.stringify({name})
     });
     if(res.ok) location.reload(); else alert('Failed to add room');
   };
@@ -55,6 +58,7 @@ if(grid && grid.dataset.canManage === 'true'){
       const res = await fetch('/api/house/{{ house_public_id }}/rooms/reorder', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
         body: JSON.stringify({order})
       });
       if(!res.ok){

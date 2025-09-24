@@ -168,6 +168,7 @@ async function submitNodeName() {
     const res = await fetch(`/api/node/${encodeURIComponent(STATUS_NODE_ID)}/name`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({ name: desiredName }),
     });
     if (!res.ok) {
@@ -290,7 +291,7 @@ setDot({{ status_initial_online|tojson }});
 async function refreshStatus() {
   if (!statusDot) return;
   try {
-    const res = await fetch(STATUS_URL, { cache: 'no-store' });
+    const res = await fetch(STATUS_URL, { cache: 'no-store', credentials: 'same-origin' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     setDot(Boolean(data.online));
@@ -324,7 +325,7 @@ function applyModuleVisibility(modulesList) {
 async function refreshState() {
   setModuleStateMessage('Loading module state…');
   try {
-    const res = await fetch(STATE_URL, { cache: 'no-store' });
+    const res = await fetch(STATE_URL, { cache: 'no-store', credentials: 'same-origin' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (!data || typeof data !== 'object') {
