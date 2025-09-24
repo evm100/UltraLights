@@ -81,3 +81,26 @@ If you need to regenerate credentials manually, the
 rotates tokens or download aliases and prints the new values, but the provisioning
 CLI is the recommended path because it keeps firmware defaults, symlinks and the
 database in sync.
+
+## Why keep download identifiers?
+
+Opaque node IDs removed the original privacy concern—we no longer leak a house
+slug through the device identifier—but the dedicated download alias still buys
+us a few operational conveniences:
+
+* The provisioning CLI can rotate the externally visible firmware URL by issuing
+  a fresh download ID (`--rotate-download`) while leaving `CONFIG_UL_NODE_ID`
+  untouched. That lets us retire a leaked manifest URL or move a node’s firmware
+  folder without changing the identifier the device uses for MQTT and telemetry.
+* Older builds and scripts that were created before the SQLModel migration still
+  expect the download alias that lives in the registry. Maintaining the alias
+  keeps those installations functional while we roll forward to firmware that
+  understands opaque node IDs.
+* The alias gives support staff a shareable handle for diagnostics—you can point
+  someone at `/firmware/<download_id>/latest.bin` without also disclosing the
+  node ID. Because the alias is only a symlink, you can rotate or delete it once
+  the troubleshooting session is over.
+
+If these use cases eventually stop mattering we can collapse the indirection and
+serve binaries directly from the node ID, but for now the server and tooling are
+still built around the download alias abstraction.
