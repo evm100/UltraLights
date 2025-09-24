@@ -1,8 +1,8 @@
 # Opaque Node Identifiers
 
 Nodes created through the admin UI or API now receive a random, opaque identifier
-at creation time. The identifier is a 22-character string composed of lowercase
-letters and digits (for example `1j1mmiwwxw2eg9jlbmjric`). It no longer contains
+at creation time. The identifier is a 31-character string composed of lowercase
+letters and digits (for example `dbrpr89wiexuejce52u9840juec77ul`). It no longer contains
 the house slug or any user-provided text, so capturing or guessing a node ID does
 not reveal which house owns it.
 
@@ -12,6 +12,10 @@ Alongside the node ID the server issues:
   `/firmware/<download_id>/latest.bin`, and
 * a per-node bearer token whose SHA-256 hash is stored in the authentication
   database (see [`NodeCredential`](../app/auth/models.py)).
+
+Download identifiers now take advantage of the full 48-character default, while
+house external identifiers can stretch to 64 characters. The node ID remains at
+31 characters to match the ESP32 firmware limit.
 
 All three values live in the SQLModel database instead of the JSON registry.
 `device_registry.json` continues to list houses, rooms and node metadata, but it

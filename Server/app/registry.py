@@ -46,8 +46,10 @@ EXTERNAL_ID_ALPHABET = string.ascii_lowercase + string.ascii_uppercase + string.
 DOWNLOAD_ID_ALPHABET = string.ascii_lowercase + string.ascii_uppercase + string.digits
 NODE_ID_ALPHABET = string.ascii_lowercase + string.digits
 
-DEFAULT_DOWNLOAD_ID_LENGTH = 22
-DEFAULT_NODE_ID_LENGTH = 22
+MAX_NODE_ID_LENGTH = 31
+
+DEFAULT_DOWNLOAD_ID_LENGTH = 48
+DEFAULT_NODE_ID_LENGTH = MAX_NODE_ID_LENGTH
 DEFAULT_TOKEN_BYTES = 32
 
 NODE_DOWNLOAD_ID_KEY = "download_id"
@@ -403,9 +405,6 @@ def reorder_rooms(house_id: str, room_order: Iterable[str]) -> list[Room]:
     house["rooms"] = normalized_order
     save_registry()
     return normalized_order
-
-
-MAX_NODE_ID_LENGTH = 31
 
 
 def add_node(

@@ -26,7 +26,7 @@ class Settings:
     API_BEARER = os.getenv("API_BEARER", "")
     MANIFEST_HMAC_SECRET = os.getenv("MANIFEST_HMAC_SECRET", "")
 
-    MAX_HOUSE_ID_LENGTH = int(os.getenv("MAX_HOUSE_ID_LENGTH", "22"))
+    MAX_HOUSE_ID_LENGTH = int(os.getenv("MAX_HOUSE_ID_LENGTH", "64"))
     AUTH_DB_URL = os.getenv(
         "AUTH_DB_URL", f"sqlite:///{DATA_DIR / 'auth.sqlite3'}"
     )
