@@ -384,6 +384,10 @@ async function refreshStatuses() {
 }
 
 refreshStatuses();
+// Nodes may need a moment to respond to the freshly requested snapshots.
+// Trigger an additional refresh shortly after page load so we pick up the
+// responses without waiting for the longer polling interval.
+window.setTimeout(refreshStatuses, 2000);
 setInterval(refreshStatuses, 5000);
 
 const roomMenuContainer = document.querySelector('[data-room-menu]');
