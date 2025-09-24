@@ -7,6 +7,17 @@ set -euo pipefail
 CONFIG_ROOT="../../Configs"
 FIRMWARE_DIR="/srv/firmware/UltraLights"
 
+# --- VERSION INPUT ---
+# Pass the desired firmware version as the first argument, or the script will prompt for it.
+FIRMWARE_VERSION="${1:-}"
+if [[ -z "$FIRMWARE_VERSION" ]]; then
+  read -rp "Enter firmware version for manifest files: " FIRMWARE_VERSION
+fi
+if [[ -z "$FIRMWARE_VERSION" ]]; then
+  echo "ERROR: Firmware version is required" >&2
+  exit 1
+fi
+
 # FLASH command:
 # - If you have an alias/function `flash` in ~/.bashrc, we'll source it.
 # - Otherwise, set FLASH_CMD env var before running this script, e.g.:
@@ -24,6 +35,7 @@ shopt -s expand_aliases
 FLASH_CMD="${FLASH_CMD:-$DEFAULT_FLASH_CMD}"
 
 echo "Using flash command: $FLASH_CMD"
+echo "Firmware version for manifests: $FIRMWARE_VERSION"
 echo
 
 # --- HELPERS ---
@@ -75,6 +87,129 @@ archive_and_update_latest() {
   fi
 }
 
+sha256_file() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" | awk '{print $1}'
+  else
+    python3 - "$file" <<'PY'
+import hashlib
+import sys
+
+path = sys.argv[1]
+h = hashlib.sha256()
+with open(path, 'rb') as fp:
+    for chunk in iter(lambda: fp.read(1024 * 1024), b''):
+        h.update(chunk)
+print(h.hexdigest())
+PY
+  fi
+}
+
+sanitize_version() {
+  local version="$1"
+  # Allow alphanumeric, dot, underscore and dash in filenames. Replace others with underscore.
+  printf '%s' "$version" | sed 's/[^A-Za-z0-9._-]/_/g'
+}
+
+update_sdkconfig_version() {
+  local sdkconfig_path="$1"
+  local version="$2"
+
+  python3 - "$sdkconfig_path" "$version" <<'PY'
+import sys
+from pathlib import Path
+
+sdkconfig_path = Path(sys.argv[1])
+version = sys.argv[2].strip()
+
+escaped_version = version.replace("\\", "\\\\").replace('"', '\\"')
+
+lines = sdkconfig_path.read_text().splitlines()
+
+flag_written = False
+version_written = False
+output = []
+
+for line in lines:
+    if line.startswith("CONFIG_APP_PROJECT_VER_FROM_CONFIG"):
+        if not flag_written:
+            output.append("CONFIG_APP_PROJECT_VER_FROM_CONFIG=y")
+            flag_written = True
+        # Skip duplicate entries
+        continue
+    if line.startswith("# CONFIG_APP_PROJECT_VER_FROM_CONFIG"):
+        if not flag_written:
+            output.append("CONFIG_APP_PROJECT_VER_FROM_CONFIG=y")
+            flag_written = True
+        continue
+    if line.startswith("CONFIG_APP_PROJECT_VER="):
+        if not version_written:
+            output.append(f'CONFIG_APP_PROJECT_VER="{escaped_version}"')
+            version_written = True
+        continue
+
+    output.append(line)
+
+if not flag_written:
+    output.append("CONFIG_APP_PROJECT_VER_FROM_CONFIG=y")
+
+if not version_written:
+    output.append(f'CONFIG_APP_PROJECT_VER="{escaped_version}"')
+
+sdkconfig_path.write_text("\n".join(output) + "\n")
+PY
+}
+
+write_manifest() {
+  local nodeid="$1"
+  local version="$2"
+  local node_dir="$FIRMWARE_DIR/$nodeid"
+  local latest_bin="$node_dir/latest.bin"
+
+  if [[ ! -f "$latest_bin" ]]; then
+    echo "WARNING: Cannot create manifest for $nodeid (missing $latest_bin)" >&2
+    return
+  fi
+
+  local size
+  size=$(wc -c < "$latest_bin")
+  local sha
+  sha=$(sha256_file "$latest_bin")
+  local generated_at
+  generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  local safe_version
+  safe_version="$(sanitize_version "$version")"
+  local manifest_json
+  manifest_json=$(cat <<JSON
+{
+  "device_id": "$nodeid",
+  "version": "$version",
+  "size": $size,
+  "sha256_hex": "$sha",
+  "binary_url": "latest.bin",
+  "generated_at": "$generated_at"
+}
+JSON
+  )
+
+  local manifest_path="$node_dir/manifest.json"
+  local manifest_versioned="$node_dir/manifest_${safe_version}.json"
+  local tmp
+  tmp=$(mktemp)
+  printf '%s\n' "$manifest_json" > "$tmp"
+  sudo mv "$tmp" "$manifest_path"
+  sudo chmod 644 "$manifest_path" 2>/dev/null || true
+
+  tmp=$(mktemp)
+  printf '%s\n' "$manifest_json" > "$tmp"
+  sudo mv "$tmp" "$manifest_versioned"
+  sudo chmod 644 "$manifest_versioned" 2>/dev/null || true
+  echo "Updated manifest: $manifest_path (version $version)"
+}
+
 # --- MAIN LOOP ---
 if [[ ! -d "$CONFIG_ROOT" ]]; then
   echo "ERROR: CONFIG_ROOT not found: $CONFIG_ROOT"
@@ -110,6 +245,9 @@ for target_dir in "$CONFIG_ROOT"/*/; do
     # Copy sdkconfig in place for this build/flash
     cp "$config_file" sdkconfig
 
+    echo "Embedding firmware version into sdkconfig"
+    update_sdkconfig_version "sdkconfig" "$FIRMWARE_VERSION"
+
     # Remove build dir before flash as well
     echo "Removing local ./build directory safely BEFORE flashing ..."
     safe_rm_build
@@ -121,6 +259,7 @@ for target_dir in "$CONFIG_ROOT"/*/; do
 
     # Version/rotate artifacts
     archive_and_update_latest "$nodeid"
+    write_manifest "$nodeid" "$FIRMWARE_VERSION"
     echo "--- Done: $nodeid ---"
   done
 
