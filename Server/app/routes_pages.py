@@ -1,6 +1,7 @@
+import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -38,6 +39,7 @@ from .presets import get_room_presets
 from .motion import motion_manager
 from .motion_schedule import motion_schedule
 from .status_monitor import status_monitor
+from .routes_api import get_bus
 from .brightness_limits import brightness_limits
 
 
@@ -45,6 +47,7 @@ router = APIRouter()
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 NODE_MODULE_TEMPLATES = ["ws", "rgb", "white", "motion"]
+logger = logging.getLogger(__name__)
 
 
 def _require_current_user(
@@ -474,6 +477,33 @@ def _collect_admin_nodes(
     return nodes
 
 
+def _request_status_updates(node_entries: Iterable[Dict[str, Any]]) -> None:
+    seen: set[str] = set()
+    for entry in node_entries:
+        node_id = entry.get("id") if isinstance(entry, dict) else None
+        if node_id is None:
+            continue
+        if not isinstance(node_id, str):
+            node_id = str(node_id)
+        clean_id = node_id.strip()
+        if clean_id:
+            seen.add(clean_id)
+    if not seen:
+        return
+
+    try:
+        bus = get_bus()
+    except Exception:  # pragma: no cover - best-effort logging for unexpected failure
+        logger.exception("Failed to request admin status refresh: MQTT bus unavailable")
+        return
+
+    for node_id in seen:
+        try:
+            bus.status_request(node_id)
+        except Exception:  # pragma: no cover - best-effort logging for publish issues
+            logger.exception("Failed to request status update for node %s", node_id)
+
+
 def _admin_template_context(
     request: Request,
     *,
@@ -527,6 +557,7 @@ def admin_panel(
             status_code=status.HTTP_403_FORBIDDEN,
         )
     nodes = _collect_admin_nodes(policy)
+    _request_status_updates(nodes)
     return templates.TemplateResponse(
         request,
         "admin.html",
@@ -712,6 +743,7 @@ def admin_house_panel(
         )
 
     nodes = _collect_admin_nodes(policy, house_ctx.slug)
+    _request_status_updates(nodes)
     house_name = house_ctx.original.get("name") or house_ctx.slug or house_id
     rooms: List[Dict[str, Any]] = []
     for entry in house_ctx.original.get("rooms", []) or []:
