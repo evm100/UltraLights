@@ -153,6 +153,13 @@ class NodeCredential(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
+    token_issued_at: datetime = Field(
+        default_factory=datetime.utcnow, sa_column=_timestamp_column(onupdate=True)
+    )
+    provisioned_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
 
 
 __all__ = [
