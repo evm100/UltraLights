@@ -10,7 +10,6 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CONFIG_ROOT="${CONFIG_ROOT:-../../Configs}"
 FIRMWARE_DIR="${FIRMWARE_DIR:-/srv/firmware/UltraLights}"
 FIRMWARE_ARCHIVE_DIR="${FIRMWARE_ARCHIVE_DIR:-${PROJECT_ROOT}/firmware_artifacts}"
-FIRMWARE_ROOT_NAME="$(basename "$FIRMWARE_DIR")"
 
 mkdir -p "${FIRMWARE_ARCHIVE_DIR}"
 
@@ -91,148 +90,15 @@ remove_file_with_sudo() {
   sudo rm -f "$path"
 }
 
-ensure_directory() {
-  local dir="$1"
-  mkdir -p "$dir" 2>/dev/null || sudo mkdir -p "$dir"
-}
-
-copy_tree_with_sudo() {
-  local src="$1"
-  local dest="$2"
-
-  if [[ ! -d "$src" ]]; then
-    return
-  fi
-
-  ensure_directory "$dest"
-
-  if ! cp -a "$src/." "$dest/" 2>/dev/null; then
-    sudo cp -a "$src/." "$dest/" 2>/dev/null || true
-  fi
-}
-
-remove_dir_with_sudo() {
-  local dir="$1"
-
-  if [[ ! -d "$dir" ]]; then
-    return
-  fi
-
-  if rm -rf "$dir" 2>/dev/null; then
-    return
-  fi
-
-  sudo rm -rf "$dir" 2>/dev/null || true
-}
-
-prepare_download_directory() {
-  local download_dir="$1"
-  local legacy_dir="$2"
-
-  if [[ -e "$download_dir" && ! -d "$download_dir" && ! -L "$download_dir" ]]; then
-    echo "ERROR: $download_dir exists and is not a directory" >&2
-    exit 1
-  fi
-
-  if [[ -L "$download_dir" ]]; then
-    local target
-    target="$(readlink -f "$download_dir" || true)"
-    echo "Converting legacy symlink $download_dir -> ${target:-missing} to directory"
-    if ! rm -f "$download_dir" 2>/dev/null; then
-      sudo rm -f "$download_dir"
-    fi
-    ensure_directory "$download_dir"
-    if [[ -n "$target" && -d "$target" && "$target" != "$download_dir" ]]; then
-      echo "Copying firmware files from $target into $download_dir"
-      copy_tree_with_sudo "$target" "$download_dir"
-    fi
-  else
-    ensure_directory "$download_dir"
-  fi
-
-  if [[ -d "$legacy_dir" && "$legacy_dir" != "$download_dir" ]]; then
-    echo "Migrating legacy firmware directory $legacy_dir into $download_dir"
-    copy_tree_with_sudo "$legacy_dir" "$download_dir"
-    remove_dir_with_sudo "$legacy_dir"
-  fi
-}
-
-get_sdkconfig_value() {
-  local sdkconfig_path="$1"
-  local key="$2"
-
-  python3 - "$sdkconfig_path" "$key" <<'PY'
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-key = sys.argv[2]
-
-try:
-    lines = path.read_text().splitlines()
-except FileNotFoundError:
-    sys.exit(0)
-
-prefix = f"{key}="
-for line in lines:
-    if not line.startswith(prefix):
-        continue
-    value = line[len(prefix):].strip()
-    if value.startswith('"') and value.endswith('"'):
-        value = value[1:-1]
-    print(value)
-    break
-PY
-}
-
-extract_download_id_from_url() {
-  local url="$1"
-  local firmware_root_name="$2"
-
-  python3 - "$url" "$firmware_root_name" <<'PY'
-import sys
-from urllib.parse import urlparse
-
-url = sys.argv[1]
-firmware_root = sys.argv[2]
-
-if not url:
-    sys.exit(0)
-
-path = urlparse(url).path
-parts = [p for p in path.split("/") if p]
-
-try:
-    idx = parts.index("firmware")
-except ValueError:
-    sys.exit(0)
-
-segments = parts[idx + 1 :]
-if not segments:
-    sys.exit(0)
-
-candidate = segments[0]
-
-if len(segments) >= 2 and candidate == firmware_root:
-    candidate = segments[1]
-
-if candidate in {"manifest", "manifest.json", "latest.bin"} and len(segments) >= 2:
-    candidate = segments[-2]
-
-if candidate:
-    print(candidate)
-PY
-}
-
 migrate_legacy_archives() {
-  local storage_dir="$1"
-  local archive_node_dir="$2"
-  local label="$3"
+  local nodeid="$1"
+  local node_dir="$FIRMWARE_DIR/$nodeid"
+  local archive_node_dir="$FIRMWARE_ARCHIVE_DIR/$nodeid"
 
-  ensure_directory "$archive_node_dir"
+  mkdir -p "$archive_node_dir"
 
   local legacy_file
-  for legacy_file in "$storage_dir"/*.bin; do
+  for legacy_file in "$node_dir"/*.bin; do
     local base
     base="$(basename "$legacy_file")"
 
@@ -240,7 +106,7 @@ migrate_legacy_archives() {
       continue
     fi
 
-    echo "Migrating legacy firmware artifact $base for ${label:-node} to private archive"
+    echo "Migrating legacy firmware artifact $base for $nodeid to private archive"
     copy_file_to_private_archive "$legacy_file" "$archive_node_dir/$base"
     remove_file_with_sudo "$legacy_file"
   done
@@ -248,17 +114,15 @@ migrate_legacy_archives() {
 
 archive_and_update_latest() {
   local nodeid="$1"
-  local downloadid="$2"
-  local download_dir="$FIRMWARE_DIR/$downloadid"
-  local legacy_dir="$FIRMWARE_DIR/$nodeid"
+  local node_dir="$FIRMWARE_DIR/$nodeid"
   local archive_node_dir="$FIRMWARE_ARCHIVE_DIR/$nodeid"
   local new_bin="build/ultralights.bin"
-  local manifest_path="$download_dir/manifest.json"
+  local manifest_path="$node_dir/manifest.json"
 
-  prepare_download_directory "$download_dir" "$legacy_dir"
-  ensure_directory "$archive_node_dir"
+  mkdir -p "$node_dir"
+  mkdir -p "$archive_node_dir"
 
-  migrate_legacy_archives "$download_dir" "$archive_node_dir" "$nodeid"
+  migrate_legacy_archives "$nodeid"
 
   local previous_version=""
   if [[ -f "$manifest_path" ]]; then
@@ -287,7 +151,7 @@ PY
   fi
 
   # Move previous latest.bin into the private archive if it exists
-  if [[ -f "$download_dir/latest.bin" ]]; then
+  if [[ -f "$node_dir/latest.bin" ]]; then
     if [[ -n "$previous_version" ]]; then
       local safe_prev_version
       safe_prev_version="$(sanitize_version "$previous_version")"
@@ -297,7 +161,7 @@ PY
         archived_path="$archive_node_dir/${safe_prev_version}.bin"
 
         echo "Archiving previous latest.bin for $nodeid -> ${safe_prev_version}.bin (version $previous_version) in private storage"
-        copy_file_to_private_archive "$download_dir/latest.bin" "$archived_path"
+        copy_file_to_private_archive "$node_dir/latest.bin" "$archived_path"
       else
         echo "WARNING: Previous manifest version for $nodeid sanitized to empty; skipping archive rename."
       fi
@@ -311,8 +175,8 @@ PY
   # Copy newly built firmware to latest.bin
   if [[ -f "$new_bin" ]]; then
     echo "Updating latest.bin for $nodeid"
-    sudo cp "$new_bin" "$download_dir/latest.bin"
-    sudo chmod 644 "$download_dir/latest.bin" 2>/dev/null || true
+    sudo cp "$new_bin" "$node_dir/latest.bin"
+    sudo chmod 644 "$node_dir/latest.bin" 2>/dev/null || true
 
     local safe_current_version
     safe_current_version="$(sanitize_version "$FIRMWARE_VERSION")"
@@ -408,12 +272,8 @@ PY
 write_manifest() {
   local nodeid="$1"
   local version="$2"
-  local downloadid="$3"
-  local download_dir="$FIRMWARE_DIR/$downloadid"
-  local legacy_dir="$FIRMWARE_DIR/$nodeid"
-  local latest_bin="$download_dir/latest.bin"
-
-  prepare_download_directory "$download_dir" "$legacy_dir"
+  local node_dir="$FIRMWARE_DIR/$nodeid"
+  local latest_bin="$node_dir/latest.bin"
 
   if [[ ! -f "$latest_bin" ]]; then
     echo "WARNING: Cannot create manifest for $nodeid (missing $latest_bin)" >&2
@@ -441,8 +301,8 @@ write_manifest() {
 JSON
   )
 
-  local manifest_path="$download_dir/manifest.json"
-  local manifest_versioned="$download_dir/manifest_${safe_version}.json"
+  local manifest_path="$node_dir/manifest.json"
+  local manifest_versioned="$node_dir/manifest_${safe_version}.json"
   local tmp
   tmp=$(mktemp)
   printf '%s\n' "$manifest_json" > "$tmp"
@@ -483,21 +343,9 @@ for target_dir in "$CONFIG_ROOT"/*/; do
   configs_found=false
   for config_file in "$target_dir"/sdkconfig.*; do
     configs_found=true
-    nodeid_guess="${config_file##*.}"
-    sdk_nodeid="$(get_sdkconfig_value "$config_file" "CONFIG_UL_NODE_ID")"
-    if [[ -n "$sdk_nodeid" ]]; then
-      nodeid="$sdk_nodeid"
-    else
-      nodeid="$nodeid_guess"
-    fi
-    manifest_url="$(get_sdkconfig_value "$config_file" "CONFIG_UL_OTA_MANIFEST_URL")"
-    downloadid="$(extract_download_id_from_url "$manifest_url" "$FIRMWARE_ROOT_NAME")"
-    if [[ -z "$downloadid" ]]; then
-      downloadid="$nodeid"
-      echo "WARNING: Falling back to node id for firmware directory of $nodeid" >&2
-    fi
+    nodeid="${config_file##*.}"
     echo
-    echo "--- Processing node: $nodeid (download $downloadid) ---"
+    echo "--- Processing node: $nodeid ---"
     echo "Using config: $config_file"
 
     # Copy sdkconfig in place for this build/flash
@@ -516,8 +364,8 @@ for target_dir in "$CONFIG_ROOT"/*/; do
     $FLASH_CMD
 
     # Version/rotate artifacts
-    archive_and_update_latest "$nodeid" "$downloadid"
-    write_manifest "$nodeid" "$FIRMWARE_VERSION" "$downloadid"
+    archive_and_update_latest "$nodeid"
+    write_manifest "$nodeid" "$FIRMWARE_VERSION"
     echo "--- Done: $nodeid ---"
   done
 

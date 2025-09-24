@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
 from typing import Optional
@@ -18,61 +17,37 @@ from app.auth.service import init_auth_storage  # noqa: E402
 from app.config import settings  # noqa: E402
 
 
-def _remove_download_directory(download_id: Optional[str]) -> None:
+def _ensure_symlink(node_id: str, download_id: str) -> Path:
+    firmware_dir = settings.FIRMWARE_DIR
+    target_dir = firmware_dir / node_id
+    link_path = firmware_dir / download_id
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    if link_path.exists() or link_path.is_symlink():
+        try:
+            existing_target = link_path.resolve(strict=True)
+        except FileNotFoundError:
+            existing_target = None
+        if existing_target == target_dir:
+            return link_path
+        if link_path.is_symlink() or link_path.is_file():
+            link_path.unlink()
+        else:
+            raise RuntimeError(
+                f"Refusing to replace existing directory at {link_path}"
+            )
+
+    link_path.symlink_to(target_dir, target_is_directory=True)
+    return link_path
+
+
+def _remove_symlink(download_id: Optional[str]) -> None:
     if not download_id:
         return
-
-    path = settings.FIRMWARE_DIR / download_id
-    if path.is_symlink() or path.is_file():
-        path.unlink()
-    elif path.is_dir():
-        shutil.rmtree(path)
-
-
-def _copy_tree(src: Path, dest: Path) -> None:
-    for child in src.iterdir():
-        target = dest / child.name
-        if child.is_dir():
-            shutil.copytree(child, target, dirs_exist_ok=True)
-        else:
-            shutil.copy2(child, target)
-
-
-def _ensure_download_directory(node_id: str, download_id: str) -> Path:
-    firmware_dir = settings.FIRMWARE_DIR
-    download_path = firmware_dir / download_id
-    legacy_dir = firmware_dir / node_id
-
-    if download_path.is_symlink():
-        try:
-            target = download_path.resolve(strict=True)
-        except FileNotFoundError:
-            target = None
-        download_path.unlink()
-        if target and target.exists() and target.is_dir():
-            try:
-                target.rename(download_path)
-            except OSError:
-                download_path.mkdir(parents=True, exist_ok=True)
-                _copy_tree(target, download_path)
-                if target == legacy_dir and legacy_dir.exists():
-                    shutil.rmtree(legacy_dir)
-            else:
-                return download_path
-
-    if download_path.exists() and not download_path.is_dir():
-        raise RuntimeError(f"Firmware path is not a directory: {download_path}")
-
-    download_path.mkdir(parents=True, exist_ok=True)
-
-    if legacy_dir.exists() and legacy_dir.is_dir() and legacy_dir != download_path:
-        _copy_tree(legacy_dir, download_path)
-        try:
-            shutil.rmtree(legacy_dir)
-        except OSError:
-            pass
-
-    return download_path
+    link_path = settings.FIRMWARE_DIR / download_id
+    if link_path.is_symlink():
+        link_path.unlink()
 
 
 def _issue_credentials(args: argparse.Namespace) -> int:
@@ -99,13 +74,15 @@ def _issue_credentials(args: argparse.Namespace) -> int:
 
         if not args.no_symlink:
             if previous_download and previous_download != download_id:
-                _remove_download_directory(previous_download)
+                _remove_symlink(previous_download)
             try:
-                storage_path = _ensure_download_directory(args.node_id, download_id)
+                link = _ensure_symlink(args.node_id, download_id)
             except RuntimeError as exc:  # pragma: no cover - defensive
                 print(f"Warning: {exc}", file=sys.stderr)
             else:
-                print(f"Firmware directory: {storage_path}")
+                print(
+                    f"Symlink: {link} -> {link.resolve() if link.exists() else 'missing'}"
+                )
 
         if args.token:
             credential, token = node_credentials.rotate_token(
@@ -152,7 +129,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-symlink",
         action="store_true",
-        help="Do not manage the firmware download directory on disk.",
+        help="Do not manage firmware symlinks for the download identifier.",
     )
     return parser
 
