@@ -3,6 +3,7 @@ import hmac
 import json
 import mimetypes
 import os
+import string
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Tuple
@@ -25,6 +26,8 @@ router = APIRouter()
 FIRMWARE_DIR = settings.FIRMWARE_DIR
 LAN_PUBLIC_BASE = os.getenv("LAN_PUBLIC_BASE", "")  # e.g. https://lan.lights.evm100.org
 
+_PATH_SEGMENT_CHARS = frozenset(string.ascii_letters + string.digits + "-_")
+
 def latest_symlink_for(dev_id: str) -> Path:
     return settings.FIRMWARE_DIR / f"{dev_id}_latest.bin"
 
@@ -40,6 +43,32 @@ def _resolve_latest(device_id: str) -> Path:
             if target.exists():
                 return target
     raise HTTPException(status_code=404, detail=f"No firmware for device_id={device_id}")
+
+
+def _split_download_path(raw: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """Return the sanitized download id and optional namespace prefix."""
+
+    if raw is None:
+        return None, None
+
+    trimmed = raw.strip("/")
+    if not trimmed:
+        return None, None
+
+    segments = [segment for segment in trimmed.split("/") if segment]
+    if not segments:
+        return None, None
+
+    for segment in segments:
+        if segment in {".", ".."}:
+            raise HTTPException(status_code=400, detail="Invalid download identifier")
+        if any(ch not in _PATH_SEGMENT_CHARS for ch in segment):
+            raise HTTPException(status_code=400, detail="Invalid download identifier")
+
+    if len(segments) == 1:
+        return segments[0], None
+
+    return segments[-1], "/".join(segments[:-1])
 
 def _authenticate_request(
     auth_header: Optional[str], session: Session
@@ -86,8 +115,17 @@ def _resolve_access_context(
     authorization: Optional[str],
     device_id: Optional[str],
     download_id: Optional[str],
-) -> Tuple[str, str, Optional[node_credentials.NodeCredential]]:
+) -> Tuple[
+    str,
+    Optional[str],
+    Optional[node_credentials.NodeCredential],
+    Optional[str],
+]:
     """Determine which node and filesystem id a request should access."""
+
+    download_prefix: Optional[str] = None
+    if download_id is not None:
+        download_id, download_prefix = _split_download_path(download_id)
 
     with database.SessionLocal() as session:
         credential, _ = _authenticate_request(authorization, session)
@@ -143,7 +181,23 @@ def _resolve_access_context(
                             legacy_dl = legacy_value
                     resolved_download_id = legacy_dl or resolved_device_id
 
-    return resolved_device_id, resolved_download_id, resolved_credential
+    if resolved_device_id is None:
+        raise HTTPException(status_code=400, detail="device_id required")
+
+    if download_prefix:
+        exposed_download = resolved_download_id or resolved_device_id
+        resolved_download_path = f"{download_prefix}/{exposed_download}"
+    elif resolved_download_id:
+        resolved_download_path = resolved_download_id
+    else:
+        resolved_download_path = resolved_device_id
+
+    return (
+        resolved_device_id,
+        resolved_download_id,
+        resolved_credential,
+        resolved_download_path,
+    )
 
 def _http_date(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
@@ -175,7 +229,12 @@ def _manifest_sig(body: dict) -> Optional[str]:
     return hmac.new(key, payload, hashlib.sha256).hexdigest()
 
 
-def _build_manifest_response(device_id: str, download_id: Optional[str]) -> JSONResponse:
+def _build_manifest_response(
+    device_id: str,
+    download_id: Optional[str],
+    *,
+    download_path: Optional[str] = None,
+) -> JSONResponse:
     target = _resolve_latest(device_id)
     size = target.stat().st_size
     sha = _sha256_hex(target)
@@ -184,7 +243,7 @@ def _build_manifest_response(device_id: str, download_id: Optional[str]) -> JSON
     if "_v" in name and name.endswith(".bin"):
         version = name.split("_v", 1)[-1].rsplit(".bin", 1)[0]
 
-    exposed_id = download_id or device_id
+    exposed_id = download_path or download_id or device_id
     body = {
         "device_id": device_id,
         "version": version,
@@ -195,12 +254,14 @@ def _build_manifest_response(device_id: str, download_id: Optional[str]) -> JSON
 
     if download_id:
         body["download_id"] = download_id
-        body["manifest_url"] = f"{settings.PUBLIC_BASE}/firmware/{download_id}/manifest"
+        body["manifest_url"] = f"{settings.PUBLIC_BASE}/firmware/{exposed_id}/manifest"
 
     if LAN_PUBLIC_BASE:
         body["binary_url_lan"] = f"{LAN_PUBLIC_BASE}/firmware/{exposed_id}/latest.bin"
         if download_id:
-            body["manifest_url_lan"] = f"{LAN_PUBLIC_BASE}/firmware/{download_id}/manifest"
+            body["manifest_url_lan"] = (
+                f"{LAN_PUBLIC_BASE}/firmware/{exposed_id}/manifest"
+            )
 
     sig = _manifest_sig(body)
     headers = {"Cache-Control": "no-store"}
@@ -217,25 +278,43 @@ def api_manifest(
     download_id: Optional[str] = None,
     authorization: Optional[str] = Header(None),
 ):
-    resolved_device_id, resolved_download_id, _ = _resolve_access_context(
+    (
+        resolved_device_id,
+        resolved_download_id,
+        _,
+        resolved_download_path,
+    ) = _resolve_access_context(
         authorization=authorization,
         device_id=device_id,
         download_id=download_id,
     )
-    return _build_manifest_response(resolved_device_id, resolved_download_id)
+    return _build_manifest_response(
+        resolved_device_id,
+        resolved_download_id,
+        download_path=resolved_download_path,
+    )
 
 
-@router.get("/firmware/{download_id}/manifest")
+@router.get("/firmware/{download_path:path}/manifest")
 def api_manifest_by_download(
-    download_id: str,
+    download_path: str,
     authorization: Optional[str] = Header(None),
 ):
-    resolved_device_id, resolved_download_id, _ = _resolve_access_context(
+    (
+        resolved_device_id,
+        resolved_download_id,
+        _,
+        resolved_download_path,
+    ) = _resolve_access_context(
         authorization=authorization,
         device_id=None,
-        download_id=download_id,
+        download_id=download_path,
     )
-    return _build_manifest_response(resolved_device_id, resolved_download_id)
+    return _build_manifest_response(
+        resolved_device_id,
+        resolved_download_id,
+        download_path=resolved_download_path,
+    )
 
 def _serve_file(path: Path, request: Request) -> Response:
     stat = path.stat()
@@ -285,16 +364,16 @@ def _serve_file(path: Path, request: Request) -> Response:
     headers["Content-Length"] = str(end-start+1)
     return StreamingResponse(file_iter(start, end), headers=headers, media_type=mime, status_code=206)
 
-@router.get("/firmware/{download_id}/latest.bin")
+@router.get("/firmware/{download_path:path}/latest.bin")
 def api_latest_bin(
-    download_id: str,
+    download_path: str,
     request: Request,
     authorization: Optional[str] = Header(None),
 ):
-    resolved_device_id, _, _ = _resolve_access_context(
+    resolved_device_id, _, _, _ = _resolve_access_context(
         authorization=authorization,
         device_id=None,
-        download_id=download_id,
+        download_id=download_path,
     )
     target = _resolve_latest(resolved_device_id)
     return _serve_file(target, request)
