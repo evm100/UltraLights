@@ -18,7 +18,9 @@ class Settings:
     BROKER_PORT = int(os.getenv("BROKER_PORT", "1883"))
     EMBED_BROKER = os.getenv("EMBED_BROKER", "0") == "1"
 
-    FIRMWARE_DIR = Path(os.getenv("FIRMWARE_DIR", "./firmware"))
+    FIRMWARE_DIR = Path(
+        os.getenv("FIRMWARE_DIR", "/srv/firmware/UltraLights")
+    )
     FIRMWARE_DIR.mkdir(parents=True, exist_ok=True)
 
     API_BEARER = os.getenv("API_BEARER", "")

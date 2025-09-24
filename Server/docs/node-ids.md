@@ -40,8 +40,9 @@ no longer contains hashed OTA tokens.
    * optionally rotates the download alias (use `--rotate-download`),
    * writes `CONFIG_UL_NODE_ID`, `CONFIG_UL_OTA_MANIFEST_URL` and
      `CONFIG_UL_OTA_BEARER_TOKEN` into the selected `sdkconfig` files, and
-   * updates the `/srv/firmware/<download_id>` symlink to point at the node’s
-     firmware directory.
+  * updates the `/srv/firmware/<download_id>` symlink (under the default
+    `/srv/firmware/UltraLights` root) to point at the node’s firmware
+    directory.
 
    The plaintext token and manifest URL are printed once so you can archive them
    securely.
@@ -60,8 +61,11 @@ no longer contains hashed OTA tokens.
      verifying that no other device is still using it.
 
    Keeping the download ID handy also lets you inspect the corresponding
-   firmware folder on disk (`/srv/firmware/<download_id>`) during troubleshooting
-   without revealing the node slug.
+   firmware folder on disk (`/srv/firmware/UltraLights/<download_id>`) during
+   troubleshooting without revealing the node slug. The download directory is a
+   symlink that always resolves to the real node folder (for example
+   `/srv/firmware/UltraLights/<node-id>`), so nothing is stored separately inside
+   the download ID itself.
 
 3. **Build and publish firmware.** After the CLI patches `sdkconfig`, build the
    firmware and place the resulting `latest.bin` into
