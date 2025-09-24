@@ -8,7 +8,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # --- CONFIG ---
 CONFIG_ROOT="${CONFIG_ROOT:-../../Configs}"
-FIRMWARE_DIR="${FIRMWARE_DIR:-${PROJECT_ROOT}/firmware}"
+FIRMWARE_DIR="${FIRMWARE_DIR:-/srv/firmware/UltraLights}"
 FIRMWARE_ARCHIVE_DIR="${FIRMWARE_ARCHIVE_DIR:-${PROJECT_ROOT}/firmware_artifacts}"
 
 mkdir -p "${FIRMWARE_ARCHIVE_DIR}"
