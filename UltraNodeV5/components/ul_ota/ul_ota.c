@@ -628,6 +628,7 @@ void ul_ota_check_now(bool force)
 
     esp_http_client_config_t ota_http_cfg = http_cfg;
     ota_http_cfg.url = resolved_ota_url;
+
     ota_http_cfg.event_handler = _http_event_handler;
     ota_http_cfg.user_data = NULL;
 
@@ -657,6 +658,7 @@ void ul_ota_check_now(bool force)
                 }
                 free(resolved_ota_url);
                 resolved_ota_url = NULL;
+
                 ESP_LOGI(TAG, "Rebooting after OTA");
                 esp_restart();
             } else {
@@ -679,6 +681,7 @@ void ul_ota_check_now(bool force)
 
 cleanup:
     free(resolved_ota_url);
+
     if (have_manifest) {
         ul_ota_manifest_free(&manifest);
     }
