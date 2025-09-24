@@ -31,6 +31,9 @@ class Settings:
     SESSION_SECRET = os.getenv("SESSION_SECRET", "dev-session-secret")
     INITIAL_ADMIN_USERNAME = os.getenv("INITIAL_ADMIN_USERNAME", "")
     INITIAL_ADMIN_PASSWORD = os.getenv("INITIAL_ADMIN_PASSWORD", "")
+    LOGIN_ATTEMPT_LIMIT = int(os.getenv("LOGIN_ATTEMPT_LIMIT", "5"))
+    LOGIN_ATTEMPT_WINDOW = int(os.getenv("LOGIN_ATTEMPT_WINDOW", "300"))
+    LOGIN_BACKOFF_SECONDS = int(os.getenv("LOGIN_BACKOFF_SECONDS", "900"))
 
     # ------------------------------------------------------------------
     # Device registry ---------------------------------------------------

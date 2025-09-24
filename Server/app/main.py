@@ -10,6 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import registry
 from .auth import SESSION_TOKEN_TTL_SECONDS, init_auth_storage
+from .auth.throttling import reset_login_rate_limiter
 from .config import settings
 from .database import get_session
 from .motion import motion_manager
@@ -57,6 +58,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     registry.ensure_house_external_ids()
     init_auth_storage()
+    reset_login_rate_limiter()
     app.dependency_overrides[get_session] = get_session
 
     try:
