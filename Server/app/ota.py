@@ -23,21 +23,18 @@ router = APIRouter()
 # from .config import FIRMWARE_DIR, PUBLIC_BASE, API_BEARER, MANIFEST_HMAC_SECRET, LAN_PUBLIC_BASE
 
 FIRMWARE_DIR = settings.FIRMWARE_DIR
-SYMLINK_DIR = settings.FIRMWARE_SYMLINK_DIR
 LAN_PUBLIC_BASE = os.getenv("LAN_PUBLIC_BASE", "")  # e.g. https://lan.lights.evm100.org
 
 def latest_symlink_for(dev_id: str) -> Path:
-    return SYMLINK_DIR / f"{dev_id}_latest.bin"
+    return settings.FIRMWARE_DIR / f"{dev_id}_latest.bin"
 
 def _resolve_latest(device_id: str) -> Path:
-    # 1) flat symlink:  /srv/firmware/UltraLights/<device>_latest.bin
-    flat = SYMLINK_DIR / f"{device_id}_latest.bin"
-    # 2) nested symlink directory: /srv/firmware/UltraLights/<device>/latest.bin
-    nested_symlink = SYMLINK_DIR / device_id / "latest.bin"
-    # 3) storage directory: <project-root>/firmware/<device>/latest.bin
-    nested_storage = FIRMWARE_DIR / device_id / "latest.bin"
+    # 1) flat symlink:  /srv/firmware/UltraNode2_latest.bin
+    flat = FIRMWARE_DIR / f"{device_id}_latest.bin"
+    # 2) nested file:   /srv/firmware/UltraNode2/latest.bin
+    nested = FIRMWARE_DIR / device_id / "latest.bin"
 
-    for p in (flat, nested_symlink, nested_storage):
+    for p in (flat, nested):
         if p.exists():
             target = p.resolve() if p.is_symlink() else p
             if target.exists():

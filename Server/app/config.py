@@ -4,8 +4,6 @@ from dotenv import load_dotenv
 load_dotenv()  # reads .env in the project root
 
 class Settings:
-    PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
     DATA_DIR = Path(os.getenv("DATA_DIR", "./data")).expanduser().resolve()
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -21,14 +19,9 @@ class Settings:
     EMBED_BROKER = os.getenv("EMBED_BROKER", "0") == "1"
 
     FIRMWARE_DIR = Path(
-        os.getenv("FIRMWARE_DIR", str(PROJECT_ROOT / "firmware"))
-    ).expanduser().resolve()
+        os.getenv("FIRMWARE_DIR", "/srv/firmware/UltraLights")
+    )
     FIRMWARE_DIR.mkdir(parents=True, exist_ok=True)
-
-    FIRMWARE_SYMLINK_DIR = Path(
-        os.getenv("FIRMWARE_SYMLINK_DIR", "/srv/firmware/UltraLights")
-    ).expanduser().resolve()
-    FIRMWARE_SYMLINK_DIR.mkdir(parents=True, exist_ok=True)
 
     API_BEARER = os.getenv("API_BEARER", "")
     MANIFEST_HMAC_SECRET = os.getenv("MANIFEST_HMAC_SECRET", "")

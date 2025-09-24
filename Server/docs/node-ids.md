@@ -69,9 +69,9 @@ no longer contains hashed OTA tokens.
 
    firmware folder on disk (`/srv/firmware/UltraLights/<download_id>`) during
    troubleshooting without revealing the node slug. The download directory is a
-   symlink that resolves to the node folder in the project firmware storage (for
-   example `<project-root>/firmware/<node-id>` by default), so nothing is stored
-   separately inside the download ID itself.
+   symlink that always resolves to the real node folder (for example
+   `/srv/firmware/UltraLights/<node-id>`), so nothing is stored separately inside
+   the download ID itself.
 
 3. **Build and publish firmware.** After the CLI patches `sdkconfig`, build the
    firmware and place the resulting `latest.bin` into
