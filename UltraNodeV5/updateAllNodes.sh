@@ -54,26 +54,58 @@ archive_and_update_latest() {
   local nodeid="$1"
   local node_dir="$FIRMWARE_DIR/$nodeid"
   local new_bin="build/ultralights.bin"
+  local manifest_path="$node_dir/manifest.json"
 
   mkdir -p "$node_dir"
 
-  # Find highest existing 1.x.bin
-  local highest=0
-  local f num
-  for f in "$node_dir"/1.*.bin; do
-    [[ -f "$f" ]] || continue
-    num="${f##*1.}"
-    num="${num%.bin}"
-    if [[ "$num" =~ ^[0-9]+$ ]] && (( num > highest )); then
-      highest=$num
-    fi
-  done
-  local next=$((highest + 1))
+  local previous_version=""
+  if [[ -f "$manifest_path" ]]; then
+    previous_version=$(python3 - "$manifest_path" <<'PY'
+import json
+import sys
 
-  # Move previous latest.bin -> 1.next.bin if it exists
+path = sys.argv[1]
+
+try:
+    with open(path, 'r', encoding='utf-8') as fp:
+        data = json.load(fp)
+except Exception:
+    sys.exit(0)
+
+version = data.get("version")
+if version is None:
+    sys.exit(0)
+
+if not isinstance(version, str):
+    version = str(version)
+
+print(version.strip())
+PY
+)
+  fi
+
+  # Move previous latest.bin -> <previous_version>.bin if it exists
   if [[ -f "$node_dir/latest.bin" ]]; then
-    echo "Archiving previous latest.bin -> 1.${next}.bin"
-    sudo mv "$node_dir/latest.bin" "$node_dir/1.${next}.bin"
+    if [[ -n "$previous_version" ]]; then
+      local safe_prev_version
+      safe_prev_version="$(sanitize_version "$previous_version")"
+
+      if [[ -n "$safe_prev_version" ]]; then
+        local archived_path
+        archived_path="$node_dir/${safe_prev_version}.bin"
+
+        if [[ "$archived_path" == "$node_dir/latest.bin" ]]; then
+          echo "WARNING: Previous manifest version for $nodeid resolves to latest.bin; skipping archive rename."
+        else
+          echo "Archiving previous latest.bin -> ${safe_prev_version}.bin (version $previous_version)"
+          sudo mv "$node_dir/latest.bin" "$archived_path"
+        fi
+      else
+        echo "WARNING: Previous manifest version for $nodeid sanitized to empty; skipping archive rename."
+      fi
+    else
+      echo "No previous manifest version found for $nodeid; skipping archive rename."
+    fi
   else
     echo "No existing latest.bin to archive for $nodeid."
   fi
