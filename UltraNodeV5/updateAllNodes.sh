@@ -114,6 +114,55 @@ sanitize_version() {
   printf '%s' "$version" | sed 's/[^A-Za-z0-9._-]/_/g'
 }
 
+update_sdkconfig_version() {
+  local sdkconfig_path="$1"
+  local version="$2"
+
+  python3 - "$sdkconfig_path" "$version" <<'PY'
+import sys
+from pathlib import Path
+
+sdkconfig_path = Path(sys.argv[1])
+version = sys.argv[2].strip()
+
+escaped_version = version.replace("\\", "\\\\").replace('"', '\\"')
+
+lines = sdkconfig_path.read_text().splitlines()
+
+flag_written = False
+version_written = False
+output = []
+
+for line in lines:
+    if line.startswith("CONFIG_APP_PROJECT_VER_FROM_CONFIG"):
+        if not flag_written:
+            output.append("CONFIG_APP_PROJECT_VER_FROM_CONFIG=y")
+            flag_written = True
+        # Skip duplicate entries
+        continue
+    if line.startswith("# CONFIG_APP_PROJECT_VER_FROM_CONFIG"):
+        if not flag_written:
+            output.append("CONFIG_APP_PROJECT_VER_FROM_CONFIG=y")
+            flag_written = True
+        continue
+    if line.startswith("CONFIG_APP_PROJECT_VER="):
+        if not version_written:
+            output.append(f'CONFIG_APP_PROJECT_VER="{escaped_version}"')
+            version_written = True
+        continue
+
+    output.append(line)
+
+if not flag_written:
+    output.append("CONFIG_APP_PROJECT_VER_FROM_CONFIG=y")
+
+if not version_written:
+    output.append(f'CONFIG_APP_PROJECT_VER="{escaped_version}"')
+
+sdkconfig_path.write_text("\n".join(output) + "\n")
+PY
+}
+
 write_manifest() {
   local nodeid="$1"
   local version="$2"
@@ -195,6 +244,9 @@ for target_dir in "$CONFIG_ROOT"/*/; do
 
     # Copy sdkconfig in place for this build/flash
     cp "$config_file" sdkconfig
+
+    echo "Embedding firmware version into sdkconfig"
+    update_sdkconfig_version "sdkconfig" "$FIRMWARE_VERSION"
 
     # Remove build dir before flash as well
     echo "Removing local ./build directory safely BEFORE flashing ..."
