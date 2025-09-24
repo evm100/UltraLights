@@ -23,6 +23,7 @@ These helpers simplify finding houses, rooms and nodes in the registry.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import secrets
@@ -42,6 +43,45 @@ def slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 EXTERNAL_ID_ALPHABET = string.ascii_lowercase + string.ascii_uppercase + string.digits
+DOWNLOAD_ID_ALPHABET = string.ascii_lowercase + string.ascii_uppercase + string.digits
+NODE_ID_ALPHABET = string.ascii_lowercase + string.digits
+
+DEFAULT_DOWNLOAD_ID_LENGTH = 22
+DEFAULT_NODE_ID_LENGTH = 22
+DEFAULT_TOKEN_BYTES = 32
+
+NODE_DOWNLOAD_ID_KEY = "download_id"
+NODE_TOKEN_HASH_KEY = "ota_token_hash"
+
+
+def generate_node_token(num_bytes: int = DEFAULT_TOKEN_BYTES) -> str:
+    """Return a random bearer token for a node."""
+
+    if num_bytes <= 0:
+        raise ValueError("num_bytes must be positive")
+    return secrets.token_urlsafe(num_bytes)
+
+
+def hash_node_token(token: str) -> str:
+    """Return a hex digest suitable for storing the node token."""
+
+    if not isinstance(token, str) or not token:
+        raise ValueError("token must be a non-empty string")
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def generate_download_id(length: Optional[int] = None) -> str:
+    """Return a random identifier used to expose firmware downloads."""
+
+    target_length = max(12, min(48, length or DEFAULT_DOWNLOAD_ID_LENGTH))
+    return "".join(secrets.choice(DOWNLOAD_ID_ALPHABET) for _ in range(target_length))
+
+
+def generate_node_id(length: Optional[int] = None) -> str:
+    """Return a random, opaque identifier for a node."""
+
+    target_length = max(16, min(MAX_NODE_ID_LENGTH, length or DEFAULT_NODE_ID_LENGTH))
+    return "".join(secrets.choice(NODE_ID_ALPHABET) for _ in range(target_length))
 
 
 def save_registry() -> None:
@@ -57,6 +97,49 @@ def generate_house_external_id(length: Optional[int] = None) -> str:
     max_length = settings.MAX_HOUSE_ID_LENGTH
     target_length = max(8, min(max_length, length or max_length))
     return "".join(secrets.choice(EXTERNAL_ID_ALPHABET) for _ in range(target_length))
+
+
+def _generate_unique_download_id(seen: set[str]) -> str:
+    while True:
+        candidate = generate_download_id()
+        if candidate not in seen:
+            seen.add(candidate)
+            return candidate
+
+
+def ensure_node_download_ids(
+    registry: Optional[Registry] = None,
+    *,
+    persist: bool = True,
+) -> bool:
+    """Ensure every node in ``registry`` carries a unique download identifier."""
+
+    if registry is None:
+        registry = settings.DEVICE_REGISTRY
+
+    changed = False
+    seen: set[str] = set()
+
+    for _, _, node in iter_nodes(registry):
+        if not isinstance(node, dict):
+            continue
+        raw = node.get(NODE_DOWNLOAD_ID_KEY)
+        download_id = str(raw).strip() if isinstance(raw, str) else ""
+        if (
+            not download_id
+            or any(ch not in DOWNLOAD_ID_ALPHABET for ch in download_id)
+            or download_id in seen
+        ):
+            download_id = _generate_unique_download_id(seen)
+            node[NODE_DOWNLOAD_ID_KEY] = download_id
+            changed = True
+        else:
+            seen.add(download_id)
+
+    if changed and persist and registry is settings.DEVICE_REGISTRY:
+        save_registry()
+
+    return changed
 
 
 def ensure_house_external_ids(
@@ -132,6 +215,28 @@ def iter_nodes(registry: Optional[Registry] = None) -> Iterator[Tuple[House, Roo
                 yield house, room, node
 
 
+def find_node_by_download_id(
+    download_id: str,
+    registry: Optional[Registry] = None,
+) -> Tuple[Optional[House], Optional[Room], Optional[Node]]:
+    normalized = str(download_id)
+    for house, room, node in iter_nodes(registry):
+        if node.get(NODE_DOWNLOAD_ID_KEY) == normalized:
+            return house, room, node
+    return None, None, None
+
+
+def find_node_by_token_hash(
+    token_hash: str,
+    registry: Optional[Registry] = None,
+) -> Tuple[Optional[House], Optional[Room], Optional[Node]]:
+    normalized = str(token_hash)
+    for house, room, node in iter_nodes(registry):
+        if node.get(NODE_TOKEN_HASH_KEY) == normalized:
+            return house, room, node
+    return None, None, None
+
+
 def find_house(house_id: str) -> Optional[House]:
     ensure_house_external_ids(persist=False)
     if house_id is None:
@@ -193,6 +298,56 @@ def find_node(node_id: str) -> Tuple[Optional[House], Optional[Room], Optional[N
         if node.get("id") == node_id:
             return house, room, node
     return None, None, None
+
+
+def set_node_download_id(
+    node_id: str,
+    download_id: str,
+    *,
+    persist: bool = True,
+) -> Node:
+    """Assign ``download_id`` to ``node_id`` ensuring uniqueness."""
+
+    normalized = str(download_id).strip()
+    if not normalized:
+        raise ValueError("download_id must be a non-empty string")
+    if any(ch not in DOWNLOAD_ID_ALPHABET for ch in normalized):
+        raise ValueError("download_id contains invalid characters")
+
+    _, _, existing = find_node_by_download_id(normalized)
+    if existing and existing.get("id") != node_id:
+        raise ValueError("download_id already assigned to another node")
+
+    house, room, node = find_node(node_id)
+    if not node:
+        raise KeyError("node not found")
+
+    node[NODE_DOWNLOAD_ID_KEY] = normalized
+    if persist and settings.DEVICE_REGISTRY is not None:
+        save_registry()
+    return node
+
+
+def set_node_token_hash(
+    node_id: str,
+    token_hash: Optional[str],
+    *,
+    persist: bool = True,
+) -> Node:
+    """Persist ``token_hash`` for ``node_id`` (or clear if ``None``)."""
+
+    house, room, node = find_node(node_id)
+    if not node:
+        raise KeyError("node not found")
+
+    if token_hash:
+        node[NODE_TOKEN_HASH_KEY] = str(token_hash)
+    else:
+        node.pop(NODE_TOKEN_HASH_KEY, None)
+
+    if persist and settings.DEVICE_REGISTRY is not None:
+        save_registry()
+    return node
 
 
 def add_room(house_id: str, name: str) -> Room:
@@ -265,22 +420,34 @@ def add_node(
     if not room:
         raise KeyError("room not found")
 
-    node_slug = slugify(name)
-    if not node_slug:
+    normalized_name = str(name).strip()
+    if not normalized_name:
         raise ValueError("node name produces empty slug")
 
-    house_slug = slugify(str(house_id))
-    node_id = f"{house_slug}-{node_slug}" if house_slug else node_slug
+    nodes_in_room = room.get("nodes")
+    existing_nodes = nodes_in_room if isinstance(nodes_in_room, list) else []
+    normalized_lower = normalized_name.lower()
+    for entry in existing_nodes:
+        if not isinstance(entry, dict):
+            continue
+        raw_name = entry.get("name")
+        if not isinstance(raw_name, str):
+            continue
+        if raw_name.strip().lower() == normalized_lower:
+            raise ValueError("node name already exists")
 
-    if len(node_id) > MAX_NODE_ID_LENGTH:
-        raise ValueError(f"node id too long (max {MAX_NODE_ID_LENGTH} characters)")
-
+    existing_ids: set[str] = set()
     for _, _, existing in iter_nodes():
         existing_id = existing.get("id")
-        if isinstance(existing_id, str) and existing_id == node_id:
-            raise ValueError(f"node id already exists: {node_id}")
+        if isinstance(existing_id, str) and existing_id:
+            existing_ids.add(existing_id)
 
-    node = {"id": node_id, "name": name, "kind": kind}
+    while True:
+        node_id = generate_node_id()
+        if node_id not in existing_ids:
+            break
+
+    node = {"id": node_id, "name": normalized_name, "kind": kind}
     node["modules"] = modules or ["ws", "rgb", "white", "ota"]
     room.setdefault("nodes", []).append(node)
     save_registry()

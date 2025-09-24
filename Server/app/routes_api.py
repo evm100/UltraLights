@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 from .mqtt_bus import MqttBus
-from . import registry
+from . import node_credentials, registry
 from .auth.access import AccessPolicy, HouseContext
 from .auth.dependencies import get_current_user
 from .auth.models import User
@@ -23,6 +23,7 @@ from .motion_prefs import motion_preferences
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
 from .channel_names import channel_names
+from .config import settings
 from .database import get_session
 
 
@@ -319,6 +320,7 @@ def api_remove_node(
         removed = registry.remove_node(node_id)
     except KeyError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
+    node_credentials.delete_credentials(session, node_id)
     motion_manager.forget_node(node_id)
     status_monitor.forget(node_id)
     return {"ok": True, "node": removed}
@@ -349,6 +351,13 @@ def api_set_node_name(
         node = registry.set_node_name(node_id, clean_name)
     except KeyError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
+    node_credentials.ensure_for_node(
+        session,
+        node_id=node_id,
+        house_slug=node_ctx.room.house.slug,
+        room_id=node_ctx.room.room["id"],
+        display_name=clean_name,
+    )
     motion_manager.update_node_name(node_id, clean_name)
     return {"ok": True, "node": node}
 
@@ -443,6 +452,7 @@ def api_delete_room(
     for node_id in node_ids:
         motion_manager.forget_node(node_id)
         status_monitor.forget(node_id)
+        node_credentials.delete_credentials(session, node_id)
 
     motion_manager.forget_room(room_ctx.house.slug, room_id)
     motion_schedule.remove_room(room_ctx.house.slug, room_id)
@@ -473,7 +483,30 @@ def api_add_node(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown room")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    return {"ok": True, "node": node}
+    ensured = node_credentials.ensure_for_node(
+        session,
+        node_id=str(node.get("id")),
+        house_slug=room_ctx.house.slug,
+        room_id=room_id,
+        display_name=str(node.get("name") or name),
+        rotate_token=True,
+    )
+
+    credential = ensured.credential
+    registry.set_node_download_id(credential.node_id, credential.download_id)
+
+    manifest_url = f"{settings.PUBLIC_BASE}/firmware/{credential.download_id}/manifest"
+    binary_url = f"{settings.PUBLIC_BASE}/firmware/{credential.download_id}/latest.bin"
+
+    return {
+        "ok": True,
+        "node": node,
+        "credentials": {
+            "downloadId": credential.download_id,
+            "manifestUrl": manifest_url,
+            "binaryUrl": binary_url,
+        },
+    }
 
 
 @router.get("/api/house/{house_id}/room/{room_id}/presets")
