@@ -195,7 +195,7 @@ def _provision(args: argparse.Namespace) -> int:
 
         credential, token = node_credentials.rotate_token(session, args.node_id)
 
-        manifest_url = f"{settings.PUBLIC_BASE}/firmware/{download_id}/manifest"
+        manifest_url = f"{settings.PUBLIC_BASE}/firmware/{download_id}/manifest.json"
         values = {
             "CONFIG_UL_NODE_ID": args.node_id,
             "CONFIG_UL_OTA_MANIFEST_URL": manifest_url,
