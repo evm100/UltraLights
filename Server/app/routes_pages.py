@@ -44,7 +44,7 @@ from .brightness_limits import brightness_limits
 router = APIRouter()
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-NODE_MODULE_TEMPLATES = ["ws", "rgb", "white", "ota", "motion"]
+NODE_MODULE_TEMPLATES = ["ws", "rgb", "white", "motion"]
 
 
 def _require_current_user(
