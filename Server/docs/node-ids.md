@@ -30,7 +30,7 @@ no longer contains hashed OTA tokens.
 
 2. **Generate firmware defaults with the provisioning CLI.** Use
    [`Server/scripts/provision_node_firmware.py`](../scripts/provision_node_firmware.py)
-   to rotate the token, update `sdkconfig`, and manage the firmware symlink in a
+  to rotate the token, update `sdkconfig`, and manage the firmware directory in a
    single command:
 
    ```bash
@@ -44,9 +44,9 @@ no longer contains hashed OTA tokens.
    * optionally rotates the download alias (use `--rotate-download`),
    * writes `CONFIG_UL_NODE_ID`, `CONFIG_UL_OTA_MANIFEST_URL` and
      `CONFIG_UL_OTA_BEARER_TOKEN` into the selected `sdkconfig` files, and
-   * updates the `/srv/firmware/<download_id>` symlink (under the default
-     `/srv/firmware/UltraLights` root) to point at the node’s firmware
-     directory.
+  * ensures the `/srv/firmware/<download_id>` directory (under the default
+    `/srv/firmware/UltraLights` root) exists and contains the node’s firmware
+    artifacts.
 
 
    The plaintext token and manifest URL are printed once so you can archive them
@@ -65,18 +65,16 @@ no longer contains hashed OTA tokens.
    * perform incident response—for example revoking the current token and
      verifying that no other device is still using it.
 
-   Keeping the download ID handy also lets you inspect the corresponding
-
-   firmware folder on disk (`/srv/firmware/UltraLights/<download_id>`) during
-   troubleshooting without revealing the node slug. The download directory is a
-   symlink that always resolves to the real node folder (for example
-   `/srv/firmware/UltraLights/<node-id>`), so nothing is stored separately inside
-   the download ID itself.
+  Keeping the download ID handy also lets you inspect the corresponding
+  firmware folder on disk (`/srv/firmware/UltraLights/<download_id>`) during
+  troubleshooting without revealing the node slug. The download directory holds
+  the firmware artifacts directly, so nothing else in `/srv/firmware/UltraLights`
+  exposes the node identifier.
 
 3. **Build and publish firmware.** After the CLI patches `sdkconfig`, build the
-   firmware and place the resulting `latest.bin` into
-   `${FIRMWARE_DIR}/<node-id>/latest.bin`. The symlink maintained by the CLI
-   exposes the binary through the opaque download alias.
+  firmware and place the resulting `latest.bin` into
+  `${FIRMWARE_DIR}/<download-id>/latest.bin`. The directory name now matches the
+  opaque download alias, so the node ID never appears in the firmware store.
 
 4. **Audit provisioning status.** To see which nodes have already been
    provisioned, run the CLI with `--list`; provisioned entries are marked with an
@@ -85,7 +83,7 @@ no longer contains hashed OTA tokens.
 If you need to regenerate credentials manually, the
 [`manage_node_credentials`](../scripts/manage_node_credentials.py) helper still
 rotates tokens or download aliases and prints the new values, but the provisioning
-CLI is the recommended path because it keeps firmware defaults, symlinks and the
+CLI is the recommended path because it keeps firmware defaults, storage
 database in sync.
 
 ## Why keep download identifiers?
@@ -104,8 +102,9 @@ us a few operational conveniences:
   understands opaque node IDs.
 * The alias gives support staff a shareable handle for diagnostics—you can point
   someone at `/firmware/<download_id>/latest.bin` without also disclosing the
-  node ID. Because the alias is only a symlink, you can rotate or delete it once
-  the troubleshooting session is over.
+  node ID. Because the firmware lives under the download alias itself, retiring
+  an old identifier is as simple as deleting that directory once the
+  troubleshooting session is over.
 
 If these use cases eventually stop mattering we can collapse the indirection and
 serve binaries directly from the node ID, but for now the server and tooling are
