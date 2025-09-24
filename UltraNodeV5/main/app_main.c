@@ -194,13 +194,47 @@ void app_main(void) {
   }
   ul_core_sntp_start();
 
+  const TickType_t status_interval = pdMS_TO_TICKS(30 * 1000);
+  const TickType_t wait_interval = pdMS_TO_TICKS(5000);
+  bool mqtt_ready = false;
+  bool mqtt_wait_logged = false;
+  bool network_wait_logged = false;
+
   // Status heartbeat via MQTT
   while (true) {
+    if (!mqtt_ready) {
+      if (!ul_core_is_connected()) {
+        if (!network_wait_logged) {
+          ESP_LOGI(TAG, "Waiting for network connection before publishing status");
+          network_wait_logged = true;
+        }
+        ul_core_wait_for_ip(portMAX_DELAY);
+        network_wait_logged = false;
+        mqtt_wait_logged = false;
+        continue;
+      }
+      if (ul_mqtt_wait_for_ready(0)) {
+        mqtt_ready = true;
+        mqtt_wait_logged = false;
+        ESP_LOGI(TAG, "MQTT connected; starting status heartbeat");
+      } else {
+        if (!mqtt_wait_logged) {
+          ESP_LOGI(TAG, "Waiting for MQTT connection before publishing status");
+          mqtt_wait_logged = true;
+        }
+        vTaskDelay(wait_interval);
+        continue;
+      }
+    }
+
     if (ul_core_is_connected() && ul_mqtt_is_connected()) {
       ul_mqtt_publish_status();
     } else {
+      mqtt_ready = false;
+      mqtt_wait_logged = false;
+      network_wait_logged = false;
       ESP_LOGW(TAG, "Skipping status publish (disconnected)");
     }
-    vTaskDelay(pdMS_TO_TICKS(30 * 1000));
+    vTaskDelay(status_interval);
   }
 }
