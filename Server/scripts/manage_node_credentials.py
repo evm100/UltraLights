@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
 from typing import Optional
@@ -18,34 +19,59 @@ from app.config import settings  # noqa: E402
 
 
 def _ensure_symlink(node_id: str, download_id: str) -> Path:
-    firmware_dir = settings.FIRMWARE_DIR
-    target_dir = firmware_dir / node_id
-    link_path = firmware_dir / download_id
+    storage_root = settings.FIRMWARE_DIR
+    link_root = settings.FIRMWARE_SYMLINK_DIR
 
+    target_dir = storage_root / node_id
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    if link_path.exists() or link_path.is_symlink():
-        try:
-            existing_target = link_path.resolve(strict=True)
-        except FileNotFoundError:
-            existing_target = None
-        if existing_target == target_dir:
-            return link_path
-        if link_path.is_symlink() or link_path.is_file():
-            link_path.unlink()
-        else:
-            raise RuntimeError(
-                f"Refusing to replace existing directory at {link_path}"
-            )
+    def _ensure_link(link_path: Path) -> Path:
+        link_path.parent.mkdir(parents=True, exist_ok=True)
 
-    link_path.symlink_to(target_dir, target_is_directory=True)
-    return link_path
+        if link_path.exists() or link_path.is_symlink():
+            try:
+                existing_target = link_path.resolve(strict=True)
+            except FileNotFoundError:
+                existing_target = None
+            if existing_target == target_dir:
+                return link_path
+            if link_path.is_symlink() or link_path.is_file():
+                link_path.unlink()
+            elif link_path.is_dir():
+                if target_dir.exists():
+                    try:
+                        next(target_dir.iterdir())
+                    except StopIteration:
+                        target_dir.rmdir()
+                        shutil.move(str(link_path), str(target_dir))
+                    else:
+                        for child in link_path.iterdir():
+                            dest = target_dir / child.name
+                            if dest.exists():
+                                continue
+                            if child.is_dir():
+                                shutil.copytree(child, dest)
+                            else:
+                                shutil.copy2(child, dest)
+                        shutil.rmtree(link_path)
+                else:
+                    shutil.move(str(link_path), str(target_dir))
+            else:
+                raise RuntimeError(
+                    f"Refusing to replace existing directory at {link_path}"
+                )
+
+        link_path.symlink_to(target_dir, target_is_directory=True)
+        return link_path
+
+    _ensure_link(link_root / node_id)
+    return _ensure_link(link_root / download_id)
 
 
 def _remove_symlink(download_id: Optional[str]) -> None:
     if not download_id:
         return
-    link_path = settings.FIRMWARE_DIR / download_id
+    link_path = settings.FIRMWARE_SYMLINK_DIR / download_id
     if link_path.is_symlink():
         link_path.unlink()
 

@@ -34,6 +34,8 @@ def ota_environment(tmp_path, monkeypatch):
     original_public_base = settings.PUBLIC_BASE
     original_api_bearer = settings.API_BEARER
     original_db_url = settings.AUTH_DB_URL
+    original_symlink_dir = getattr(settings, "FIRMWARE_SYMLINK_DIR", settings.FIRMWARE_DIR)
+    original_ota_symlink_dir = getattr(ota, "SYMLINK_DIR", original_symlink_dir)
 
     test_registry = [
         {
@@ -62,9 +64,13 @@ def ota_environment(tmp_path, monkeypatch):
 
     firmware_dir = tmp_path / "firmware"
     firmware_dir.mkdir()
+    symlink_dir = tmp_path / "public"
+    symlink_dir.mkdir()
     monkeypatch.setattr(settings, "FIRMWARE_DIR", firmware_dir)
     monkeypatch.setattr(registry.settings, "FIRMWARE_DIR", firmware_dir)
     monkeypatch.setattr(ota, "FIRMWARE_DIR", firmware_dir)
+    monkeypatch.setattr(ota, "SYMLINK_DIR", symlink_dir)
+    monkeypatch.setattr(settings, "FIRMWARE_SYMLINK_DIR", symlink_dir)
 
     monkeypatch.setattr(settings, "PUBLIC_BASE", "https://example.test")
     monkeypatch.setattr(ota.settings, "PUBLIC_BASE", "https://example.test")
@@ -83,6 +89,7 @@ def ota_environment(tmp_path, monkeypatch):
     yield {
         "registry": settings.DEVICE_REGISTRY,
         "firmware_dir": firmware_dir,
+        "symlink_dir": symlink_dir,
     }
 
     monkeypatch.setattr(settings, "DEVICE_REGISTRY", original_registry)
@@ -90,6 +97,8 @@ def ota_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "FIRMWARE_DIR", original_firmware)
     monkeypatch.setattr(registry.settings, "FIRMWARE_DIR", original_firmware)
     monkeypatch.setattr(ota, "FIRMWARE_DIR", original_firmware)
+    monkeypatch.setattr(ota, "SYMLINK_DIR", original_ota_symlink_dir)
+    monkeypatch.setattr(settings, "FIRMWARE_SYMLINK_DIR", original_symlink_dir)
     monkeypatch.setattr(settings, "PUBLIC_BASE", original_public_base)
     monkeypatch.setattr(ota.settings, "PUBLIC_BASE", original_public_base)
     monkeypatch.setattr(settings, "API_BEARER", original_api_bearer)
@@ -215,6 +224,9 @@ def test_manifest_missing_token_is_rejected(node_credential_info, client):
 def test_manage_node_credentials_cli_creates_token(tmp_path, monkeypatch):
     original_registry = deepcopy(settings.DEVICE_REGISTRY)
     original_firmware = settings.FIRMWARE_DIR
+    original_symlink_dir = getattr(settings, "FIRMWARE_SYMLINK_DIR", original_firmware)
+    original_ota_symlink_dir = getattr(ota, "SYMLINK_DIR", original_symlink_dir)
+    original_ota_firmware_dir = getattr(ota, "FIRMWARE_DIR", original_firmware)
     original_db_url = settings.AUTH_DB_URL
 
     test_registry = [
@@ -242,10 +254,15 @@ def test_manage_node_credentials_cli_creates_token(tmp_path, monkeypatch):
     monkeypatch.setattr(registry.settings, "DEVICE_REGISTRY", settings.DEVICE_REGISTRY)
     monkeypatch.setattr(registry, "save_registry", lambda: None)
 
-    firmware_dir = tmp_path / "fw"
+    firmware_dir = tmp_path / "fw-storage"
     firmware_dir.mkdir()
+    symlink_dir = tmp_path / "fw-public"
+    symlink_dir.mkdir()
     monkeypatch.setattr(settings, "FIRMWARE_DIR", firmware_dir)
+    monkeypatch.setattr(settings, "FIRMWARE_SYMLINK_DIR", symlink_dir)
     monkeypatch.setattr(registry.settings, "FIRMWARE_DIR", firmware_dir)
+    monkeypatch.setattr(ota, "FIRMWARE_DIR", firmware_dir)
+    monkeypatch.setattr(ota, "SYMLINK_DIR", symlink_dir)
 
     db_path = tmp_path / "auth.sqlite3"
     db_url = f"sqlite:///{db_path}"
@@ -275,14 +292,17 @@ def test_manage_node_credentials_cli_creates_token(tmp_path, monkeypatch):
         assert record.download_id == "CLISLOT123"
         assert record.token_hash == registry.hash_node_token("plain-token")
 
-    link = firmware_dir / "CLISLOT123"
+    link = symlink_dir / "CLISLOT123"
     assert link.is_symlink()
     assert link.resolve() == firmware_dir / "cli-node"
 
     monkeypatch.setattr(settings, "DEVICE_REGISTRY", original_registry)
     monkeypatch.setattr(registry.settings, "DEVICE_REGISTRY", original_registry)
     monkeypatch.setattr(settings, "FIRMWARE_DIR", original_firmware)
+    monkeypatch.setattr(settings, "FIRMWARE_SYMLINK_DIR", original_symlink_dir)
     monkeypatch.setattr(registry.settings, "FIRMWARE_DIR", original_firmware)
+    monkeypatch.setattr(ota, "FIRMWARE_DIR", original_ota_firmware_dir)
+    monkeypatch.setattr(ota, "SYMLINK_DIR", original_ota_symlink_dir)
     database.reset_session_factory(original_db_url)
     monkeypatch.setattr(settings, "AUTH_DB_URL", original_db_url)
     monkeypatch.setattr(ota.settings, "AUTH_DB_URL", original_db_url)
@@ -291,6 +311,9 @@ def test_manage_node_credentials_cli_creates_token(tmp_path, monkeypatch):
 def test_provision_node_firmware_updates_sdkconfig(tmp_path, monkeypatch, capsys):
     original_registry = deepcopy(settings.DEVICE_REGISTRY)
     original_firmware = settings.FIRMWARE_DIR
+    original_symlink_dir = getattr(settings, "FIRMWARE_SYMLINK_DIR", original_firmware)
+    original_ota_symlink_dir = getattr(ota, "SYMLINK_DIR", original_symlink_dir)
+    original_ota_firmware_dir = getattr(ota, "FIRMWARE_DIR", original_firmware)
     original_db_url = settings.AUTH_DB_URL
 
     test_registry = [
@@ -318,10 +341,15 @@ def test_provision_node_firmware_updates_sdkconfig(tmp_path, monkeypatch, capsys
     monkeypatch.setattr(registry.settings, "DEVICE_REGISTRY", settings.DEVICE_REGISTRY)
     monkeypatch.setattr(registry, "save_registry", lambda: None)
 
-    firmware_dir = tmp_path / "fw"
+    firmware_dir = tmp_path / "fw-storage"
     firmware_dir.mkdir()
+    symlink_dir = tmp_path / "fw-public"
+    symlink_dir.mkdir()
     monkeypatch.setattr(settings, "FIRMWARE_DIR", firmware_dir)
+    monkeypatch.setattr(settings, "FIRMWARE_SYMLINK_DIR", symlink_dir)
     monkeypatch.setattr(registry.settings, "FIRMWARE_DIR", firmware_dir)
+    monkeypatch.setattr(ota, "FIRMWARE_DIR", firmware_dir)
+    monkeypatch.setattr(ota, "SYMLINK_DIR", symlink_dir)
 
     sdkconfig = tmp_path / "sdkconfig"
     sdkconfig.write_text(
@@ -383,7 +411,7 @@ def test_provision_node_firmware_updates_sdkconfig(tmp_path, monkeypatch, capsys
         assert record.token_hash == registry.hash_node_token(token_value)
         assert record.provisioned_at is not None
 
-    link = firmware_dir / record.download_id
+    link = symlink_dir / record.download_id
     assert link.is_symlink()
     assert link.resolve() == firmware_dir / "provision-node"
 
@@ -393,7 +421,10 @@ def test_provision_node_firmware_updates_sdkconfig(tmp_path, monkeypatch, capsys
     monkeypatch.setattr(settings, "DEVICE_REGISTRY", original_registry)
     monkeypatch.setattr(registry.settings, "DEVICE_REGISTRY", original_registry)
     monkeypatch.setattr(settings, "FIRMWARE_DIR", original_firmware)
+    monkeypatch.setattr(settings, "FIRMWARE_SYMLINK_DIR", original_symlink_dir)
     monkeypatch.setattr(registry.settings, "FIRMWARE_DIR", original_firmware)
+    monkeypatch.setattr(ota, "FIRMWARE_DIR", original_ota_firmware_dir)
+    monkeypatch.setattr(ota, "SYMLINK_DIR", original_ota_symlink_dir)
     database.reset_session_factory(original_db_url)
     monkeypatch.setattr(settings, "AUTH_DB_URL", original_db_url)
     monkeypatch.setattr(ota.settings, "AUTH_DB_URL", original_db_url)
