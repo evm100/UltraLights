@@ -39,9 +39,6 @@ class _NoopBus:
     def ota_check(self, *args, **kwargs):  # pragma: no cover - noop
         pass
 
-    def all_off(self):  # pragma: no cover - noop
-        pass
-
 
 @pytest.fixture(autouse=True)
 def _stub_mqtt(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -39,9 +39,6 @@ class _NoopBus:
     def ota_check(self, *args, **kwargs):  # pragma: no cover - noop
         pass
 
-    def all_off(self):  # pragma: no cover - noop
-        pass
-
 
 @pytest.fixture()
 def app_modules(monkeypatch: pytest.MonkeyPatch) -> Iterator[Tuple[object, object]]:

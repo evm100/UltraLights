@@ -194,8 +194,6 @@ def _navigation_context(
             "show_server_admin": current_user.server_admin,
             "username": current_user.username,
             "logout_url": "/logout",
-            "can_all_off": current_user.server_admin,
-            "all_off_url": "/api/all-off" if current_user.server_admin else None,
         }
     }
 
