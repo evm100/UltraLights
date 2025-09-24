@@ -60,12 +60,12 @@ no longer contains hashed OTA tokens.
    * perform incident response—for example revoking the current token and
      verifying that no other device is still using it.
 
-Keeping the download ID handy also lets you inspect the corresponding
-firmware folder on disk (`/srv/firmware/UltraLights/<download_id>`) during
-troubleshooting without revealing the node slug. The download directory is a
-symlink that always resolves to the real node folder (for example
-`/srv/firmware/UltraLights/<node-id>`), so nothing is stored separately inside
-the download ID itself.
+   Keeping the download ID handy also lets you inspect the corresponding
+   firmware folder on disk (`/srv/firmware/UltraLights/<download_id>`) during
+   troubleshooting without revealing the node slug. The download directory is a
+   symlink that always resolves to the real node folder (for example
+   `/srv/firmware/UltraLights/<node-id>`), so nothing is stored separately inside
+   the download ID itself.
 
 3. **Build and publish firmware.** After the CLI patches `sdkconfig`, build the
    firmware and place the resulting `latest.bin` into
