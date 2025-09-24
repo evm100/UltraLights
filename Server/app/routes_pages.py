@@ -111,6 +111,90 @@ def _redirect_if_authenticated(request: Request, session: Session) -> Optional[R
     return RedirectResponse(target, status_code=303)
 
 
+def _navigation_context(
+    policy: AccessPolicy,
+    *,
+    current_user: User,
+    active_house: Optional[str] = None,
+    active_room: Optional[str] = None,
+) -> Dict[str, Any]:
+    houses: List[Dict[str, Any]] = []
+    active_entry: Optional[Dict[str, Any]] = None
+    try:
+        house_entries = list(policy.houses_for_templates())  # type: ignore[attr-defined]
+    except AttributeError:
+        house_entries = []
+    except Exception:
+        house_entries = []
+
+    for house in house_entries:
+        external_id = registry.get_house_external_id(house)
+        try:
+            access = policy.get_house_access(external_id)  # type: ignore[attr-defined]
+        except AttributeError:
+            access = None
+        can_manage = bool(access and access.can_manage(current_user))
+        raw_name = house.get("name") or house.get("id") or external_id
+        house_name = str(raw_name).strip() or external_id
+        rooms: List[Dict[str, Any]] = []
+        raw_rooms = house.get("rooms") or []
+        if isinstance(raw_rooms, list):
+            for entry in raw_rooms:
+                if not isinstance(entry, dict):
+                    continue
+                room_id = str(entry.get("id") or "").strip()
+                if not room_id:
+                    continue
+                room_name_value = entry.get("name")
+                if isinstance(room_name_value, str):
+                    room_name_clean = room_name_value.strip() or room_id
+                else:
+                    room_name_clean = room_id
+                rooms.append(
+                    {
+                        "id": room_id,
+                        "name": room_name_clean,
+                        "url": f"/house/{external_id}/room/{room_id}",
+                        "is_active": active_house == external_id
+                        and active_room == room_id,
+                    }
+                )
+        rooms.sort(key=lambda item: item["name"].lower())
+        house_entry = {
+            "id": external_id,
+            "name": house_name,
+            "url": f"/house/{external_id}",
+            "rooms": rooms,
+            "is_active": active_house == external_id,
+            "can_manage": can_manage,
+            "admin_url": f"/admin/house/{external_id}" if can_manage else None,
+        }
+        houses.append(house_entry)
+        if house_entry["is_active"]:
+            active_entry = house_entry
+    try:
+        manages_any = bool(policy.manages_any_house())  # type: ignore[attr-defined]
+    except AttributeError:
+        manages_any = False
+    except Exception:
+        manages_any = False
+
+    return {
+        "nav": {
+            "houses": houses,
+            "active_house": active_entry,
+            "active_house_id": active_entry["id"] if active_entry else None,
+            "active_room_id": active_room,
+            "show_admin": manages_any,
+            "show_server_admin": current_user.server_admin,
+            "username": current_user.username,
+            "logout_url": "/logout",
+            "can_all_off": current_user.server_admin,
+            "all_off_url": "/api/all-off" if current_user.server_admin else None,
+        }
+    }
+
+
 @router.get("/", include_in_schema=False)
 def root(_request: Request, _user: User = Depends(_require_current_user)):
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
@@ -171,18 +255,16 @@ def dashboard(
     session: Session = Depends(get_session),
 ):
     policy = AccessPolicy.from_session(session, current_user)
-    houses = policy.houses_for_templates()
+    nav_context = _navigation_context(policy, current_user=current_user)
     return templates.TemplateResponse(
         request,
         "index.html",
         {
             "request": request,
-            "houses": houses,
             "title": "Dashboard",
             "subtitle": None,
-            "show_admin": policy.manages_any_house(),
-            "show_server_admin": current_user.server_admin,
-            "can_all_off": current_user.server_admin,
+            "current_user": current_user,
+            **nav_context,
         },
     )
 
@@ -361,11 +443,12 @@ def admin_panel(
     session: Session = Depends(get_session),
 ):
     policy = AccessPolicy.from_session(session, current_user)
+    nav_context = _navigation_context(policy, current_user=current_user)
     if not policy.manages_any_house():
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"request": request, "content": "Forbidden"},
+            {"request": request, "content": "Forbidden", **nav_context},
             status_code=status.HTTP_403_FORBIDDEN,
         )
     nodes = _collect_admin_nodes(policy)
@@ -379,7 +462,8 @@ def admin_panel(
             subtitle="System status",
             heading="Admin Panel",
             allow_remove=current_user.server_admin,
-        ),
+        )
+        | nav_context,
     )
 
 
@@ -389,11 +473,13 @@ def server_admin_panel(
     current_user: User = Depends(_require_current_user),
     session: Session = Depends(get_session),
 ):
+    policy = AccessPolicy.from_session(session, current_user)
+    nav_context = _navigation_context(policy, current_user=current_user)
     if not current_user.server_admin:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"request": request, "content": "Forbidden"},
+            {"request": request, "content": "Forbidden", **nav_context},
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
@@ -507,6 +593,7 @@ def server_admin_panel(
             "accounts": accounts_summary,
             "audit_entries": audit_entries,
             "total_nodes": total_nodes,
+            **nav_context,
         },
     )
 
@@ -519,20 +606,25 @@ def admin_house_panel(
     session: Session = Depends(get_session),
 ):
     policy = AccessPolicy.from_session(session, current_user)
+    nav_context = _navigation_context(
+        policy,
+        current_user=current_user,
+        active_house=house_id,
+    )
     try:
         house_ctx = policy.ensure_house(house_id)
     except LookupError:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"request": request, "content": "Unknown house"},
+            {"request": request, "content": "Unknown house", **nav_context},
             status_code=status.HTTP_404_NOT_FOUND,
         )
     except PermissionError:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"request": request, "content": "Forbidden"},
+            {"request": request, "content": "Forbidden", **nav_context},
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
@@ -634,7 +726,8 @@ def admin_house_panel(
             house_member_roles=role_options,
             house_member_manage_allowed=current_user.server_admin,
             house_admin_external_id=house_ctx.external_id,
-        ),
+        )
+        | nav_context,
     )
 
 
@@ -646,20 +739,25 @@ def house_page(
     session: Session = Depends(get_session),
 ):
     policy = AccessPolicy.from_session(session, current_user)
+    nav_context = _navigation_context(
+        policy,
+        current_user=current_user,
+        active_house=house_id,
+    )
     try:
         house_ctx = policy.ensure_house(house_id)
     except LookupError:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"request": request, "content": "Unknown house"},
+            {"request": request, "content": "Unknown house", **nav_context},
             status_code=status.HTTP_404_NOT_FOUND,
         )
     except PermissionError:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"request": request, "content": "Forbidden"},
+            {"request": request, "content": "Forbidden", **nav_context},
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
@@ -675,6 +773,7 @@ def house_page(
             "title": house_ctx.filtered.get("name", house_id),
             "subtitle": house_ctx.filtered.get("name", house_id),
             "can_manage_house": can_manage,
+            **nav_context,
         },
     )
 
@@ -688,20 +787,26 @@ def room_page(
     session: Session = Depends(get_session),
 ):
     policy = AccessPolicy.from_session(session, current_user)
+    nav_context = _navigation_context(
+        policy,
+        current_user=current_user,
+        active_house=house_id,
+        active_room=room_id,
+    )
     try:
         room_ctx = policy.ensure_room(house_id, room_id)
     except LookupError:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"request": request, "content": "Unknown room"},
+            {"request": request, "content": "Unknown room", **nav_context},
             status_code=status.HTTP_404_NOT_FOUND,
         )
     except PermissionError:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"request": request, "content": "Forbidden"},
+            {"request": request, "content": "Forbidden", **nav_context},
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
@@ -726,6 +831,7 @@ def room_page(
             "presets": presets,
             "motion_config": motion_config,
             "can_manage_room": can_manage,
+            **nav_context,
         },
     )
 
@@ -737,22 +843,30 @@ def node_page(
     session: Session = Depends(get_session),
 ):
     policy = AccessPolicy.from_session(session, current_user)
+    nav_context = _navigation_context(policy, current_user=current_user)
     try:
         node_ctx = policy.ensure_node(node_id)
     except LookupError:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"request": request, "content": "Unknown node"},
+            {"request": request, "content": "Unknown node", **nav_context},
             status_code=status.HTTP_404_NOT_FOUND,
         )
     except PermissionError:
         return templates.TemplateResponse(
             request,
             "base.html",
-            {"request": request, "content": "Forbidden"},
+            {"request": request, "content": "Forbidden", **nav_context},
             status_code=status.HTTP_403_FORBIDDEN,
         )
+    room_identifier = str(node_ctx.room.room.get("id") or "").strip()
+    nav_context = _navigation_context(
+        policy,
+        current_user=current_user,
+        active_house=node_ctx.room.house.external_id,
+        active_room=room_identifier or None,
+    )
     node = node_ctx.node
     room = node_ctx.room.room
     house = node_ctx.room.house.original
@@ -807,5 +921,6 @@ def node_page(
             "status_initial_online": status_initial_online,
             "brightness_limits": brightness_limits.get_limits_for_node(node["id"]),
             "module_templates": NODE_MODULE_TEMPLATES,
+            **nav_context,
         },
     )

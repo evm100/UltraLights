@@ -161,6 +161,7 @@ if(addNodeButton){
       res = await fetch('/api/house/{{ house_public_id }}/room/{{ room.id }}/nodes', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
         body: JSON.stringify({name}),
       });
     } catch (error) {
@@ -500,6 +501,7 @@ if(addNodeButton){
         const response = await fetch(colorUrl, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
+          credentials: 'same-origin',
           body: JSON.stringify({preset: presetId, color: selected}),
         });
         let data = null;
@@ -806,6 +808,7 @@ if(addNodeButton){
           const response = await fetch(saveUrl, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
+            credentials: 'same-origin',
             body: JSON.stringify({schedule: scheduleData}),
           });
           let data = null;
@@ -923,7 +926,7 @@ if(addNodeButton){
         setStatus('Loading immunity...', 'info');
       }
       try {
-        const response = await fetch(fetchUrl);
+        const response = await fetch(fetchUrl, { credentials: 'same-origin' });
         let data = null;
         try {
           data = await response.json();
@@ -960,6 +963,7 @@ if(addNodeButton){
           const response = await fetch(saveUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
             body: JSON.stringify({ immune: selected }),
           });
           let data = null;
@@ -1027,6 +1031,7 @@ if(addNodeButton){
         const res = await fetch(`/api/node/${nodeId}/motion`, {
           method:'POST',
           headers:{'Content-Type':'application/json'},
+          credentials: 'same-origin',
           body: JSON.stringify({enabled, duration})
         });
         if(!res.ok) alert('Failed to update timer');

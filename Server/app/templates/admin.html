@@ -339,7 +339,7 @@ dots.forEach((dot) => setDot(dot, false));
 
 async function refreshStatuses() {
   try {
-    const res = await fetch(STATUS_URL);
+    const res = await fetch(STATUS_URL, { credentials: 'same-origin' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     errorEl.classList.add('hidden');
@@ -459,7 +459,10 @@ if (roomMenuContainer) {
         btn.disabled = true;
         btn.textContent = 'Deleting…';
         try {
-          const res = await fetch(`/api/house/${encodeURIComponent(STATUS_HOUSE_ID)}/rooms/${encodeURIComponent(roomId)}`, { method: 'DELETE' });
+          const res = await fetch(`/api/house/${encodeURIComponent(STATUS_HOUSE_ID)}/rooms/${encodeURIComponent(roomId)}`, {
+            method: 'DELETE',
+            credentials: 'same-origin'
+          });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           location.reload();
         } catch (err) {
@@ -483,7 +486,10 @@ document.querySelectorAll('[data-node-ota]').forEach((btn) => {
     btn.disabled = true;
     btn.textContent = 'Checking…';
     try {
-      const res = await fetch(`/api/node/${encodeURIComponent(nodeId)}/ota/check`, { method: 'POST' });
+      const res = await fetch(`/api/node/${encodeURIComponent(nodeId)}/ota/check`, {
+        method: 'POST',
+        credentials: 'same-origin'
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       btn.textContent = 'Queued!';
       setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1500);
@@ -510,7 +516,10 @@ document.querySelectorAll('[data-node-remove]').forEach((btn) => {
     btn.textContent = 'Removing…';
     const card = btn.closest('[data-node-card]');
     try {
-      const res = await fetch(`/api/node/${encodeURIComponent(nodeId)}`, { method: 'DELETE' });
+      const res = await fetch(`/api/node/${encodeURIComponent(nodeId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin'
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       if (card) {
         card.remove();
@@ -618,6 +627,7 @@ if (houseAdminSection) {
           {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
             body: JSON.stringify(payload),
           },
         );
@@ -660,7 +670,7 @@ if (houseAdminSection) {
       try {
         const res = await fetch(
           `/api/house-admin/${encodeURIComponent(houseId)}/members/${encodeURIComponent(membershipId)}`,
-          { method: 'DELETE' },
+          { method: 'DELETE', credentials: 'same-origin' },
         );
         if (!res.ok) {
           const message = await readErrorMessage(res);
@@ -713,6 +723,7 @@ if (houseAdminSection) {
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
             body: JSON.stringify({ username, password, role, rooms }),
           },
         );
