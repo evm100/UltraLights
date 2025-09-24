@@ -29,61 +29,47 @@ def _ensure_symlink(node_id: str, download_id: str) -> Path:
     target_dir = storage_root / node_id
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    def _migrate_into_storage(path: Path) -> None:
-        if not path.exists() and not path.is_symlink():
-            return
+    def _ensure_link(link_path: Path) -> Path:
+        link_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if path.is_symlink():
-            path.unlink()
-            return
-
-        if path.is_file():
-            raise RuntimeError(f"Unexpected firmware file at {path}")
-
-        if not any(target_dir.iterdir()):
+        if link_path.exists() or link_path.is_symlink():
             try:
-                path.rename(target_dir)
-                return
-            except OSError:
-                pass
-
-        for child in path.iterdir():
-            dest = target_dir / child.name
-            if dest.exists():
-                continue
-            if child.is_dir():
-                shutil.copytree(child, dest)
+                existing_target = link_path.resolve(strict=True)
+            except FileNotFoundError:
+                existing_target = None
+            if existing_target == target_dir:
+                return link_path
+            if link_path.is_symlink() or link_path.is_file():
+                link_path.unlink()
+            elif link_path.is_dir():
+                if target_dir.exists():
+                    try:
+                        next(target_dir.iterdir())
+                    except StopIteration:
+                        target_dir.rmdir()
+                        shutil.move(str(link_path), str(target_dir))
+                    else:
+                        for child in link_path.iterdir():
+                            dest = target_dir / child.name
+                            if dest.exists():
+                                continue
+                            if child.is_dir():
+                                shutil.copytree(child, dest)
+                            else:
+                                shutil.copy2(child, dest)
+                        shutil.rmtree(link_path)
+                else:
+                    shutil.move(str(link_path), str(target_dir))
             else:
-                shutil.copy2(child, dest)
-        shutil.rmtree(path)
+                raise RuntimeError(
+                    f"Refusing to replace existing directory at {link_path}"
+                )
 
-    legacy_node_path = link_root / node_id
-    _migrate_into_storage(legacy_node_path)
-    if legacy_node_path.exists() or legacy_node_path.is_symlink():
-        if legacy_node_path.is_dir():
-            shutil.rmtree(legacy_node_path)
-        else:
-            legacy_node_path.unlink()
+        link_path.symlink_to(target_dir, target_is_directory=True)
+        return link_path
 
-    link_path = link_root / download_id
-    _migrate_into_storage(link_path)
-
-    link_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if link_path.exists() or link_path.is_symlink():
-        try:
-            existing_target = link_path.resolve(strict=True)
-        except FileNotFoundError:
-            existing_target = None
-        if existing_target == target_dir:
-            return link_path
-        if link_path.is_dir():
-            shutil.rmtree(link_path)
-        else:
-            link_path.unlink()
-
-    link_path.symlink_to(target_dir, target_is_directory=True)
-    return link_path
+    _ensure_link(link_root / node_id)
+    return _ensure_link(link_root / download_id)
 
 
 def _remove_symlink(download_id: Optional[str]) -> None:
