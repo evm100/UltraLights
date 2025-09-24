@@ -46,6 +46,23 @@ no longer contains hashed OTA tokens.
    The plaintext token and manifest URL are printed once so you can archive them
    securely.
 
+   > **Where to store the outputs.** Save the manifest URL, download ID and
+   > bearer token in the same vault you use for long-lived service credentials
+   > (for example 1Password, Bitwarden, or your infrastructure secrets manager).
+   > The API only keeps the SHA-256 hash of the token, so you cannot recover the
+   > plaintext later if it is misplaced.
+
+   You will need the manifest URL and bearer token whenever you:
+
+   * patch another `sdkconfig` (or rebuild the firmware) for this node,
+   * re-flash hardware after a board replacement, or
+   * perform incident response—for example revoking the current token and
+     verifying that no other device is still using it.
+
+   Keeping the download ID handy also lets you inspect the corresponding
+   firmware folder on disk (`/srv/firmware/<download_id>`) during troubleshooting
+   without revealing the node slug.
+
 3. **Build and publish firmware.** After the CLI patches `sdkconfig`, build the
    firmware and place the resulting `latest.bin` into
    `${FIRMWARE_DIR}/<node-id>/latest.bin`. The symlink maintained by the CLI
