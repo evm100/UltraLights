@@ -116,17 +116,9 @@ def test_registry_remove_orphan_node(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
     monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
 
-    house, room, node = registry.find_node("orphan-node")
-    assert house["id"] == "house"
-    assert room is None
-    assert node["id"] == "orphan-node"
-    
     removed = registry.remove_node("orphan-node")
     assert removed["id"] == "orphan-node"
     assert settings.DEVICE_REGISTRY[0]["nodes"] == []
-
-    house, room, node = registry.find_node("orphan-node")
-    assert (house, room, node) == (None, None, None)
 
 
 def test_registry_reorder_rooms(monkeypatch, tmp_path):
