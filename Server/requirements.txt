@@ -4,8 +4,10 @@ jinja2
 paho-mqtt
 python-dotenv
 sqlmodel
+pydantic>=2,<3
 passlib[bcrypt]
 bcrypt>=3.2.2,<4
+SQLAlchemy>=1.4
 itsdangerous>=2.1.2,<3
 python-multipart
 httpx
