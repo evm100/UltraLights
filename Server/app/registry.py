@@ -207,14 +207,39 @@ def rotate_house_external_id(house_id: str) -> str:
     return new_id
 
 
-def iter_nodes(registry: Optional[Registry] = None) -> Iterator[Tuple[House, Room, Node]]:
-    """Yield (house, room, node) for every node in the registry."""
+def iter_nodes(
+    registry: Optional[Registry] = None,
+) -> Iterator[Tuple[House, Optional[Room], Node]]:
+    """Yield ``(house, room, node)`` for every node in the registry.
+
+    ``room`` is ``None`` when a node is attached directly to ``house`` rather than to
+    a specific room (legacy data layout).
+    """
+
     if registry is None:
         registry = settings.DEVICE_REGISTRY
+
     for house in registry:
-        for room in house.get("rooms", []):
-            for node in room.get("nodes", []):
-                yield house, room, node
+        if not isinstance(house, dict):
+            continue
+
+        rooms = house.get("rooms", [])
+        if isinstance(rooms, list):
+            for room in rooms:
+                if not isinstance(room, dict):
+                    continue
+                nodes = room.get("nodes", [])
+                if not isinstance(nodes, list):
+                    continue
+                for node in nodes:
+                    if isinstance(node, dict):
+                        yield house, room, node
+
+        orphan_nodes = house.get("nodes")
+        if isinstance(orphan_nodes, list):
+            for node in orphan_nodes:
+                if isinstance(node, dict):
+                    yield house, None, node
 
 
 def find_node_by_download_id(
@@ -484,6 +509,17 @@ def remove_node(node_id: str) -> Node:
             for idx, node in enumerate(nodes):
                 if node.get("id") == node_id:
                     removed = nodes.pop(idx)
+                    save_registry()
+                    return removed
+
+        # Some legacy registry entries may contain nodes that are not yet
+        # associated with a room.  Clean those up as well so operators can
+        # remove orphaned nodes.
+        orphan_nodes = house.get("nodes")
+        if isinstance(orphan_nodes, list):
+            for idx, node in enumerate(orphan_nodes):
+                if isinstance(node, dict) and node.get("id") == node_id:
+                    removed = orphan_nodes.pop(idx)
                     save_registry()
                     return removed
     raise KeyError("node not found")
