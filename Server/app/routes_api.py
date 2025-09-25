@@ -1159,6 +1159,7 @@ def api_admin_status(
             "online": bool(info.get("online")),
             "last_ok": _iso(info.get("last_ok")),
             "last_seen": _iso(info.get("last_seen")),
+            "last_snapshot": _iso(info.get("last_snapshot")),
             "status": info.get("status"),
             "signal_dbi": signal_value,
         }

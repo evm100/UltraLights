@@ -23,6 +23,7 @@ class StatusMonitor:
         self._condition = threading.Condition(self._lock)
         self._last_seen: Dict[str, float] = {}
         self._last_ok: Dict[str, float] = {}
+        self._last_snapshot: Dict[str, float] = {}
         self._last_payload: Dict[str, Any] = {}
         self._node_seq: Dict[str, int] = {}
         self._running = False
@@ -66,6 +67,8 @@ class StatusMonitor:
         with self._lock:
             self._last_seen[node_id] = now
             self._last_payload[node_id] = payload
+            if isinstance(payload, dict) and payload.get("event") == "snapshot":
+                self._last_snapshot[node_id] = now
             if status_value == "ok":
                 self._last_ok[node_id] = now
             seq = self._node_seq.get(node_id, 0) + 1
@@ -78,11 +81,12 @@ class StatusMonitor:
         """Return a shallow copy of the current status information."""
         now = time.time()
         with self._lock:
-            keys = set(self._last_seen) | set(self._last_ok)
+            keys = set(self._last_seen) | set(self._last_ok) | set(self._last_snapshot)
             data: Dict[str, Dict[str, Any]] = {}
             for node_id in keys:
                 last_seen = self._last_seen.get(node_id)
                 last_ok = self._last_ok.get(node_id)
+                last_snapshot = self._last_snapshot.get(node_id)
                 payload = self._last_payload.get(node_id)
                 status_value = None
                 signal_value = None
@@ -91,10 +95,15 @@ class StatusMonitor:
                     signal = payload.get("signal_dbi")
                     if isinstance(signal, (int, float)):
                         signal_value = float(signal)
+                online_by_status = bool(last_ok and now - last_ok <= self.timeout)
+                online_by_snapshot = bool(
+                    last_snapshot and now - last_snapshot <= self.timeout
+                )
                 data[node_id] = {
-                    "online": bool(last_ok and now - last_ok <= self.timeout),
+                    "online": online_by_status or online_by_snapshot,
                     "last_seen": last_seen,
                     "last_ok": last_ok,
+                    "last_snapshot": last_snapshot,
                     "status": status_value,
                     "signal_dbi": signal_value,
                     "payload": payload,
@@ -111,6 +120,7 @@ class StatusMonitor:
                 "online": False,
                 "last_seen": None,
                 "last_ok": None,
+                "last_snapshot": None,
                 "status": None,
                 "signal_dbi": None,
                 "payload": None,
@@ -123,6 +133,7 @@ class StatusMonitor:
         with self._lock:
             self._last_seen.pop(node_id, None)
             self._last_ok.pop(node_id, None)
+            self._last_snapshot.pop(node_id, None)
             self._last_payload.pop(node_id, None)
             self._node_seq.pop(node_id, None)
 
