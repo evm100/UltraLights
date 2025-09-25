@@ -13,6 +13,7 @@
 #include "esp_http_server.h"
 #include "cJSON.h"
 #include "esp_system.h"
+#include "esp_mac.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -435,7 +436,8 @@ esp_err_t ul_provisioning_start(const ul_provisioning_config_t *cfg) {
   httpd_uri_t provision = {.uri = "/api/provision", .method = HTTP_POST, .handler = provision_handler, .user_ctx = NULL};
   httpd_uri_t hotspot = {.uri = "/hotspot-detect.html", .method = HTTP_GET, .handler = hotspot_probe_handler, .user_ctx = NULL};
   httpd_uri_t generate204 = {.uri = "/generate_204", .method = HTTP_GET, .handler = hotspot_probe_handler, .user_ctx = NULL};
-  httpd_uri_t captive = {.uri = "/\*", .method = HTTP_GET, .handler = root_handler, .user_ctx = NULL};
+  httpd_uri_t captive = {.uri = "/*", .method = HTTP_GET, .handler = root_handler, .user_ctx = NULL};
+
 
   httpd_register_uri_handler(s_httpd, &root);
   httpd_register_uri_handler(s_httpd, &status);
