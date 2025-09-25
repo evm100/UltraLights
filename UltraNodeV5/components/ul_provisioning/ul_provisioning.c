@@ -159,18 +159,27 @@ static esp_err_t scan_handler(httpd_req_t *req) {
   esp_wifi_scan_get_ap_num(&num);
   if (num > 32)
     num = 32;
-  wifi_ap_record_t records[32];
-  memset(records, 0, sizeof(records));
-  esp_err_t rec_err = esp_wifi_scan_get_ap_records(&num, records);
+  wifi_ap_record_t *records = NULL;
+  if (num > 0) {
+    records = calloc(num, sizeof(*records));
+    if (!records) {
+      ESP_LOGE(TAG, "Failed to allocate scan record buffer");
+      return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "alloc failed");
+    }
+  }
+  wifi_ap_record_t dummy = {0};
+  wifi_ap_record_t *record_buf = records ? records : &dummy;
+  esp_err_t rec_err = esp_wifi_scan_get_ap_records(&num, record_buf);
   if (rec_err != ESP_OK) {
     ESP_LOGW(TAG, "Failed to get scan results: %s", esp_err_to_name(rec_err));
+    free(records);
     return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "scan failed");
   }
 
   cJSON *root = cJSON_CreateObject();
   cJSON *arr = cJSON_AddArrayToObject(root, "aps");
   for (uint16_t i = 0; i < num; ++i) {
-    const wifi_ap_record_t *rec = &records[i];
+    const wifi_ap_record_t *rec = &record_buf[i];
     cJSON *item = cJSON_CreateObject();
     char ssid[33];
     memcpy(ssid, rec->ssid, sizeof(rec->ssid));
@@ -181,6 +190,7 @@ static esp_err_t scan_handler(httpd_req_t *req) {
   }
   char *json = cJSON_PrintUnformatted(root);
   cJSON_Delete(root);
+  free(records);
   if (!json)
     return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "json error");
   httpd_resp_set_type(req, "application/json");
@@ -190,10 +200,21 @@ static esp_err_t scan_handler(httpd_req_t *req) {
 }
 
 static bool parse_body(httpd_req_t *req, char *buffer, size_t buffer_len, size_t *out_len) {
+  if (buffer_len == 0)
+    return false;
+
   size_t remaining = req->content_len;
   size_t total = 0;
-  while (remaining > 0 && total < buffer_len - 1) {
-    int received = httpd_req_recv(req, buffer + total, remaining);
+  while (remaining > 0) {
+    size_t space = buffer_len - 1 - total;
+    if (space == 0)
+      return false;
+
+    size_t to_read = remaining;
+    if (to_read > space)
+      to_read = space;
+
+    int received = httpd_req_recv(req, buffer + total, to_read);
     if (received <= 0) {
       if (received == HTTPD_SOCK_ERR_TIMEOUT)
         continue;
@@ -202,6 +223,7 @@ static bool parse_body(httpd_req_t *req, char *buffer, size_t buffer_len, size_t
     total += received;
     remaining -= received;
   }
+
   if (out_len)
     *out_len = total;
   buffer[total] = '\0';
@@ -318,7 +340,8 @@ void ul_provisioning_make_default_config(ul_provisioning_config_t *cfg) {
     seed = seed * 1103515245u + 12345u;
     cfg->ap_password[i] = alphabet[seed % (sizeof(alphabet) - 1)];
   }
-  cfg->ap_password[12] = '\0';
+  cfg->ap_password[4] = '\0';
+  memset(&cfg->ap_password[4], 0, sizeof(cfg->ap_password) - 4);
 }
 
 esp_err_t ul_provisioning_start(const ul_provisioning_config_t *cfg) {
@@ -373,9 +396,18 @@ esp_err_t ul_provisioning_start(const ul_provisioning_config_t *cfg) {
   strlcpy((char *)ap_cfg.ap.ssid, cfg->ap_ssid, sizeof(ap_cfg.ap.ssid));
   ap_cfg.ap.ssid_len = strlen(cfg->ap_ssid);
   strlcpy((char *)ap_cfg.ap.password, cfg->ap_password, sizeof(ap_cfg.ap.password));
+  size_t pass_len = strlen(cfg->ap_password);
+  bool has_valid_password = pass_len >= 8;
+  if (pass_len > 0 && !has_valid_password) {
+    ESP_LOGW(TAG, "SoftAP password length (%zu) below WPA2 minimum; starting open AP", pass_len);
+    memset(ap_cfg.ap.password, 0, sizeof(ap_cfg.ap.password));
+    pass_len = 0;
+    has_valid_password = false;
+    memset(s_config.ap_password, 0, sizeof(s_config.ap_password));
+  }
   ap_cfg.ap.channel = cfg->channel ? cfg->channel : 6;
   ap_cfg.ap.max_connection = 4;
-  ap_cfg.ap.authmode = (cfg->ap_password[0] != '\0') ? WIFI_AUTH_WPA_WPA2_PSK : WIFI_AUTH_OPEN;
+  ap_cfg.ap.authmode = has_valid_password ? WIFI_AUTH_WPA_WPA2_PSK : WIFI_AUTH_OPEN;
   ap_cfg.ap.pmf_cfg.capable = true;
   ap_cfg.ap.pmf_cfg.required = false;
 
@@ -423,6 +455,7 @@ esp_err_t ul_provisioning_start(const ul_provisioning_config_t *cfg) {
 
   httpd_config_t http_cfg = HTTPD_DEFAULT_CONFIG();
   http_cfg.server_port = 80;
+  http_cfg.stack_size = 8192;
   http_cfg.uri_match_fn = httpd_uri_match_wildcard;
   err = httpd_start(&s_httpd, &http_cfg);
   if (err != ESP_OK) {
@@ -438,7 +471,6 @@ esp_err_t ul_provisioning_start(const ul_provisioning_config_t *cfg) {
   httpd_uri_t generate204 = {.uri = "/generate_204", .method = HTTP_GET, .handler = hotspot_probe_handler, .user_ctx = NULL};
   httpd_uri_t captive = {.uri = "/*", .method = HTTP_GET, .handler = root_handler, .user_ctx = NULL};
 
-
   httpd_register_uri_handler(s_httpd, &root);
   httpd_register_uri_handler(s_httpd, &status);
   httpd_register_uri_handler(s_httpd, &scan);
@@ -447,8 +479,9 @@ esp_err_t ul_provisioning_start(const ul_provisioning_config_t *cfg) {
   httpd_register_uri_handler(s_httpd, &generate204);
   httpd_register_uri_handler(s_httpd, &captive);
 
+  const char *log_password = has_valid_password ? cfg->ap_password : "(open)";
   ESP_LOGI(TAG, "Provisioning portal running. AP SSID: %s (password: %s)", cfg->ap_ssid,
-           cfg->ap_password);
+           log_password);
   return ESP_OK;
 
 fail:

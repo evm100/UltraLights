@@ -190,9 +190,15 @@ void app_main(void) {
   if (!have_creds) {
     ul_provisioning_config_t prov_cfg;
     ul_provisioning_make_default_config(&prov_cfg);
+    const size_t prov_pass_len = strlen(prov_cfg.ap_password);
+    const char *prov_pass_log = prov_pass_len ? prov_cfg.ap_password : "(open)";
     ESP_LOGW(TAG,
              "No Wi-Fi credentials found; starting provisioning portal (SSID: %s, password: %s)",
-             prov_cfg.ap_ssid, prov_cfg.ap_password);
+             prov_cfg.ap_ssid, prov_pass_log);
+    if (prov_pass_len > 0 && prov_pass_len < 8) {
+      ESP_LOGW(TAG, "SoftAP password shorter than WPA2 minimum; portal will run without WPA2 security");
+    }
+
     esp_err_t prov_err = ul_provisioning_start(&prov_cfg);
     if (prov_err != ESP_OK) {
       ESP_LOGE(TAG, "Failed to start provisioning portal: %s", esp_err_to_name(prov_err));
