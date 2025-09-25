@@ -16,10 +16,20 @@ menu "Node / Network"
     config UL_NODE_ID
         string "Node ID"
         default "node01"
-    config UL_WIFI_SSID
-        string "WiFi SSID"
-    config UL_WIFI_PSK
-        string "WiFi PSK"
+    config UL_WIFI_STATIC_CREDENTIALS
+        bool "Provide built-in Wi-Fi credentials"
+        default n
+        help
+            When enabled, the node will seed its credential store with the
+            SSID/password defined below. Disable this when using the captive
+            portal provisioning flow so the firmware starts without preloaded
+            credentials.
+    if UL_WIFI_STATIC_CREDENTIALS
+        config UL_WIFI_SSID
+            string "Wi-Fi SSID"
+        config UL_WIFI_PSK
+            string "Wi-Fi password"
+    endif
     config UL_SNTP_SYNC_INTERVAL_S
         int "SNTP sync interval (seconds)"
         range 60 86400

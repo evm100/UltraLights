@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>UltraLights Setup</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; }
+  h1 { font-size: 1.5rem; margin-bottom: 16px; }
+  label { display: block; font-weight: 600; margin-bottom: 4px; }
+  select, input, button { font-size: 16px; padding: 8px; }
+  .row { margin: 16px 0; }
+  button { cursor: pointer; }
+  #log { white-space: pre-wrap; background: #111; color: #0f0; padding: 12px; border-radius: 6px; min-height: 3em; }
+</style>
+<body>
+  <h1>Connect UltraLights to Wi-Fi</h1>
+  <p>Choose your home network, enter the password, and tap Connect.</p>
+  <div class="row">
+    <label for="ssid">Network</label>
+    <select id="ssid"></select>
+    <button id="rescan">Rescan</button>
+  </div>
+  <div class="row">
+    <label for="pwd">Password</label>
+    <input id="pwd" type="password" autocomplete="off" />
+    <label style="font-weight: normal; margin-top: 8px;">
+      <input id="show" type="checkbox" /> Show password
+    </label>
+  </div>
+  <div class="row">
+    <button id="provision">Connect</button>
+  </div>
+  <pre id="log">Ready.</pre>
+
+<script>
+const ssidSel = document.getElementById('ssid');
+const pwd = document.getElementById('pwd');
+const log = document.getElementById('log');
+
+function setLog(message) {
+  log.textContent = message;
+}
+
+document.getElementById('show').addEventListener('change', (ev) => {
+  pwd.type = ev.target.checked ? 'text' : 'password';
+});
+
+document.getElementById('rescan').addEventListener('click', () => scan());
+document.getElementById('provision').addEventListener('click', () => provision());
+
+async function scan() {
+  try {
+    setLog('Scanning for networks...');
+    const response = await fetch('/api/scan');
+    if (!response.ok) throw new Error('scan failed');
+    const data = await response.json();
+    ssidSel.innerHTML = '';
+    (data.aps || []).sort((a, b) => b.rssi - a.rssi).forEach(ap => {
+      const opt = document.createElement('option');
+      opt.value = ap.ssid;
+      opt.textContent = `${ap.ssid} (${ap.rssi} dBm)`;
+      ssidSel.appendChild(opt);
+    });
+    if (!ssidSel.value && data.aps && data.aps.length) {
+      ssidSel.value = data.aps[0].ssid;
+    }
+    setLog('Ready.');
+  } catch (err) {
+    setLog('Scan failed. Retry.');
+  }
+}
+
+async function provision() {
+  const ssid = ssidSel.value;
+  if (!ssid) {
+    setLog('Select a network first.');
+    return;
+  }
+  setLog('Sending credentials...');
+  const body = { ssid, password: pwd.value };
+  try {
+    const resp = await fetch('/api/provision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      setLog('Provision request failed.');
+      return;
+    }
+    setLog('Connecting...');
+    await pollStatus();
+  } catch (err) {
+    setLog('Provision request failed.');
+  }
+}
+
+async function pollStatus() {
+  for (let i = 0; i < 120; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      const resp = await fetch('/api/status');
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      if (data.state === 'success') {
+        setLog(`Connected! IP: ${data.ip}`);
+        return;
+      }
+      if (data.state === 'failed') {
+        setLog('Failed to connect. Check password and try again.');
+        return;
+      }
+      if (data.state === 'connecting') {
+        setLog('Connecting...');
+      }
+    } catch (err) {
+      // ignore and keep polling
+    }
+  }
+  setLog('Timeout waiting for connection.');
+}
+
+scan();
+</script>
+</body>
+</html>
