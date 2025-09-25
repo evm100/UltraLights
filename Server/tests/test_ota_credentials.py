@@ -275,9 +275,10 @@ def test_manage_node_credentials_cli_creates_token(tmp_path, monkeypatch):
         assert record.download_id == "CLISLOT123"
         assert record.token_hash == registry.hash_node_token("plain-token")
 
-    link = firmware_dir / "CLISLOT123"
-    assert link.is_symlink()
-    assert link.resolve() == firmware_dir / "cli-node"
+    download_dir = firmware_dir / "CLISLOT123"
+    assert download_dir.exists()
+    assert download_dir.is_dir()
+    assert not download_dir.is_symlink()
 
     monkeypatch.setattr(settings, "DEVICE_REGISTRY", original_registry)
     monkeypatch.setattr(registry.settings, "DEVICE_REGISTRY", original_registry)
@@ -383,9 +384,10 @@ def test_provision_node_firmware_updates_sdkconfig(tmp_path, monkeypatch, capsys
         assert record.token_hash == registry.hash_node_token(token_value)
         assert record.provisioned_at is not None
 
-    link = firmware_dir / record.download_id
-    assert link.is_symlink()
-    assert link.resolve() == firmware_dir / "provision-node"
+    download_dir = firmware_dir / record.download_id
+    assert download_dir.exists()
+    assert download_dir.is_dir()
+    assert not download_dir.is_symlink()
 
     assert "Bearer Token" in output
     assert token_value in output

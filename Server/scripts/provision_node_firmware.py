@@ -21,37 +21,10 @@ from app.auth.service import init_auth_storage  # noqa: E402
 from app.config import settings  # noqa: E402
 
 
-def _ensure_symlink(node_id: str, download_id: str) -> Path:
-    firmware_dir = settings.FIRMWARE_DIR
-    target_dir = firmware_dir / node_id
-    link_path = firmware_dir / download_id
-
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    if link_path.exists() or link_path.is_symlink():
-        try:
-            existing_target = link_path.resolve(strict=True)
-        except FileNotFoundError:
-            existing_target = None
-        if existing_target == target_dir:
-            return link_path
-        if link_path.is_symlink() or link_path.is_file():
-            link_path.unlink()
-        else:
-            raise RuntimeError(
-                f"Refusing to replace existing directory at {link_path}"
-            )
-
-    link_path.symlink_to(target_dir, target_is_directory=True)
-    return link_path
-
-
-def _remove_symlink(download_id: Optional[str]) -> None:
-    if not download_id:
-        return
-    link_path = settings.FIRMWARE_DIR / download_id
-    if link_path.is_symlink():
-        link_path.unlink()
+def _ensure_download_dir(download_id: str) -> Path:
+    download_dir = settings.FIRMWARE_DIR / download_id
+    download_dir.mkdir(parents=True, exist_ok=True)
+    return download_dir
 
 
 def _update_sdkconfig(path: Path, values: Dict[str, str]) -> None:
@@ -228,20 +201,7 @@ def _provision(args: argparse.Namespace) -> int:
 
         download_id = credential.download_id
 
-        if not args.no_symlink:
-            if previous_download and previous_download != download_id:
-                _remove_symlink(previous_download)
-            try:
-                link = _ensure_symlink(args.node_id, download_id)
-            except RuntimeError as exc:  # pragma: no cover - defensive
-                print(f"Warning: {exc}", file=sys.stderr)
-                link = None
-            else:
-                print(
-                    f"Symlink: {link} -> {link.resolve() if link.exists() else 'missing'}"
-                )
-        else:
-            link = None
+        download_dir = _ensure_download_dir(download_id)
 
         credential, token = node_credentials.rotate_token(session, args.node_id)
 
@@ -281,8 +241,7 @@ def _provision(args: argparse.Namespace) -> int:
         print("Updated configuration files:")
         for cfg in updated_files:
             print(f"  - {cfg}")
-    if link:
-        print(f"Firmware symlink: {link}")
+    print(f"Firmware directory: {download_dir}")
     return 0
 
 
@@ -299,11 +258,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--rotate-download",
         action="store_true",
         help="Issue a new download identifier before provisioning.",
-    )
-    parser.add_argument(
-        "--no-symlink",
-        action="store_true",
-        help="Skip creating the firmware download symlink.",
     )
     parser.add_argument(
         "--allow-reprovision",
