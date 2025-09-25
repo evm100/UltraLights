@@ -538,10 +538,11 @@ static void publish_status_snapshot(void) {
   }
   cJSON_AddItemToObject(root, "white", jw);
 
+  // *Debugging only- download_id is secret
   // OTA (static fields from Kconfig)
-  cJSON *jota = cJSON_CreateObject();
-  cJSON_AddStringToObject(jota, "manifest_url", CONFIG_UL_OTA_MANIFEST_URL);
-  cJSON_AddItemToObject(root, "ota", jota);
+  //cJSON *jota = cJSON_CreateObject();
+  //cJSON_AddStringToObject(jota, "manifest_url", CONFIG_UL_OTA_MANIFEST_URL);
+  //cJSON_AddItemToObject(root, "ota", jota);
 
   char *json = cJSON_PrintUnformatted(root);
   publish_json(topic, json);
@@ -875,7 +876,7 @@ static void on_message(esp_mqtt_event_handle_t event) {
       }
     } else if (starts_with(sub, "motion/off")) {
       int duration_ms = 2000;
-      int steps = 8;
+      int steps = 255;
       cJSON *fade = cJSON_GetObjectItem(root, "fade");
       if (fade && cJSON_IsObject(fade)) {
         cJSON *dur = cJSON_GetObjectItem(fade, "duration_ms");
