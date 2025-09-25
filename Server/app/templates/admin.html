@@ -362,9 +362,13 @@ async function refreshStatuses() {
       if (lastEl) {
         const lastOk = info.last_ok ? Date.parse(info.last_ok) : null;
         const lastSeen = info.last_seen ? Date.parse(info.last_seen) : null;
+        const lastSnapshot = info.last_snapshot ? Date.parse(info.last_snapshot) : null;
         if (lastOk) {
           const seconds = (nowTs - lastOk) / 1000;
           lastEl.textContent = `OK ${formatDelta(seconds)}`;
+        } else if (lastSnapshot) {
+          const seconds = (nowTs - lastSnapshot) / 1000;
+          lastEl.textContent = `Snapshot ${formatDelta(seconds)}`;
         } else if (lastSeen) {
           const seconds = (nowTs - lastSeen) / 1000;
           lastEl.textContent = `Seen ${formatDelta(seconds)}`;
