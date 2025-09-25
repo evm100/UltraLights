@@ -30,6 +30,28 @@ menu "Node / Network"
         config UL_WIFI_PSK
             string "Wi-Fi password"
     endif
+    config UL_WIFI_RESET_BUTTON_ENABLE
+        bool "Enable boot button Wi-Fi reset"
+        default y
+        help
+            When enabled, the ESP32 boot button (or the configured GPIO) is
+            monitored during runtime. Holding it low for the configured
+            duration clears the stored Wi-Fi credentials and reboots the node
+            so it re-enters provisioning mode.
+    if UL_WIFI_RESET_BUTTON_ENABLE
+        config UL_WIFI_RESET_BUTTON_GPIO
+            int "Wi-Fi reset button GPIO"
+            range 0 48
+            default 0
+        config UL_WIFI_RESET_BUTTON_HOLD_MS
+            int "Wi-Fi reset hold time (ms)"
+            range 1000 60000
+            default 5000
+        config UL_WIFI_RESET_BUTTON_POLL_MS
+            int "Wi-Fi reset button poll interval (ms)"
+            range 10 1000
+            default 50
+    endif
     config UL_SNTP_SYNC_INTERVAL_S
         int "SNTP sync interval (seconds)"
         range 60 86400

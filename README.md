@@ -24,3 +24,11 @@ server documentation whenever you onboard a new controller.
 Following the checklist keeps the registry, firmware and OTA distribution in
 sync so devices can report status and accept updates immediately after they boot
 on the network.
+
+### Resetting a node for reprovisioning
+
+If the installation Wi-Fi changes, press and hold the ESP32's **BOOT** button
+for about five seconds. The firmware monitors that GPIO at runtime; once the
+hold timer elapses it erases the saved SSID/password from NVS and reboots. On
+the next boot the node falls back to the captive portal provisioning flow so new
+credentials can be entered.
