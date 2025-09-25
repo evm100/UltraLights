@@ -17,8 +17,16 @@
       <h3 id="housesHeading" class="text-2xl font-semibold">Houses</h3>
       <p class="text-sm opacity-70">Public identifiers should be rotated if exposed.</p>
     </div>
-    <div class="text-xs opacity-60 md:text-right">
-      Reveal IDs only when necessary. Treat them as secrets for OTA access.
+    <div class="flex flex-col gap-2 md:items-end">
+      <div class="text-xs opacity-60 md:text-right">
+        Reveal IDs only when necessary. Treat them as secrets for OTA access.
+      </div>
+      <button
+        type="button"
+        class="self-start md:self-end px-4 py-2 pill bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold"
+        data-create-house>
+        Create house
+      </button>
     </div>
   </div>
   {% if houses %}
@@ -86,7 +94,7 @@
     <div class="space-y-3" data-account-list>
       {% if accounts %}
       {% for account in accounts %}
-      <div class="glass rounded-xl p-4">
+      <div class="glass rounded-xl p-4" data-account-card data-account-id="{{ account.id }}">
         <div class="flex flex-col gap-2">
           <div class="flex items-start justify-between gap-3">
             <div>
@@ -97,6 +105,14 @@
               <div class="text-xs opacity-60">House member</div>
               {% endif %}
             </div>
+            <button
+              type="button"
+              class="px-3 py-1 pill text-xs font-semibold bg-rose-600 hover:bg-rose-500"
+              data-remove-account
+              data-account-id="{{ account.id }}"
+              data-account-name="{{ account.username }}">
+              Remove
+            </button>
           </div>
           <div class="text-xs opacity-70">
             {% if account.assignments %}
@@ -222,6 +238,59 @@ houseCards.forEach((card) => {
   }
 });
 
+const createHouseButton = document.querySelector('[data-create-house]');
+if (createHouseButton) {
+  createHouseButton.addEventListener('click', async () => {
+    const houseName = window.prompt('Enter a name for the new house:');
+    if (houseName === null) {
+      return;
+    }
+    const trimmed = houseName.trim();
+    if (!trimmed) {
+      window.alert('House name is required.');
+      return;
+    }
+    const slug = trimmed
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .substring(0, 64) || 'house';
+    const payload = {
+      id: slug,
+      name: trimmed,
+      rooms: [],
+      external_id: '',
+    };
+    const confirmed = window.confirm(`Create a new house named "${trimmed}"?`);
+    if (!confirmed) {
+      return;
+    }
+    createHouseButton.disabled = true;
+    const originalText = createHouseButton.textContent;
+    createHouseButton.textContent = 'Creating…';
+    try {
+      const res = await fetch('/api/server-admin/houses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || `HTTP ${res.status}`);
+      }
+      window.alert('House created. The page will refresh.');
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to create house', err);
+      window.alert('Unable to create house. Please try again.');
+    } finally {
+      createHouseButton.disabled = false;
+      createHouseButton.textContent = originalText;
+    }
+  });
+}
+
 const createForm = document.querySelector('[data-create-admin-form]');
 if (createForm) {
   const statusLabel = createForm.querySelector('[data-create-admin-status]');
@@ -256,6 +325,47 @@ if (createForm) {
     } catch (err) {
       console.error('Failed to create house admin', err);
       statusLabel.textContent = 'Failed to create admin';
+    }
+  });
+}
+
+const accountList = document.querySelector('[data-account-list]');
+if (accountList) {
+  accountList.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-remove-account]');
+    if (!button) {
+      return;
+    }
+    const accountId = button.getAttribute('data-account-id');
+    const accountName = button.getAttribute('data-account-name') || 'this account';
+    if (!accountId) {
+      return;
+    }
+    const confirmed = window.confirm(`Remove the account "${accountName}"? This action cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+    button.disabled = true;
+    const originalText = button.textContent;
+    button.textContent = 'Removing…';
+    try {
+      const res = await fetch(`/api/server-admin/accounts/${encodeURIComponent(accountId)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || `HTTP ${res.status}`);
+      }
+      window.alert('Account removed. The page will refresh.');
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to remove account', err);
+      window.alert('Unable to remove account. Please try again.');
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
     }
   });
 }

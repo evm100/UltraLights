@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import delete, func
 from sqlmodel import Session, select
 
 from . import registry
 from .auth.dependencies import require_admin
-from .auth.models import House, HouseMembership, HouseRole, User
+from .auth.models import House, HouseMembership, HouseRole, RoomAccess, User
 from .auth.service import create_user, record_audit_event
 from .database import get_session
 
@@ -164,6 +165,70 @@ def create_house_admin(
         username=user.username,
         house_id=external_id,
     )
+
+
+@router.delete(
+    "/accounts/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    response_class=Response,
+)
+def delete_account(
+    user_id: int,
+    current_user: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> None:
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+
+    if user.server_admin:
+        remaining_admins = session.exec(
+            select(func.count())
+            .select_from(User)
+            .where(User.server_admin.is_(True))
+            .where(User.id != user_id)
+        ).one()
+        if not remaining_admins:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Cannot remove the last server admin.",
+            )
+
+    if current_user.id == user_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Cannot remove your own account.",
+        )
+
+    membership_ids = session.exec(
+        select(HouseMembership.id).where(HouseMembership.user_id == user_id)
+    ).all()
+    membership_ids = [mid for mid in membership_ids if mid is not None]
+    if membership_ids:
+        session.exec(
+            delete(RoomAccess).where(RoomAccess.membership_id.in_(membership_ids))
+        )
+        session.exec(
+            delete(HouseMembership).where(HouseMembership.id.in_(membership_ids))
+        )
+
+    username = user.username
+    was_server_admin = user.server_admin
+    session.delete(user)
+
+    record_audit_event(
+        session,
+        actor=current_user,
+        action="account_removed",
+        summary=f"Removed account {username}",
+        data={
+            "user": username,
+            "server_admin": was_server_admin,
+            "membership_ids": membership_ids,
+        },
+    )
+    session.commit()
 
 
 __all__ = ["router"]
