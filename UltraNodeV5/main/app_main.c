@@ -4,6 +4,7 @@
 #include "esp_netif.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -50,6 +51,73 @@ typedef struct {
 static QueueHandle_t s_service_queue = NULL;
 static service_context_t s_service_ctx = {0};
 static bool s_wifi_connected = false;
+
+#if CONFIG_UL_WIFI_RESET_BUTTON_ENABLE
+static void wifi_reset_button_task(void *arg) {
+  (void)arg;
+  const TickType_t poll_delay = pdMS_TO_TICKS(CONFIG_UL_WIFI_RESET_BUTTON_POLL_MS);
+  const int64_t hold_time_us = (int64_t)CONFIG_UL_WIFI_RESET_BUTTON_HOLD_MS * 1000;
+  int64_t press_start_us = 0;
+
+  while (true) {
+    int level = gpio_get_level((gpio_num_t)CONFIG_UL_WIFI_RESET_BUTTON_GPIO);
+    if (level == 0) { // boot button held low
+      int64_t now_us = esp_timer_get_time();
+      if (press_start_us == 0) {
+        press_start_us = now_us;
+        ESP_LOGW(TAG,
+                 "Boot button pressed; hold for %d ms to clear Wi-Fi credentials",
+                 CONFIG_UL_WIFI_RESET_BUTTON_HOLD_MS);
+      } else if (now_us - press_start_us >= hold_time_us) {
+        ESP_LOGW(TAG,
+                 "Boot button held for %d ms; clearing Wi-Fi credentials and restarting",
+                 CONFIG_UL_WIFI_RESET_BUTTON_HOLD_MS);
+        esp_err_t err = ul_wifi_credentials_clear();
+        if (err != ESP_OK) {
+          ESP_LOGE(TAG, "Failed to clear Wi-Fi credentials: %s", esp_err_to_name(err));
+        } else {
+          ESP_LOGI(TAG, "Stored Wi-Fi credentials cleared");
+        }
+        vTaskDelay(pdMS_TO_TICKS(250));
+        esp_restart();
+      }
+    } else if (press_start_us != 0) {
+      int64_t held_ms = (esp_timer_get_time() - press_start_us) / 1000;
+      if (held_ms < CONFIG_UL_WIFI_RESET_BUTTON_HOLD_MS) {
+        ESP_LOGI(TAG,
+                 "Boot button released after %lld ms; Wi-Fi credentials unchanged",
+                 (long long)held_ms);
+      }
+      press_start_us = 0;
+    }
+    vTaskDelay(poll_delay);
+  }
+}
+
+static void start_wifi_reset_button_monitor(void) {
+  gpio_config_t cfg = {
+      .pin_bit_mask = 1ULL << CONFIG_UL_WIFI_RESET_BUTTON_GPIO,
+      .mode = GPIO_MODE_INPUT,
+      .pull_up_en = GPIO_PULLUP_ENABLE,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .intr_type = GPIO_INTR_DISABLE,
+  };
+  esp_err_t err = gpio_config(&cfg);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to configure Wi-Fi reset button GPIO%d: %s",
+             CONFIG_UL_WIFI_RESET_BUTTON_GPIO, esp_err_to_name(err));
+    return;
+  }
+
+  if (xTaskCreate(wifi_reset_button_task, "wifi_reset_btn", 2048, NULL, 3,
+                  NULL) != pdPASS) {
+    ESP_LOGE(TAG, "Failed to start Wi-Fi reset button task");
+  } else {
+    ESP_LOGI(TAG, "Wi-Fi reset button monitor started on GPIO%d",
+             CONFIG_UL_WIFI_RESET_BUTTON_GPIO);
+  }
+}
+#endif
 
 static void service_manager_task(void *ctx) {
   (void)ctx;
@@ -161,6 +229,9 @@ void app_main(void) {
   ESP_LOGI(TAG, "UltraLights boot");
 
   ESP_ERROR_CHECK(nvs_flash_init());
+#if CONFIG_UL_WIFI_RESET_BUTTON_ENABLE
+  start_wifi_reset_button_monitor();
+#endif
   esp_err_t state_err = ul_state_init();
   if (state_err != ESP_OK) {
     ESP_LOGE(TAG, "State persistence disabled: %s",
