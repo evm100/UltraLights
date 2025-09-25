@@ -22,6 +22,28 @@
 #include "sdkconfig.h"
 #include "ul_task.h"
 
+typedef struct {
+  char ssid[33];
+  char password[65];
+} ul_wifi_credentials_t;
+
+bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
+  if (out) {
+    memset(out, 0, sizeof(*out));
+    strncpy(out->ssid, "TestSSID", sizeof(out->ssid) - 1);
+  }
+  return true;
+}
+
+esp_err_t ul_wifi_credentials_save(const ul_wifi_credentials_t *creds) {
+  (void)creds;
+  return ESP_OK;
+}
+
+esp_err_t ul_wifi_credentials_clear(void) {
+  return ESP_OK;
+}
+
 struct EventGroupStub {
   EventBits_t bits;
 };
