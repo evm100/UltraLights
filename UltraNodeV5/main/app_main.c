@@ -2,23 +2,28 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "sdkconfig.h"
 #include "nvs_flash.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "ul_core.h"
 #include "ul_state.h"
 #include "ul_mqtt.h"
 #include "ul_task.h"
 #include "ul_health.h"
+#include "ul_provisioning.h"
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
 #include "ul_rgb_engine.h"
+#include "ul_wifi_credentials.h"
 #if CONFIG_UL_PIR_ENABLED
 #include "ul_pir.h"
 #endif
@@ -163,6 +168,59 @@ void app_main(void) {
   }
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+  ul_wifi_credentials_t creds = {0};
+  bool have_creds = ul_wifi_credentials_load(&creds);
+
+#if CONFIG_UL_WIFI_STATIC_CREDENTIALS
+  if (!have_creds && strlen(CONFIG_UL_WIFI_SSID)) {
+    strlcpy(creds.ssid, CONFIG_UL_WIFI_SSID, sizeof(creds.ssid));
+    strlcpy(creds.password, CONFIG_UL_WIFI_PSK, sizeof(creds.password));
+    esp_err_t seed_err = ul_wifi_credentials_save(&creds);
+    if (seed_err == ESP_OK) {
+      have_creds = true;
+      ESP_LOGI(TAG, "Seeded stored Wi-Fi credentials from sdkconfig");
+    } else {
+      ESP_LOGE(TAG, "Failed to seed Wi-Fi credentials: %s",
+               esp_err_to_name(seed_err));
+      memset(&creds, 0, sizeof(creds));
+    }
+  }
+#endif
+  if (!have_creds) {
+    ul_provisioning_config_t prov_cfg;
+    ul_provisioning_make_default_config(&prov_cfg);
+    const size_t prov_pass_len = strlen(prov_cfg.ap_password);
+    const char *prov_pass_log = prov_pass_len ? prov_cfg.ap_password : "(open)";
+    ESP_LOGW(TAG,
+             "No Wi-Fi credentials found; starting provisioning portal (SSID: %s, password: %s)",
+             prov_cfg.ap_ssid, prov_pass_log);
+    if (prov_pass_len > 0 && prov_pass_len < 8) {
+      ESP_LOGW(TAG, "SoftAP password shorter than WPA2 minimum; portal will run without WPA2 security");
+    }
+    esp_err_t prov_err = ul_provisioning_start(&prov_cfg);
+    if (prov_err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to start provisioning portal: %s", esp_err_to_name(prov_err));
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      esp_restart();
+    }
+    bool success = ul_provisioning_wait_for_completion(portMAX_DELAY, NULL, 0);
+    ul_provisioning_stop();
+    if (!success) {
+      ESP_LOGE(TAG, "Provisioning portal exited without success; restarting");
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      esp_restart();
+    }
+    have_creds = ul_wifi_credentials_load(&creds);
+    if (!have_creds) {
+      ESP_LOGE(TAG, "Provisioning completed but credentials missing; restarting");
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      esp_restart();
+    }
+    ESP_LOGI(TAG, "Provisioning completed; continuing with Wi-Fi setup");
+  } else {
+    ESP_LOGI(TAG, "Using stored Wi-Fi credentials for SSID '%s'", creds.ssid);
+  }
 
   ul_task_init();
 
