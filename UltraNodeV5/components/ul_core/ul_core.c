@@ -12,6 +12,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "ul_task.h"
+#include "ul_wifi_credentials.h"
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
@@ -139,12 +140,18 @@ void ul_core_wifi_start(void) {
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
+  ul_wifi_credentials_t creds = {0};
+  if (!ul_wifi_credentials_load(&creds)) {
+    ESP_LOGE(TAG, "No stored Wi-Fi credentials; cannot start station");
+    return;
+  }
+
   wifi_config_t sta_cfg = {0};
-  strncpy((char *)sta_cfg.sta.ssid, CONFIG_UL_WIFI_SSID,
-          sizeof(sta_cfg.sta.ssid) - 1);
-  strncpy((char *)sta_cfg.sta.password, CONFIG_UL_WIFI_PSK,
-          sizeof(sta_cfg.sta.password) - 1);
-  sta_cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+  strlcpy((char *)sta_cfg.sta.ssid, creds.ssid, sizeof(sta_cfg.sta.ssid));
+  strlcpy((char *)sta_cfg.sta.password, creds.password, sizeof(sta_cfg.sta.password));
+  sta_cfg.sta.threshold.authmode =
+      (creds.password[0] != '\0') ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+  sta_cfg.sta.ssid_len = strlen(creds.ssid);
 
   ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_START,
                                              &wifi_event_handler, NULL));
