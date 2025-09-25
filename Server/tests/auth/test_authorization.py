@@ -346,3 +346,81 @@ def test_non_admin_cannot_create_house_admin(client: TestClient):
         json={"username": "blocked", "password": "secret"},
     )
     assert response.status_code == 403
+
+
+def test_server_admin_remove_account(client: TestClient):
+    _create_user("root", "root-pass", server_admin=True)
+    _create_user(
+        "alpha-admin",
+        "secret",
+        memberships=[("alpha-public", HouseRole.ADMIN, None)],
+    )
+
+    with database.SessionLocal() as session:
+        target = session.exec(
+            select(User).where(User.username == "alpha-admin")
+        ).one()
+        target_id = target.id
+        membership_ids = session.exec(
+            select(HouseMembership.id).where(HouseMembership.user_id == target_id)
+        ).all()
+        membership_ids = [mid for mid in membership_ids if mid is not None]
+
+    _login(client, "root", "root-pass")
+
+    response = client.delete(f"/api/server-admin/accounts/{target_id}")
+    assert response.status_code == 204
+
+    with database.SessionLocal() as session:
+        deleted_user = session.exec(
+            select(User).where(User.username == "alpha-admin")
+        ).first()
+        assert deleted_user is None
+        remaining_memberships = session.exec(
+            select(HouseMembership).where(HouseMembership.user_id == target_id)
+        ).all()
+        assert remaining_memberships == []
+        for membership_id in membership_ids:
+            accesses = session.exec(
+                select(RoomAccess).where(RoomAccess.membership_id == membership_id)
+            ).all()
+            assert accesses == []
+        audit_row = session.exec(
+            select(AuditLog).order_by(AuditLog.id.desc())
+        ).first()
+        assert audit_row is not None
+        assert audit_row.action == "account_removed"
+        assert audit_row.data["user"] == "alpha-admin"
+
+
+def test_server_admin_cannot_remove_last_admin(client: TestClient):
+    _create_user("solo", "root-pass", server_admin=True)
+
+    _login(client, "solo", "root-pass")
+
+    with database.SessionLocal() as session:
+        solo_id = session.exec(
+            select(User.id).where(User.username == "solo")
+        ).one()
+
+    response = client.delete(f"/api/server-admin/accounts/{solo_id}")
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "last server admin" in detail
+
+
+def test_server_admin_cannot_remove_self_when_others_exist(
+    client: TestClient,
+):
+    _create_user("root", "root-pass", server_admin=True)
+    _create_user("other-admin", "secret", server_admin=True)
+
+    _login(client, "root", "root-pass")
+
+    with database.SessionLocal() as session:
+        root_id = session.exec(select(User.id).where(User.username == "root")).one()
+
+    response = client.delete(f"/api/server-admin/accounts/{root_id}")
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "own account" in detail
