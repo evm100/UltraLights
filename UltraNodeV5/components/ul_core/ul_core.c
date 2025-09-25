@@ -151,7 +151,6 @@ void ul_core_wifi_start(void) {
   strlcpy((char *)sta_cfg.sta.password, creds.password, sizeof(sta_cfg.sta.password));
   sta_cfg.sta.threshold.authmode =
       (creds.password[0] != '\0') ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
-  sta_cfg.sta.ssid_len = strlen(creds.ssid);
 
   ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, WIFI_EVENT_STA_START,
                                              &wifi_event_handler, NULL));
