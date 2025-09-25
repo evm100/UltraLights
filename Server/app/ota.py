@@ -28,18 +28,23 @@ LAN_PUBLIC_BASE = os.getenv("LAN_PUBLIC_BASE", "")  # e.g. https://lan.lights.ev
 def latest_symlink_for(dev_id: str) -> Path:
     return settings.FIRMWARE_DIR / f"{dev_id}_latest.bin"
 
-def _resolve_latest(device_id: str) -> Path:
-    # 1) flat symlink:  /srv/firmware/UltraNode2_latest.bin
-    flat = FIRMWARE_DIR / f"{device_id}_latest.bin"
-    # 2) nested file:   /srv/firmware/UltraNode2/latest.bin
-    nested = FIRMWARE_DIR / device_id / "latest.bin"
 
-    for p in (flat, nested):
-        if p.exists():
-            target = p.resolve() if p.is_symlink() else p
+def _resolve_latest(device_id: str, download_id: Optional[str] = None) -> Path:
+    candidates = []
+    if download_id:
+        candidates.append(FIRMWARE_DIR / download_id / "latest.bin")
+
+    candidates.append(FIRMWARE_DIR / f"{device_id}_latest.bin")
+    candidates.append(FIRMWARE_DIR / device_id / "latest.bin")
+
+    for path in candidates:
+        if path.exists():
+            target = path.resolve() if path.is_symlink() else path
             if target.exists():
                 return target
-    raise HTTPException(status_code=404, detail=f"No firmware for device_id={device_id}")
+
+    resolved = download_id or device_id
+    raise HTTPException(status_code=404, detail=f"No firmware for device_id={resolved}")
 
 def _authenticate_request(
     auth_header: Optional[str], session: Session
@@ -176,7 +181,7 @@ def _manifest_sig(body: dict) -> Optional[str]:
 
 
 def _build_manifest_response(device_id: str, download_id: Optional[str]) -> JSONResponse:
-    target = _resolve_latest(device_id)
+    target = _resolve_latest(device_id, download_id)
     size = target.stat().st_size
     sha = _sha256_hex(target)
     name = target.name
@@ -291,10 +296,10 @@ def api_latest_bin(
     request: Request,
     authorization: Optional[str] = Header(None),
 ):
-    resolved_device_id, _, _ = _resolve_access_context(
+    resolved_device_id, resolved_download_id, _ = _resolve_access_context(
         authorization=authorization,
         device_id=None,
         download_id=download_id,
     )
-    target = _resolve_latest(resolved_device_id)
+    target = _resolve_latest(resolved_device_id, resolved_download_id or download_id)
     return _serve_file(target, request)

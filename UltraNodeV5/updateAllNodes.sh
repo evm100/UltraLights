@@ -92,13 +92,14 @@ remove_file_with_sudo() {
 
 migrate_legacy_archives() {
   local nodeid="$1"
-  local node_dir="$FIRMWARE_DIR/$nodeid"
+  local downloadid="$2"
+  local download_dir="$FIRMWARE_DIR/$downloadid"
   local archive_node_dir="$FIRMWARE_ARCHIVE_DIR/$nodeid"
 
   mkdir -p "$archive_node_dir"
 
   local legacy_file
-  for legacy_file in "$node_dir"/*.bin; do
+  for legacy_file in "$download_dir"/*.bin; do
     local base
     base="$(basename "$legacy_file")"
 
@@ -106,7 +107,7 @@ migrate_legacy_archives() {
       continue
     fi
 
-    echo "Migrating legacy firmware artifact $base for $nodeid to private archive"
+    echo "Migrating legacy firmware artifact $base for $nodeid ($downloadid) to private archive"
     copy_file_to_private_archive "$legacy_file" "$archive_node_dir/$base"
     remove_file_with_sudo "$legacy_file"
   done
@@ -114,15 +115,16 @@ migrate_legacy_archives() {
 
 archive_and_update_latest() {
   local nodeid="$1"
-  local node_dir="$FIRMWARE_DIR/$nodeid"
+  local downloadid="$2"
+  local download_dir="$FIRMWARE_DIR/$downloadid"
   local archive_node_dir="$FIRMWARE_ARCHIVE_DIR/$nodeid"
   local new_bin="build/ultralights.bin"
-  local manifest_path="$node_dir/manifest.json"
+  local manifest_path="$download_dir/manifest.json"
 
-  mkdir -p "$node_dir"
+  mkdir -p "$download_dir"
   mkdir -p "$archive_node_dir"
 
-  migrate_legacy_archives "$nodeid"
+  migrate_legacy_archives "$nodeid" "$downloadid"
 
   local previous_version=""
   if [[ -f "$manifest_path" ]]; then
@@ -151,7 +153,7 @@ PY
   fi
 
   # Move previous latest.bin into the private archive if it exists
-  if [[ -f "$node_dir/latest.bin" ]]; then
+  if [[ -f "$download_dir/latest.bin" ]]; then
     if [[ -n "$previous_version" ]]; then
       local safe_prev_version
       safe_prev_version="$(sanitize_version "$previous_version")"
@@ -160,8 +162,8 @@ PY
         local archived_path
         archived_path="$archive_node_dir/${safe_prev_version}.bin"
 
-        echo "Archiving previous latest.bin for $nodeid -> ${safe_prev_version}.bin (version $previous_version) in private storage"
-        copy_file_to_private_archive "$node_dir/latest.bin" "$archived_path"
+        echo "Archiving previous latest.bin for $nodeid ($downloadid) -> ${safe_prev_version}.bin (version $previous_version) in private storage"
+        copy_file_to_private_archive "$download_dir/latest.bin" "$archived_path"
       else
         echo "WARNING: Previous manifest version for $nodeid sanitized to empty; skipping archive rename."
       fi
@@ -169,14 +171,14 @@ PY
       echo "No previous manifest version found for $nodeid; skipping archive rename."
     fi
   else
-    echo "No existing latest.bin to archive for $nodeid."
+    echo "No existing latest.bin to archive for $nodeid ($downloadid)."
   fi
 
   # Copy newly built firmware to latest.bin
   if [[ -f "$new_bin" ]]; then
-    echo "Updating latest.bin for $nodeid"
-    sudo cp "$new_bin" "$node_dir/latest.bin"
-    sudo chmod 644 "$node_dir/latest.bin" 2>/dev/null || true
+    echo "Updating latest.bin for $nodeid ($downloadid)"
+    sudo cp "$new_bin" "$download_dir/latest.bin"
+    sudo chmod 644 "$download_dir/latest.bin" 2>/dev/null || true
 
     local safe_current_version
     safe_current_version="$(sanitize_version "$FIRMWARE_VERSION")"
@@ -189,7 +191,7 @@ PY
       echo "WARNING: Firmware version '$FIRMWARE_VERSION' sanitized to empty; skipping private archive copy."
     fi
   else
-    echo "WARNING: $new_bin not found. Skipping latest.bin update for $nodeid."
+    echo "WARNING: $new_bin not found. Skipping latest.bin update for $nodeid ($downloadid)."
   fi
 }
 
@@ -218,6 +220,53 @@ sanitize_version() {
   local version="$1"
   # Allow alphanumeric, dot, underscore and dash in filenames. Replace others with underscore.
   printf '%s' "$version" | sed 's/[^A-Za-z0-9._-]/_/g'
+}
+
+read_config_metadata() {
+  local config_path="$1"
+  python3 - "$config_path" <<'PY'
+import sys
+import urllib.parse
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+try:
+    text = config_path.read_text(encoding="utf-8")
+except Exception:
+    print()
+    print()
+    raise SystemExit(0)
+
+node_id = ""
+download_id = ""
+
+for line in text.splitlines():
+    if not node_id and line.startswith("CONFIG_UL_NODE_ID="):
+        raw = line.split("=", 1)[1].strip()
+        if raw.startswith('"') and raw.endswith('"'):
+            raw = raw[1:-1]
+        node_id = raw
+    if not download_id and line.startswith("CONFIG_UL_OTA_MANIFEST_URL="):
+        raw = line.split("=", 1)[1].strip()
+        if raw.startswith('"') and raw.endswith('"'):
+            raw = raw[1:-1]
+        if raw:
+            parsed = urllib.parse.urlparse(raw)
+            segments = [seg for seg in parsed.path.split('/') if seg]
+            candidate = ""
+            if "UltraLights" in segments:
+                idx = segments.index("UltraLights")
+                if idx + 1 < len(segments):
+                    candidate = segments[idx + 1]
+            if not candidate and len(segments) >= 2:
+                candidate = segments[-2]
+            elif not candidate and segments:
+                candidate = segments[-1]
+            download_id = candidate
+
+print(node_id)
+print(download_id)
+PY
 }
 
 update_sdkconfig_version() {
@@ -271,12 +320,13 @@ PY
 
 write_manifest() {
   local nodeid="$1"
-  local version="$2"
-  local node_dir="$FIRMWARE_DIR/$nodeid"
-  local latest_bin="$node_dir/latest.bin"
+  local downloadid="$2"
+  local version="$3"
+  local download_dir="$FIRMWARE_DIR/$downloadid"
+  local latest_bin="$download_dir/latest.bin"
 
   if [[ ! -f "$latest_bin" ]]; then
-    echo "WARNING: Cannot create manifest for $nodeid (missing $latest_bin)" >&2
+    echo "WARNING: Cannot create manifest for $nodeid ($downloadid) (missing $latest_bin)" >&2
     return
   fi
 
@@ -301,8 +351,8 @@ write_manifest() {
 JSON
   )
 
-  local manifest_path="$node_dir/manifest.json"
-  local manifest_versioned="$node_dir/manifest_${safe_version}.json"
+  local manifest_path="$download_dir/manifest.json"
+  local manifest_versioned="$download_dir/manifest_${safe_version}.json"
   local tmp
   tmp=$(mktemp)
   printf '%s\n' "$manifest_json" > "$tmp"
@@ -343,9 +393,27 @@ for target_dir in "$CONFIG_ROOT"/*/; do
   configs_found=false
   for config_file in "$target_dir"/sdkconfig.*; do
     configs_found=true
-    nodeid="${config_file##*.}"
+    mapfile -t metadata < <(read_config_metadata "$config_file")
+    nodeid="${metadata[0]}"
+    download_id="${metadata[1]}"
+
+    if [[ -z "$nodeid" ]]; then
+      nodeid="${config_file##*.}"
+      echo "WARNING: CONFIG_UL_NODE_ID missing in $config_file; falling back to filename ($nodeid)."
+    fi
+
+    if [[ -z "$download_id" ]]; then
+      download_id="$nodeid"
+      echo "WARNING: Could not determine download identifier from $config_file; using $download_id."
+    fi
+
+    if [[ -z "$download_id" ]]; then
+      echo "ERROR: Unable to determine download identifier for $config_file" >&2
+      exit 1
+    fi
+
     echo
-    echo "--- Processing node: $nodeid ---"
+    echo "--- Processing node: $nodeid (download: $download_id) ---"
     echo "Using config: $config_file"
 
     # Copy sdkconfig in place for this build/flash
@@ -364,8 +432,8 @@ for target_dir in "$CONFIG_ROOT"/*/; do
     $FLASH_CMD
 
     # Version/rotate artifacts
-    archive_and_update_latest "$nodeid"
-    write_manifest "$nodeid" "$FIRMWARE_VERSION"
+    archive_and_update_latest "$nodeid" "$download_id"
+    write_manifest "$nodeid" "$download_id" "$FIRMWARE_VERSION"
     echo "--- Done: $nodeid ---"
   done
 
