@@ -113,7 +113,8 @@ static void ch_init(int idx, bool enabled, int gpio, int ledc_ch, int pwm_hz) {
     s_ch[idx].gpio = gpio;
     s_ch[idx].ledc_ch = ledc_ch;
     s_ch[idx].pwm_hz = pwm_hz;
-    s_ch[idx].brightness = 255;
+    // Default to lights off until an explicit brightness is received.
+    s_ch[idx].brightness = 0;
     int n=0; const white_effect_t* t = ul_white_get_effects(&n);
     s_ch[idx].eff = &t[0];
     s_ch[idx].frame_idx = 0;
