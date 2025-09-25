@@ -340,8 +340,8 @@ void ul_provisioning_make_default_config(ul_provisioning_config_t *cfg) {
     seed = seed * 1103515245u + 12345u;
     cfg->ap_password[i] = alphabet[seed % (sizeof(alphabet) - 1)];
   }
-  cfg->ap_password[4] = '\0';
-  memset(&cfg->ap_password[4], 0, sizeof(cfg->ap_password) - 4);
+  cfg->ap_password[8] = '\0';
+  memset(&cfg->ap_password[8], 0, sizeof(cfg->ap_password) - 8);
 }
 
 esp_err_t ul_provisioning_start(const ul_provisioning_config_t *cfg) {
