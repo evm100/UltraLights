@@ -299,6 +299,44 @@ def test_server_admin_rotate_house_id(client: TestClient):
         assert audit_row.data["new"] == payload["newId"]
 
 
+def test_server_admin_create_house(client: TestClient):
+    _create_user("root", "root-pass", server_admin=True)
+
+    _login(client, "root", "root-pass")
+
+    response = client.post(
+        "/api/server-admin/houses",
+        json={
+            "id": "example-house",
+            "name": "Example House",
+            "rooms": [],
+            "external_id": "",
+        },
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["id"] == "example-house"
+    assert payload["name"] == "Example House"
+    assert payload["externalId"]
+
+    assert any(
+        house.get("id") == "example-house" for house in settings.DEVICE_REGISTRY
+    )
+
+    with database.SessionLocal() as session:
+        house_row = session.exec(
+            select(House).where(House.external_id == payload["externalId"])
+        ).one()
+        assert house_row.display_name == "Example House"
+
+        audit_row = session.exec(
+            select(AuditLog).order_by(AuditLog.id.desc())
+        ).first()
+        assert audit_row is not None
+        assert audit_row.action == "house_created"
+        assert audit_row.data["external_id"] == payload["externalId"]
+
+
 def test_server_admin_create_house_admin(client: TestClient):
     _create_user("root", "root-pass", server_admin=True)
 
