@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # UltraLights multi-target bulk flasher + versioned artifact rotator
-
+sudo -v
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
