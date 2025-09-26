@@ -454,7 +454,7 @@ def api_delete_room(
 def api_add_node(
     house_id: str,
     room_id: str,
-    payload: Dict[str, Any],
+    _payload: Dict[str, Any],
     *,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
@@ -462,41 +462,10 @@ def api_add_node(
     policy = _build_policy(session, current_user)
     room_ctx = _require_room(policy, house_id, room_id)
     _ensure_can_manage_house(room_ctx.house, current_user)
-    name = str(payload.get("name", "")).strip()
-    if not name:
-        raise HTTPException(400, "missing name")
-    kind = str(payload.get("kind", "ultranode"))
-    modules = payload.get("modules")
-    try:
-        node = registry.add_node(house_id, room_id, name, kind, modules)
-    except KeyError:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown room")
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-    ensured = node_credentials.ensure_for_node(
-        session,
-        node_id=str(node.get("id")),
-        house_slug=room_ctx.house.slug,
-        room_id=room_id,
-        display_name=str(node.get("name") or name),
-        rotate_token=True,
+    raise HTTPException(
+        status.HTTP_501_NOT_IMPLEMENTED,
+        "Node creation now requires pre-registered identifiers. Use the offline provisioning workflow to claim nodes.",
     )
-
-    credential = ensured.credential
-    registry.set_node_download_id(credential.node_id, credential.download_id)
-
-    manifest_url = f"{settings.PUBLIC_BASE}/firmware/{credential.download_id}/manifest"
-    binary_url = f"{settings.PUBLIC_BASE}/firmware/{credential.download_id}/latest.bin"
-
-    return {
-        "ok": True,
-        "node": node,
-        "credentials": {
-            "downloadId": credential.download_id,
-            "manifestUrl": manifest_url,
-            "binaryUrl": binary_url,
-        },
-    }
 
 
 @router.get("/api/house/{house_id}/room/{room_id}/presets")
