@@ -63,17 +63,36 @@ static const char *transport_name(esp_mqtt_transport_t transport) {
   }
 }
 
-static bool parse_host_from_uri(const char *uri, char *out, size_t out_len) {
-  if (!uri || !out || out_len == 0)
+static bool uri_authority_range(const char *uri, const char **authority_out,
+                                const char **end_out) {
+  if (!uri || !authority_out || !end_out)
     return false;
 
+  const char *authority = uri;
   const char *scheme_end = strstr(uri, "://");
-  const char *authority = scheme_end ? scheme_end + 3 : uri;
+  if (scheme_end)
+    authority = scheme_end + 3;
   if (!authority || *authority == '\0')
     return false;
 
   const char *path = strchr(authority, '/');
   const char *end = path ? path : authority + strlen(authority);
+  if (authority == end)
+    return false;
+
+  *authority_out = authority;
+  *end_out = end;
+  return true;
+}
+
+static bool parse_host_from_uri(const char *uri, char *out, size_t out_len) {
+  if (!uri || !out || out_len == 0)
+    return false;
+
+  const char *authority = NULL;
+  const char *end = NULL;
+  if (!uri_authority_range(uri, &authority, &end))
+    return false;
 
   if (*authority == '[') {
     const char *closing = memchr(authority, ']', end - authority);
@@ -104,12 +123,11 @@ static bool parse_host_from_uri(const char *uri, char *out, size_t out_len) {
 static int parse_port_from_uri(const char *uri, int default_port) {
   if (!uri)
     return default_port;
-  const char *scheme_end = strstr(uri, "://");
-  if (!scheme_end)
+
+  const char *authority = NULL;
+  const char *end = NULL;
+  if (!uri_authority_range(uri, &authority, &end))
     return default_port;
-  const char *authority = scheme_end + 3;
-  const char *path = strchr(authority, '/');
-  const char *end = path ? path : authority + strlen(authority);
   const char *colon = NULL;
   if (authority < end && authority[0] == '[') {
     const char *closing = memchr(authority, ']', end - authority);
@@ -1198,13 +1216,21 @@ void ul_mqtt_start(void) {
     int default_port = parse_port_from_uri(CONFIG_UL_MQTT_URI, fallback_port);
     int port = CONFIG_UL_MQTT_DIAL_PORT;
     if (port <= 0 || port > 65535)
+      port = parse_port_from_uri(CONFIG_UL_MQTT_DIAL_HOST, default_port);
+    if (port <= 0 || port > 65535)
       port = default_port;
     cfg.broker.address.uri = NULL;
-    cfg.broker.address.hostname = CONFIG_UL_MQTT_DIAL_HOST;
+    static char s_dial_host[128];
+    const char *dial_host = CONFIG_UL_MQTT_DIAL_HOST;
+    if (parse_host_from_uri(CONFIG_UL_MQTT_DIAL_HOST, s_dial_host,
+                            sizeof(s_dial_host))) {
+      dial_host = s_dial_host;
+    }
+    cfg.broker.address.hostname = dial_host;
     cfg.broker.address.port = port;
     cfg.broker.address.transport = transport;
     ESP_LOGI(TAG, "MQTT dialing override host %s:%d (transport %s)",
-             CONFIG_UL_MQTT_DIAL_HOST, port, transport_name(transport));
+             dial_host, port, transport_name(transport));
   }
 
 #if CONFIG_UL_MQTT_USE_TLS
