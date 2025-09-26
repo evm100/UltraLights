@@ -307,6 +307,12 @@ class RecordingClient:
     def max_queued_messages_set(self, value: int) -> None:  # pragma: no cover - noop
         self.max_queued = value
 
+    def tls_set(self, *args, **kwargs) -> None:  # pragma: no cover - record TLS setup
+        self.tls_config = {"args": args, "kwargs": kwargs}
+
+    def tls_insecure_set(self, value: bool) -> None:  # pragma: no cover - record TLS flag
+        self.tls_insecure = bool(value)
+
     def connect(self, host: str, port: int, keepalive: int) -> None:  # pragma: no cover - noop
         self.connection = (host, port, keepalive)
 

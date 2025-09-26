@@ -15,8 +15,14 @@ class Settings:
     SSL_KEYFILE  = os.getenv("SSL_KEYFILE", "")
 
     BROKER_HOST = os.getenv("BROKER_HOST", "127.0.0.1")
-    BROKER_PORT = int(os.getenv("BROKER_PORT", "1883"))
+    BROKER_PORT = int(os.getenv("BROKER_PORT", "8883"))
     EMBED_BROKER = os.getenv("EMBED_BROKER", "0") == "1"
+    _broker_tls_default = "0" if EMBED_BROKER else "1"
+    BROKER_TLS_ENABLED = os.getenv("BROKER_TLS_ENABLED", _broker_tls_default) == "1"
+    BROKER_TLS_CA_FILE = os.getenv("BROKER_TLS_CA_FILE", "")
+    BROKER_TLS_CERTFILE = os.getenv("BROKER_TLS_CERTFILE", "")
+    BROKER_TLS_KEYFILE = os.getenv("BROKER_TLS_KEYFILE", "")
+    BROKER_TLS_INSECURE = os.getenv("BROKER_TLS_INSECURE", "0") == "1"
 
     FIRMWARE_DIR = Path(
         os.getenv("FIRMWARE_DIR", "/srv/firmware/UltraLights")

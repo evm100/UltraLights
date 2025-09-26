@@ -66,11 +66,29 @@ endmenu
 menu "MQTT"
     config UL_MQTT_URI
         string "MQTT URI"
-        default "mqtt://192.168.1.64:1883"
+        default "mqtts://lights.evm100.org:8883"
     config UL_MQTT_USER
         string "MQTT Username"
     config UL_MQTT_PASS
         string "MQTT Password"
+    config UL_MQTT_USE_TLS
+        bool "Use TLS for MQTT"
+        default y
+        help
+            Enable TLS when connecting to the MQTT broker.
+    if UL_MQTT_USE_TLS
+        config UL_MQTT_TLS_COMMON_NAME
+            string "MQTT TLS common name"
+            default "lights.evm100.org"
+            help
+                Expected common name (CN) presented by the MQTT broker's TLS certificate.
+        config UL_MQTT_TLS_SKIP_COMMON_NAME_CHECK
+            bool "Skip MQTT TLS common name check"
+            default n
+            help
+                Disable certificate common name validation. Only enable this for development
+                scenarios with self-signed certificates.
+    endif
 endmenu
 
 menu "OTA"

@@ -7,6 +7,9 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
+#ifndef UL_MQTT_TESTING
+#include "esp_crt_bundle.h"
+#endif
 #include "mqtt_client.h"
 #include "sdkconfig.h"
 #include "ul_core.h"
@@ -1058,6 +1061,19 @@ void ul_mqtt_start(void) {
       .task.priority = 5,
       .task.stack_size = 6144,
   };
+
+#if CONFIG_UL_MQTT_USE_TLS
+#ifndef UL_MQTT_TESTING
+  cfg.broker.verification.crt_bundle_attach = esp_crt_bundle_attach;
+#endif
+#if CONFIG_UL_MQTT_TLS_SKIP_COMMON_NAME_CHECK
+  cfg.broker.verification.skip_cert_common_name_check = true;
+#else
+  if (CONFIG_UL_MQTT_TLS_COMMON_NAME[0] != '\0') {
+    cfg.broker.verification.common_name = CONFIG_UL_MQTT_TLS_COMMON_NAME;
+  }
+#endif
+#endif
 
   esp_mqtt_client_handle_t client = esp_mqtt_client_init(&cfg);
   if (!client) {

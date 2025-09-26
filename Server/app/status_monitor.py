@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import paho.mqtt.client as mqtt
 
-from .config import settings
+from .mqtt_tls import connect_mqtt_client
 
 
 class StatusMonitor:
@@ -33,7 +33,7 @@ class StatusMonitor:
     def start(self) -> None:
         if self._running:
             return
-        self.client.connect(settings.BROKER_HOST, settings.BROKER_PORT, keepalive=30)
+        connect_mqtt_client(self.client, keepalive=30)
         self.client.loop_start()
         self._running = True
 
