@@ -18,6 +18,8 @@ typedef int esp_err_t;
 #define CONFIG_UL_MQTT_URI "test://broker"
 #define CONFIG_UL_MQTT_USER "test_user"
 #define CONFIG_UL_MQTT_PASS "test_pass"
+#define CONFIG_UL_MQTT_DIAL_HOST ""
+#define CONFIG_UL_MQTT_DIAL_PORT 0
 #define CONFIG_UL_MQTT_USE_TLS 1
 #define CONFIG_UL_MQTT_TLS_SKIP_COMMON_NAME_CHECK 0
 #define CONFIG_UL_MQTT_TLS_COMMON_NAME "test-broker"
@@ -53,10 +55,20 @@ esp_err_t esp_timer_stop(esp_timer_handle_t timer);
 struct ul_mqtt_test_client;
 typedef struct ul_mqtt_test_client *esp_mqtt_client_handle_t;
 
+typedef enum {
+  MQTT_TRANSPORT_OVER_TCP = 0,
+  MQTT_TRANSPORT_OVER_SSL = 1,
+  MQTT_TRANSPORT_OVER_WS = 2,
+  MQTT_TRANSPORT_OVER_WSS = 3,
+} mqtt_transport_t;
+
 typedef struct {
   struct {
     struct {
       const char *uri;
+      const char *hostname;
+      int port;
+      mqtt_transport_t transport;
     } address;
     struct {
       bool use_global_ca_store;

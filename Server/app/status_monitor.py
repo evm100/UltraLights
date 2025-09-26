@@ -16,7 +16,10 @@ class StatusMonitor:
 
     def __init__(self, timeout: int = 30) -> None:
         self.timeout = timeout
-        self.client = mqtt.Client()
+        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        enable_logger = getattr(self.client, "enable_logger", None)
+        if callable(enable_logger):
+            enable_logger()
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         self._lock = threading.Lock()
@@ -27,26 +30,47 @@ class StatusMonitor:
         self._last_payload: Dict[str, Any] = {}
         self._node_seq: Dict[str, int] = {}
         self._running = False
+        self._loop_thread: Optional[threading.Thread] = None
 
     # ------------------------------------------------------------------
     # MQTT lifecycle
     def start(self) -> None:
         if self._running:
             return
-        connect_mqtt_client(self.client, keepalive=30)
-        self.client.loop_start()
+        connect_mqtt_client(
+            self.client,
+            keepalive=30,
+            start_async=True,
+            raise_on_failure=False,
+        )
+        loop_start = getattr(self.client, "loop_start", None)
+        if callable(loop_start):
+            loop_start()
+        else:
+            self._loop_thread = threading.Thread(
+                target=self.client.loop_forever,
+                daemon=True,
+            )
+            self._loop_thread.start()
         self._running = True
 
     def stop(self) -> None:
         if not self._running:
             return
-        self.client.loop_stop()
+        loop_stop = getattr(self.client, "loop_stop", None)
+        if callable(loop_stop):
+            loop_stop()
+        if self._loop_thread is not None:
+            self._loop_thread.join(timeout=5.0)
+            self._loop_thread = None
         self.client.disconnect()
         self._running = False
 
     # ------------------------------------------------------------------
     # MQTT callbacks
-    def _on_connect(self, client: mqtt.Client, userdata, flags, rc) -> None:  # type: ignore[override]
+    def _on_connect(
+        self, client: mqtt.Client, userdata, flags, reason_code, properties=None
+    ) -> None:
         client.subscribe("ul/+/evt/status")
 
     def _on_message(self, client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:  # type: ignore[override]
