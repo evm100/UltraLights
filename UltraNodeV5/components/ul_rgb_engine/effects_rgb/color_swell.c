@@ -11,6 +11,7 @@
 
 #define COLOR_SWELL_STEP_INTERVAL_US 10000
 
+
 static uint8_t s_color[RGB_STRIP_MAX][3];
 static bool s_initialized;
 

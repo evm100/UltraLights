@@ -15,7 +15,7 @@ static uint8_t compute_brightness_for_frame(int frame_idx) {
     int refresh_hz = CONFIG_UL_WHITE_SMOOTH_HZ;
     if (refresh_hz <= 0) {
         return 255;
-    }
+    } 
 
     int64_t elapsed_us = ((int64_t)frame_idx * 1000000LL) / refresh_hz;
     int64_t steps = elapsed_us / WHITE_SWELL_STEP_INTERVAL_US;
