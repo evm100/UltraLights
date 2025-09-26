@@ -60,13 +60,33 @@ and trust material through the following environment variables:
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `BROKER_HOST` | MQTT broker hostname. | `127.0.0.1` |
+| `BROKER_HOST` | MQTT broker hostname. | `lights.evm100.org` |
 | `BROKER_PORT` | MQTT broker port. | `8883` |
+| `BROKER_USERNAME` | Username used to authenticate with the broker. | empty |
+| `BROKER_PASSWORD` | Password paired with `BROKER_USERNAME`. | empty |
 | `BROKER_TLS_ENABLED` | Enable MQTT over TLS. Set to `0` to disable. | `1` (unless `EMBED_BROKER=1`) |
 | `BROKER_TLS_CA_FILE` | Path to a CA bundle for broker verification. | empty (system defaults) |
 | `BROKER_TLS_CERTFILE` | Client certificate for mutual TLS. | empty |
 | `BROKER_TLS_KEYFILE` | Private key for the client certificate. | empty |
 | `BROKER_TLS_INSECURE` | Accept invalid certificates (development only). | `0` |
+
+When targeting the hosted Mosquitto instance (listener `8883` with TLS enforced)
+the `.env` file should provide the following snippet so the server and helper
+scripts authenticate correctly:
+
+```
+BROKER_HOST=lights.evm100.org
+BROKER_PORT=8883
+BROKER_USERNAME=uluser
+BROKER_PASSWORD=ulpwd
+BROKER_TLS_ENABLED=1
+BROKER_TLS_INSECURE=0
+```
+
+The broker is configured with Let's Encrypt certificates at
+`/etc/mosquitto/certs/fullchain.pem` and `privkey.pem` and only accepts TLS 1.2
+connections. Clients rely on the system CA bundle, so additional certificate
+paths are unnecessary unless a custom trust store is desired.
 
 ## Operational notes
 

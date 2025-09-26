@@ -16,6 +16,8 @@ class Settings:
 
     BROKER_HOST = os.getenv("BROKER_HOST", "127.0.0.1")
     BROKER_PORT = int(os.getenv("BROKER_PORT", "8883"))
+    BROKER_USERNAME = os.getenv("BROKER_USERNAME", "")
+    BROKER_PASSWORD = os.getenv("BROKER_PASSWORD", "")
     EMBED_BROKER = os.getenv("EMBED_BROKER", "0") == "1"
     _broker_tls_default = "0" if EMBED_BROKER else "1"
     BROKER_TLS_ENABLED = os.getenv("BROKER_TLS_ENABLED", _broker_tls_default) == "1"

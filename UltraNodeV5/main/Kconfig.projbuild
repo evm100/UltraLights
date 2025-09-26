@@ -69,8 +69,10 @@ menu "MQTT"
         default "mqtts://lights.evm100.org:8883"
     config UL_MQTT_USER
         string "MQTT Username"
+        default "uluser"
     config UL_MQTT_PASS
         string "MQTT Password"
+        default "ulpwd"
     config UL_MQTT_USE_TLS
         bool "Use TLS for MQTT"
         default y
