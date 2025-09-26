@@ -23,6 +23,8 @@ typedef int esp_err_t;
 #define CONFIG_UL_MQTT_USE_TLS 1
 #define CONFIG_UL_MQTT_TLS_SKIP_COMMON_NAME_CHECK 0
 #define CONFIG_UL_MQTT_TLS_COMMON_NAME "test-broker"
+#define CONFIG_UL_MQTT_CONNECT_TIMEOUT_MS 20000
+#define CONFIG_UL_MQTT_RECONNECT_DELAY_MS 3000
 
 #define ESP_EVENT_ANY_ID (-1)
 
@@ -62,6 +64,8 @@ typedef enum {
   MQTT_TRANSPORT_OVER_WSS = 3,
 } mqtt_transport_t;
 
+typedef mqtt_transport_t esp_mqtt_transport_t;
+
 typedef struct {
   struct {
     struct {
@@ -92,6 +96,11 @@ typedef struct {
     int priority;
     int stack_size;
   } task;
+  struct {
+    bool disable_auto_reconnect;
+    int reconnect_timeout_ms;
+    int timeout_ms;
+  } network;
 } esp_mqtt_client_config_t;
 
 esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_config_t *cfg);
