@@ -150,39 +150,12 @@
 <script type="module" src="/static/presets.js"></script>
 <script>
 const addNodeButton = document.getElementById('addNode');
-if(addNodeButton){
-  addNodeButton.onclick = async () => {
-    const name = prompt('New node name');
-    if (!name) {
-      return;
-    }
-    let res;
-    try {
-      res = await fetch('/api/house/{{ house_public_id }}/room/{{ room.id }}/nodes', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        credentials: 'same-origin',
-        body: JSON.stringify({name}),
-      });
-    } catch (error) {
-      alert('Failed to add node');
-      return;
-    }
-    if (res.ok) {
-      location.reload();
-      return;
-    }
-    let message = 'Failed to add node';
-    try {
-      const data = await res.json();
-      if (data && typeof data.detail === 'string' && data.detail.trim()) {
-        message = data.detail;
-      }
-    } catch (error) {
-      // ignore JSON parse errors
-    }
-    alert(message);
-  };
+if (addNodeButton) {
+  addNodeButton.classList.add('opacity-50', 'cursor-not-allowed');
+  addNodeButton.disabled = true;
+  addNodeButton.addEventListener('click', () => {
+    alert('Nodes are now provisioned in batches. Please use the offline provisioning workflow.');
+  });
 }
 {% if motion_config %}
 (function(){
