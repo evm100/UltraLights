@@ -224,9 +224,37 @@ static void test_register_failure_retry(void) {
   assert(g_health_last_state == false);
 }
 
+static void test_consecutive_failure_restart(void) {
+  reset_metrics();
+  g_core_connected = true;
+  g_init_failures_remaining = 10;
+
+  ul_mqtt_start();
+
+  for (uint32_t attempt = 1; attempt <= UL_MQTT_MAX_CONSECUTIVE_START_FAILURES;
+       ++attempt) {
+    assert(ul_mqtt_test_consecutive_failures() == attempt);
+    bool expect_restart = attempt >= UL_MQTT_MAX_CONSECUTIVE_START_FAILURES;
+    assert(ul_mqtt_test_restart_pending() == expect_restart);
+    assert(ul_mqtt_test_retry_pending());
+    if (attempt < UL_MQTT_MAX_CONSECUTIVE_START_FAILURES)
+      fire_retry_timer();
+  }
+
+  assert(ul_mqtt_test_restart_pending());
+  fire_retry_timer();
+
+  assert(!ul_mqtt_test_restart_pending());
+  assert(ul_mqtt_test_consecutive_failures() == 1);
+  assert(ul_mqtt_test_retry_pending());
+
+  ul_mqtt_stop();
+}
+
 int main(void) {
   test_init_failure_retry();
   test_register_failure_retry();
+  test_consecutive_failure_restart();
 
   printf("ul_mqtt_retry_test passed\n");
   return 0;
