@@ -4,8 +4,9 @@ import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import paho.mqtt.client as mqtt
-from .config import settings
+
 from .mqtt_bus import MqttBus
+from .mqtt_tls import connect_mqtt_client
 from .presets import get_preset, apply_preset
 from .motion_schedule import motion_schedule
 from .motion_prefs import motion_preferences
@@ -36,7 +37,7 @@ class MotionManager:
     def start(self) -> None:
         self._seed_room_sensors_from_config()
         self._request_status_for_registry()
-        self.client.connect(settings.BROKER_HOST, settings.BROKER_PORT, keepalive=30)
+        connect_mqtt_client(self.client, keepalive=30)
         self.client.loop_start()
 
     def stop(self) -> None:

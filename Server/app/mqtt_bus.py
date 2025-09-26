@@ -3,7 +3,8 @@ import json
 import time
 from typing import Optional, List, Dict, Union, Tuple
 import paho.mqtt.client as paho
-from .config import settings
+
+from .mqtt_tls import connect_mqtt_client
 
 def topic_cmd(node_id: str, path: str) -> str:
     return f"ul/{node_id}/cmd/{path}"
@@ -23,7 +24,7 @@ class MqttBus:
         self.client.max_inflight_messages_set(200)
         # Ensure queued messages are buffered rather than rejected when under load
         self.client.max_queued_messages_set(0)
-        self.client.connect(settings.BROKER_HOST, settings.BROKER_PORT, keepalive=30)
+        connect_mqtt_client(self.client, keepalive=30)
         self._node_next_publish: Dict[str, float] = {}
         self._pending_commands: Dict[str, PendingCommand] = {}
         self._rate_condition = threading.Condition()

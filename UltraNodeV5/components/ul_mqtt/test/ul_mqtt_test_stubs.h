@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 typedef int esp_err_t;
 
@@ -17,6 +18,9 @@ typedef int esp_err_t;
 #define CONFIG_UL_MQTT_URI "test://broker"
 #define CONFIG_UL_MQTT_USER "test_user"
 #define CONFIG_UL_MQTT_PASS "test_pass"
+#define CONFIG_UL_MQTT_USE_TLS 1
+#define CONFIG_UL_MQTT_TLS_SKIP_COMMON_NAME_CHECK 0
+#define CONFIG_UL_MQTT_TLS_COMMON_NAME "test-broker"
 
 #define ESP_EVENT_ANY_ID (-1)
 
@@ -54,6 +58,17 @@ typedef struct {
     struct {
       const char *uri;
     } address;
+    struct {
+      bool use_global_ca_store;
+      void *crt_bundle_attach;
+      const char *certificate;
+      size_t certificate_len;
+      const void *psk_hint_key;
+      bool skip_cert_common_name_check;
+      const char **alpn_protos;
+      const char *common_name;
+      const int *ciphersuites_list;
+    } verification;
   } broker;
   struct {
     const char *username;

@@ -53,6 +53,21 @@ This creates demo users (with the provided password and prefix) for every house
 discovered in the registry and grants them house-admin privileges. Rerunning the
 command is safe; it skips houses that already have a matching demo user.
 
+## MQTT broker configuration
+
+TLS is enabled for MQTT connections by default. Configure the client credentials
+and trust material through the following environment variables:
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `BROKER_HOST` | MQTT broker hostname. | `127.0.0.1` |
+| `BROKER_PORT` | MQTT broker port. | `8883` |
+| `BROKER_TLS_ENABLED` | Enable MQTT over TLS. Set to `0` to disable. | `1` (unless `EMBED_BROKER=1`) |
+| `BROKER_TLS_CA_FILE` | Path to a CA bundle for broker verification. | empty (system defaults) |
+| `BROKER_TLS_CERTFILE` | Client certificate for mutual TLS. | empty |
+| `BROKER_TLS_KEYFILE` | Private key for the client certificate. | empty |
+| `BROKER_TLS_INSECURE` | Accept invalid certificates (development only). | `0` |
+
 ## Operational notes
 
 - Authentication and administrative actions are persisted to the `audit_logs`
