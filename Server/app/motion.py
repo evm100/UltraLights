@@ -133,11 +133,28 @@ class MotionManager:
         self._request_motion_status(node_id, force=force)
 
     # MQTT callbacks -------------------------------------------------
-    def _on_connect(self, client, userdata, flags, rc) -> None:
+    def _on_connect(self, client, userdata, flags, reason_code, properties=None) -> None:
+        """Subscribe to motion topics once the broker connection is established."""
+
+        refused = False
+        if hasattr(reason_code, "is_refused"):
+            refused = bool(reason_code.is_refused)  # type: ignore[assignment]
+        else:
+            try:
+                refused = int(reason_code) != 0
+            except Exception:
+                refused = False
+
+        if refused:
+            logger.error("MotionManager MQTT connection refused: %s", reason_code)
+            self._mqtt_connected = False
+            return
+
         client.subscribe("ul/+/evt/+/motion")
         client.subscribe("ul/+/evt/status")
         client.subscribe("ul/+/evt/motion/status")
         self._request_status_for_registry(force=True)
+        self._mqtt_connected = True
 
     def _on_message(self, client, userdata, msg: mqtt.MQTTMessage) -> None:
         topic = msg.topic or ""

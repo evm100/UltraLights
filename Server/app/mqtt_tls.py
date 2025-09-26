@@ -3,6 +3,7 @@ from __future__ import annotations
 import ssl
 from types import MethodType
 from typing import Dict, Optional
+
 import paho.mqtt.client as mqtt
 from .config import settings
 
