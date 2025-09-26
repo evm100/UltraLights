@@ -27,6 +27,7 @@ class Settings:
     BROKER_TLS_VERSION = os.getenv("BROKER_TLS_VERSION", "")
     BROKER_TLS_CIPHERS = os.getenv("BROKER_TLS_CIPHERS", "")
     BROKER_TLS_INSECURE = os.getenv("BROKER_TLS_INSECURE", "0") == "1"
+    BROKER_TLS_SERVERNAME = os.getenv("BROKER_TLS_SERVERNAME", "")
 
     FIRMWARE_DIR = Path(
         os.getenv("FIRMWARE_DIR", "/srv/firmware/UltraLights")

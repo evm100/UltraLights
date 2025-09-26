@@ -1,11 +1,9 @@
 """Helpers for configuring MQTT clients with TLS."""
 from __future__ import annotations
-
 import ssl
+from types import MethodType
 from typing import Dict, Optional
-
 import paho.mqtt.client as mqtt
-
 from .config import settings
 
 
@@ -104,8 +102,32 @@ def connect_mqtt_client(client: mqtt.Client, *, keepalive: int = 30) -> None:
     """Configure TLS (if enabled) and connect ``client`` to the broker."""
 
     configure_client_tls(client)
+    connect_host = settings.BROKER_HOST
+    if settings.BROKER_TLS_ENABLED and settings.BROKER_TLS_SERVERNAME:
+        connect_host = settings.BROKER_TLS_SERVERNAME
+        if connect_host != settings.BROKER_HOST:
+            _override_client_connect_host(client, settings.BROKER_HOST)
     if settings.BROKER_USERNAME or settings.BROKER_PASSWORD:
         set_credentials = getattr(client, "username_pw_set", None)
         if callable(set_credentials):
             set_credentials(settings.BROKER_USERNAME, settings.BROKER_PASSWORD)
-    client.connect(settings.BROKER_HOST, settings.BROKER_PORT, keepalive=keepalive)
+    client.connect(connect_host, settings.BROKER_PORT, keepalive=keepalive)
+
+
+def _override_client_connect_host(client: mqtt.Client, connect_host: str) -> None:
+    """Force ``client`` to connect to ``connect_host`` while keeping TLS SNI."""
+
+    original_create_socket = mqtt.Client._create_socket_connection
+
+    def _create_socket_connection_override(self: mqtt.Client):
+        original_host = self._host
+        try:
+            self._host = connect_host
+            return original_create_socket(self)
+        finally:
+            self._host = original_host
+
+    client._create_socket_connection = MethodType(  # type: ignore[assignment]
+        _create_socket_connection_override,
+        client,
+    )

@@ -16,6 +16,7 @@ BROKER_HOST=lights.evm100.org
 BROKER_PORT=8883
 BROKER_TLS_ENABLED=1
 BROKER_TLS_CA_FILE=            # leave empty to rely on system trust store
+BROKER_TLS_SERVERNAME=         # set when connecting via IP but validating a hostname
 BROKER_TLS_VERSION=1.2         # pin while migrating; bump to 1.3 once ready
 BROKER_TLS_CIPHERS=            # optional OpenSSL cipher list
 BROKER_TLS_INSECURE=0          # keep verification enabled in production
@@ -24,6 +25,12 @@ BROKER_TLS_INSECURE=0          # keep verification enabled in production
 When using certificates issued by a public CA such as Let's Encrypt, it is safe
 to leave `BROKER_TLS_CA_FILE` blank.  If you deploy a private CA, provide the
 path to the CA bundle so the clients can validate the broker certificate.
+
+If the broker is reached through an IP address but presents a certificate for a
+DNS name, populate `BROKER_TLS_SERVERNAME` with that DNS name. The application
+will still open the TCP connection against `BROKER_HOST` while validating the
+certificate against the configured server name, keeping hostname verification
+enabled without relying on `/etc/hosts` hacks.
 
 ## Mosquitto broker configuration
 
