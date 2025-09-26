@@ -5,14 +5,27 @@
 #include "effect.h"
 #include <stdint.h>
 
-#define WHITE_SWELL_DURATION_MS 3000
+#define WHITE_SWELL_STEP_INTERVAL_US 10000
 
-static int compute_total_frames(void) {
-    int frames = (WHITE_SWELL_DURATION_MS * CONFIG_UL_WHITE_SMOOTH_HZ) / 1000;
-    if (frames < 1) {
-        frames = 1;
+static uint8_t compute_brightness_for_frame(int frame_idx) {
+    if (frame_idx <= 0) {
+        return 0;
     }
-    return frames;
+
+    int refresh_hz = CONFIG_UL_WHITE_SMOOTH_HZ;
+    if (refresh_hz <= 0) {
+        return 255;
+    }
+
+    int64_t elapsed_us = ((int64_t)frame_idx * 1000000LL) / refresh_hz;
+    int64_t steps = elapsed_us / WHITE_SWELL_STEP_INTERVAL_US;
+    if (steps < 0) {
+        steps = 0;
+    }
+    if (steps > 255) {
+        steps = 255;
+    }
+    return (uint8_t)steps;
 }
 
 void white_swell_init(void) {
@@ -20,22 +33,7 @@ void white_swell_init(void) {
 }
 
 uint8_t white_swell_render(int frame_idx) {
-    int frames = compute_total_frames();
-    if (frame_idx <= 0) {
-        return 0;
-    }
-    if (frame_idx >= frames) {
-        return 255;
-    }
-
-    int value = (int)((((int64_t)frame_idx) * 255 + frames / 2) / frames);
-    if (value < 0) {
-        value = 0;
-    }
-    if (value > 255) {
-        value = 255;
-    }
-    return (uint8_t)value;
+    return compute_brightness_for_frame(frame_idx);
 }
 
 #endif
