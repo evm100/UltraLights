@@ -15,6 +15,7 @@ class Settings:
     SSL_KEYFILE  = os.getenv("SSL_KEYFILE", "")
 
     BROKER_HOST = os.getenv("BROKER_HOST", "127.0.0.1")
+    BROKER_CONNECT_HOST = os.getenv("BROKER_CONNECT_HOST", "")
     BROKER_PORT = int(os.getenv("BROKER_PORT", "8883"))
     BROKER_USERNAME = os.getenv("BROKER_USERNAME", "")
     BROKER_PASSWORD = os.getenv("BROKER_PASSWORD", "")

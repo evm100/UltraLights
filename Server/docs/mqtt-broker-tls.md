@@ -12,7 +12,8 @@ variables) so every MQTT client the application creates uses the same TLS
 policy:
 
 ```dotenv
-BROKER_HOST=lights.evm100.org
+BROKER_HOST=lights.evm100.org       # hostname that matches the broker cert
+BROKER_CONNECT_HOST=127.0.0.1       # optional: local tunnel/loopback target
 BROKER_PORT=8883
 BROKER_TLS_ENABLED=1
 BROKER_TLS_CA_FILE=            # leave empty to rely on system trust store
@@ -27,10 +28,11 @@ to leave `BROKER_TLS_CA_FILE` blank.  If you deploy a private CA, provide the
 path to the CA bundle so the clients can validate the broker certificate.
 
 If the broker is reached through an IP address but presents a certificate for a
-DNS name, populate `BROKER_TLS_SERVERNAME` with that DNS name. The application
-will still open the TCP connection against `BROKER_HOST` while validating the
-certificate against the configured server name, keeping hostname verification
-enabled without relying on `/etc/hosts` hacks.
+DNS name, populate `BROKER_TLS_SERVERNAME` with that DNS name. When
+`BROKER_CONNECT_HOST` is set, the application still opens the TCP connection
+against that address while validating the certificate against the configured
+server name, keeping hostname verification enabled without relying on
+`/etc/hosts` hacks.
 
 ## Mosquitto broker configuration
 

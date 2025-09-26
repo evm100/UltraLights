@@ -102,11 +102,13 @@ def connect_mqtt_client(client: mqtt.Client, *, keepalive: int = 30) -> None:
     """Configure TLS (if enabled) and connect ``client`` to the broker."""
 
     configure_client_tls(client)
-    connect_host = settings.BROKER_HOST
-    if settings.BROKER_TLS_ENABLED and settings.BROKER_TLS_SERVERNAME:
-        connect_host = settings.BROKER_TLS_SERVERNAME
-        if connect_host != settings.BROKER_HOST:
-            _override_client_connect_host(client, settings.BROKER_HOST)
+    dial_host = settings.BROKER_CONNECT_HOST or settings.BROKER_HOST
+    connect_host = dial_host
+    if settings.BROKER_TLS_ENABLED:
+        sni_host = settings.BROKER_TLS_SERVERNAME or settings.BROKER_HOST
+        connect_host = sni_host
+        if dial_host != connect_host:
+            _override_client_connect_host(client, dial_host)
     if settings.BROKER_USERNAME or settings.BROKER_PASSWORD:
         set_credentials = getattr(client, "username_pw_set", None)
         if callable(set_credentials):
