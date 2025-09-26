@@ -193,7 +193,14 @@ def connect_mqtt_client(
 def _override_client_dial_host(client: mqtt.Client, dial_host: str) -> None:
     """Force ``client`` to dial ``dial_host`` while keeping TLS SNI."""
 
-    original_create_socket = mqtt.Client._create_socket_connection
+    original_create_socket = getattr(mqtt.Client, "_create_socket_connection", None)
+    client_create_socket = getattr(client, "_create_socket_connection", None)
+    if not callable(original_create_socket) or not callable(client_create_socket):
+        logger.debug(
+            "MQTT client %s does not expose _create_socket_connection; skipping dial host override",
+            type(client).__name__,
+        )
+        return
 
     def _create_socket_connection_override(self: mqtt.Client):
         original_host = self._host
