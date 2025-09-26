@@ -401,4 +401,71 @@ menu "White Strips (LEDC)"
     endmenu
 endmenu
 
+menu "Relay Outputs"
+    menu "Relay 0"
+        config UL_RELAY0_ENABLED
+            bool "Enabled"
+            default n
+        config UL_RELAY0_GPIO
+            int "GPIO"
+            range 0 48
+            default 26
+        config UL_RELAY0_ACTIVE_HIGH
+            bool "Active high"
+            default y
+        config UL_RELAY0_MIN_INTERVAL_MS
+            int "Minimum command interval (ms)"
+            range 0 600000
+            default 200
+    endmenu
+    menu "Relay 1"
+        config UL_RELAY1_ENABLED
+            bool "Enabled"
+            default n
+        config UL_RELAY1_GPIO
+            int "GPIO"
+            range 0 48
+            default 27
+        config UL_RELAY1_ACTIVE_HIGH
+            bool "Active high"
+            default y
+        config UL_RELAY1_MIN_INTERVAL_MS
+            int "Minimum command interval (ms)"
+            range 0 600000
+            default 200
+    endmenu
+    menu "Relay 2"
+        config UL_RELAY2_ENABLED
+            bool "Enabled"
+            default n
+        config UL_RELAY2_GPIO
+            int "GPIO"
+            range 0 48
+            default 32
+        config UL_RELAY2_ACTIVE_HIGH
+            bool "Active high"
+            default y
+        config UL_RELAY2_MIN_INTERVAL_MS
+            int "Minimum command interval (ms)"
+            range 0 600000
+            default 200
+    endmenu
+    menu "Relay 3"
+        config UL_RELAY3_ENABLED
+            bool "Enabled"
+            default n
+        config UL_RELAY3_GPIO
+            int "GPIO"
+            range 0 48
+            default 33
+        config UL_RELAY3_ACTIVE_HIGH
+            bool "Active high"
+            default y
+        config UL_RELAY3_MIN_INTERVAL_MS
+            int "Minimum command interval (ms)"
+            range 0 600000
+            default 200
+    endmenu
+endmenu
+
 endmenu

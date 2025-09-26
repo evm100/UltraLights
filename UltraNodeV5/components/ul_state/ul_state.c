@@ -18,6 +18,7 @@
 #define UL_STATE_WS_MAX_STRIPS 2
 #define UL_STATE_RGB_MAX_STRIPS 4
 #define UL_STATE_WHITE_MAX_CHANNELS 4
+#define UL_STATE_RELAY_MAX_CHANNELS 4
 
 #define UL_STATE_MAX_PAYLOAD UL_STATE_MAX_JSON_LEN
 #define UL_STATE_FLUSH_DELAY_US (3ULL * 1000000ULL)
@@ -29,6 +30,7 @@ typedef enum {
   UL_STATE_TARGET_WS,
   UL_STATE_TARGET_RGB,
   UL_STATE_TARGET_WHITE,
+  UL_STATE_TARGET_RELAY,
 } ul_state_target_t;
 
 typedef struct {
@@ -43,7 +45,8 @@ typedef struct {
 
 static ul_state_entry_t s_entries[UL_STATE_WS_MAX_STRIPS +
                                   UL_STATE_RGB_MAX_STRIPS +
-                                  UL_STATE_WHITE_MAX_CHANNELS];
+                                  UL_STATE_WHITE_MAX_CHANNELS +
+                                  UL_STATE_RELAY_MAX_CHANNELS];
 static size_t s_entry_count;
 
 typedef struct {
@@ -264,6 +267,23 @@ esp_err_t ul_state_init(void) {
     return err;
   s_entry_count++;
 
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_RELAY, 0, "rly0")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_RELAY, 1, "rly1")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_RELAY, 2, "rly2")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+  if ((err = init_entry(s_entry_count, UL_STATE_TARGET_RELAY, 3, "rly3")) !=
+      ESP_OK)
+    return err;
+  s_entry_count++;
+
   if (s_entry_count > total_entries) {
     ESP_LOGE(TAG, "Too many state entries configured");
     cleanup_resources(s_entry_count);
@@ -387,6 +407,14 @@ void ul_state_record_white(int channel, const char *payload, size_t len) {
   update_entry(base + channel, payload, len);
 }
 
+void ul_state_record_relay(int channel, const char *payload, size_t len) {
+  if (channel < 0 || channel >= UL_STATE_RELAY_MAX_CHANNELS)
+    return;
+  size_t base = UL_STATE_WS_MAX_STRIPS + UL_STATE_RGB_MAX_STRIPS +
+                UL_STATE_WHITE_MAX_CHANNELS;
+  update_entry(base + channel, payload, len);
+}
+
 bool ul_state_copy_ws(int strip, char *buffer, size_t buffer_len) {
   if (strip < 0 || strip >= UL_STATE_WS_MAX_STRIPS) {
     if (buffer && buffer_len > 0)
@@ -412,5 +440,16 @@ bool ul_state_copy_white(int channel, char *buffer, size_t buffer_len) {
     return false;
   }
   size_t base = UL_STATE_WS_MAX_STRIPS + UL_STATE_RGB_MAX_STRIPS;
+  return copy_entry(base + channel, buffer, buffer_len);
+}
+
+bool ul_state_copy_relay(int channel, char *buffer, size_t buffer_len) {
+  if (channel < 0 || channel >= UL_STATE_RELAY_MAX_CHANNELS) {
+    if (buffer && buffer_len > 0)
+      buffer[0] = '\0';
+    return false;
+  }
+  size_t base = UL_STATE_WS_MAX_STRIPS + UL_STATE_RGB_MAX_STRIPS +
+                UL_STATE_WHITE_MAX_CHANNELS;
   return copy_entry(base + channel, buffer, buffer_len);
 }
