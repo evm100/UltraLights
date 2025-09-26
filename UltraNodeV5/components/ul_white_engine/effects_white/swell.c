@@ -6,11 +6,14 @@
 #include <stdint.h>
 
 #define WHITE_SWELL_DURATION_MS 3000
+// Ensure the swell walks every possible brightness value (0-255). With fewer
+// frames than this we would be forced to skip steps, which looks abrupt.
+#define WHITE_SWELL_MIN_FRAMES 256
 
 static int compute_total_frames(void) {
     int frames = (WHITE_SWELL_DURATION_MS * CONFIG_UL_WHITE_SMOOTH_HZ) / 1000;
-    if (frames < 1) {
-        frames = 1;
+    if (frames < WHITE_SWELL_MIN_FRAMES) {
+        frames = WHITE_SWELL_MIN_FRAMES;
     }
     return frames;
 }
@@ -24,11 +27,11 @@ uint8_t white_swell_render(int frame_idx) {
     if (frame_idx <= 0) {
         return 0;
     }
-    if (frame_idx >= frames) {
+    if (frame_idx >= frames - 1) {
         return 255;
     }
 
-    int value = (int)((((int64_t)frame_idx) * 255 + frames / 2) / frames);
+    int value = (int)((((int64_t)frame_idx) * 255) / (frames - 1));
     if (value < 0) {
         value = 0;
     }
