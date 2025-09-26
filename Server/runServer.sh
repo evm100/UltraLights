@@ -26,6 +26,13 @@ else
   OPTS=(--host "${WEB_HOST:-0.0.0.0}" --port "${WEB_PORT:-8080}" --proxy-headers --forwarded-allow-ips='*' --log-level info)
 fi
 
-gnome-terminal -- bash -c "mosquitto_sub -t \"#\" -v; exec bash" &
+if command -v gnome-terminal >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
+  gnome-terminal -- bash -c "mosquitto_sub -t \"#\" -v; exec bash" &
+elif command -v mosquitto_sub >/dev/null 2>&1; then
+  echo "gnome-terminal unavailable; starting background mosquitto_sub subscriber"
+  mosquitto_sub -t "#" -v &
+else
+  echo "WARNING: MQTT monitor disabled (requires gnome-terminal or mosquitto_sub)" >&2
+fi
 
 exec uvicorn app.main:app "${OPTS[@]}"
