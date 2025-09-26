@@ -1,4 +1,5 @@
 import json
+import logging
 import threading
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -7,7 +8,7 @@ import paho.mqtt.client as mqtt
 
 from .mqtt_bus import MqttBus
 from .mqtt_tls import connect_mqtt_client
-from .presets import get_preset, apply_preset
+from .presets import apply_preset, get_preset
 from .motion_schedule import motion_schedule
 from .motion_prefs import motion_preferences
 from . import registry
@@ -16,10 +17,17 @@ MOTION_STATUS_REQUEST_INTERVAL = 30.0
 # Matches the firmware's fade duration when clearing motion presets.
 MOTION_OFF_FADE_MS = 5000
 
+
+logger = logging.getLogger(__name__)
+
+
 class MotionManager:
     def __init__(self) -> None:
         self.bus = MqttBus(client_id="ultralights-motion")
-        self.client = mqtt.Client()
+        self.client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
+            client_id="ultralights-motion-manager",
+        )
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         # room_id -> {"house_id": str, "current": str|None, "timers": {sensor: Timer}}
@@ -33,16 +41,23 @@ class MotionManager:
         self._status_request_lock = threading.Lock()
         self._status_request_times: Dict[str, float] = {}
         self.motion_preferences = motion_preferences
+        self._mqtt_connected = False
 
     def start(self) -> None:
         self._seed_room_sensors_from_config()
         self._request_status_for_registry()
         connect_mqtt_client(self.client, keepalive=30)
         self.client.loop_start()
+        self._mqtt_connected = True
 
     def stop(self) -> None:
-        self.client.loop_stop()
-        self.client.disconnect()
+        if self._mqtt_connected:
+            self.client.loop_stop()
+            try:
+                self.client.disconnect()
+            except Exception:
+                pass
+            self._mqtt_connected = False
         for info in list(self.active.values()):
             for t in info.get("timers", {}).values():
                 try:
@@ -118,11 +133,28 @@ class MotionManager:
         self._request_motion_status(node_id, force=force)
 
     # MQTT callbacks -------------------------------------------------
-    def _on_connect(self, client, userdata, flags, rc) -> None:
+    def _on_connect(self, client, userdata, flags, reason_code, properties=None) -> None:
+        """Subscribe to motion topics once the broker connection is established."""
+
+        refused = False
+        if hasattr(reason_code, "is_refused"):
+            refused = bool(reason_code.is_refused)  # type: ignore[assignment]
+        else:
+            try:
+                refused = int(reason_code) != 0
+            except Exception:
+                refused = False
+
+        if refused:
+            logger.error("MotionManager MQTT connection refused: %s", reason_code)
+            self._mqtt_connected = False
+            return
+
         client.subscribe("ul/+/evt/+/motion")
         client.subscribe("ul/+/evt/status")
         client.subscribe("ul/+/evt/motion/status")
         self._request_status_for_registry(force=True)
+        self._mqtt_connected = True
 
     def _on_message(self, client, userdata, msg: mqtt.MQTTMessage) -> None:
         topic = msg.topic or ""
