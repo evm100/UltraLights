@@ -3,6 +3,7 @@ menu "UltraLights Configuration"
 menu "System"
     config UL_IS_ESP32C3
         bool "Target is ESP32-C3"
+        default y if IDF_TARGET_ESP32C3
         default n
 
     config UL_HAS_PSRAM
@@ -42,6 +43,7 @@ menu "Node / Network"
         config UL_WIFI_RESET_BUTTON_GPIO
             int "Wi-Fi reset button GPIO"
             range 0 48
+            default 9 if IDF_TARGET_ESP32C3
             default 0
         config UL_WIFI_RESET_BUTTON_HOLD_MS
             int "Wi-Fi reset hold time (ms)"
