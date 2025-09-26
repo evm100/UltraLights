@@ -1066,10 +1066,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     esp_mqtt_error_codes_t *err = event->error_handle;
     if (err) {
       ESP_LOGE(TAG,
-               "MQTT error: type=%d transport=%d socket_errno=%d tls_err=0x%x"
+               "MQTT error: type=%d socket_errno=%d tls_err=0x%x"
                " tls_cert_flags=0x%x conn_return=%d",
-               err->error_type, (int)err->esp_transport_err,
-               err->esp_transport_sock_errno,
+               err->error_type, err->esp_transport_sock_errno,
                (unsigned int)err->esp_tls_last_esp_err,
                (unsigned int)err->esp_tls_cert_verify_flags,
                err->connect_return_code);
