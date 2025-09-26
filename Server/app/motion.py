@@ -275,10 +275,13 @@ class MotionManager:
         nodes = self._eligible_motion_nodes(house_id, room_id, preset)
         if not nodes:
             return
+        off_targets = self._collect_retained_off_targets(preset, nodes)
         for node_id in nodes:
             self.bus.motion_off(
                 node_id, {"fade": {"duration_ms": MOTION_OFF_FADE_MS}}
             )
+        if off_targets:
+            self._schedule_retained_off_commands(room_id, off_targets)
 
     # Internal helpers -----------------------------------------------
     def _eligible_motion_nodes(
@@ -318,6 +321,126 @@ class MotionManager:
             eligible.append(node_id)
 
         return eligible
+
+    def _collect_retained_off_targets(
+        self, preset: Dict[str, Any], nodes: List[str]
+    ) -> List[Tuple[str, str, int]]:
+        node_set = {str(node).strip() for node in nodes if str(node).strip()}
+        if not node_set:
+            return []
+
+        actions = preset.get("actions")
+        if not isinstance(actions, list):
+            return []
+
+        seen: Set[Tuple[str, str, int]] = set()
+        targets: List[Tuple[str, str, int]] = []
+
+        for action in actions:
+            if not isinstance(action, dict):
+                continue
+            node_raw = action.get("node")
+            node_id = str(node_raw).strip() if node_raw is not None else ""
+            if not node_id or node_id not in node_set:
+                continue
+            module_raw = action.get("module")
+            module = str(module_raw).strip().lower() if module_raw is not None else ""
+            if module not in {"ws", "rgb", "white"}:
+                continue
+            if module == "white":
+                index = self._coerce_int(action.get("channel"), default=0)
+            else:
+                index = self._coerce_int(action.get("strip"), default=0)
+            key = (module, node_id, index)
+            if key in seen:
+                continue
+            seen.add(key)
+            targets.append(key)
+
+        return targets
+
+    def _schedule_retained_off_commands(
+        self, room_id: str, targets: List[Tuple[str, str, int]]
+    ) -> None:
+        delay = max(0.0, MOTION_OFF_FADE_MS / 1000.0)
+
+        def publish() -> None:
+            self._publish_retained_off_commands(room_id, targets)
+
+        timer = threading.Timer(delay, publish)
+        timer.daemon = True
+        timer.start()
+
+    def _publish_retained_off_commands(
+        self, room_id: str, targets: List[Tuple[str, str, int]]
+    ) -> None:
+        if not targets:
+            return
+        if room_id in self.active:
+            return
+
+        for module, node_id, index in targets:
+            try:
+                if module == "white":
+                    self.bus.white_set(
+                        node_id,
+                        index,
+                        "solid",
+                        0,
+                        [],
+                        rate_limited=False,
+                    )
+                elif module == "rgb":
+                    self.bus.rgb_set(
+                        node_id,
+                        index,
+                        "solid",
+                        0,
+                        [0, 0, 0],
+                        rate_limited=False,
+                    )
+                elif module == "ws":
+                    self.bus.ws_set(
+                        node_id,
+                        index,
+                        "solid",
+                        255,
+                        [0, 0, 0],
+                        rate_limited=False,
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to publish retained off command for %s %s/%s",
+                    module,
+                    node_id,
+                    index,
+                )
+
+    @staticmethod
+    def _coerce_int(value: Any, *, default: int = 0) -> int:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            if value != value:
+                return default
+            return int(value)
+        try:
+            text = str(value).strip()
+        except Exception:
+            return default
+        if not text:
+            return default
+        try:
+            number = float(text)
+        except ValueError:
+            return default
+        if number != number:
+            return default
+        return int(number)
 
     def _room_node_ids(self, house_id: str, room_id: str) -> Set[str]:
         nodes: Set[str] = set()
