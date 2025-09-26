@@ -39,6 +39,7 @@ bool ul_white_get_status(int ch, ul_white_ch_status_t* out) {
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/ledc.h"
+#include "driver/gpio.h"
 #include "ul_task.h"
 #include "ul_health.h"
 #include "esp_timer.h"
@@ -71,6 +72,16 @@ static white_ch_t s_ch[4];
 static int s_count = 0;
 static TaskHandle_t s_white_task = NULL;
 static int s_current_ch_idx = -1;
+
+static void pull_channel_low(const white_ch_t* ch) {
+    if (!ch || !ch->enabled) {
+        return;
+    }
+    ledc_stop(UL_LEDC_SPEED_MODE, (ledc_channel_t)ch->ledc_ch, 0);
+    gpio_set_direction((gpio_num_t)ch->gpio, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)ch->gpio, 0);
+    gpio_set_pull_mode((gpio_num_t)ch->gpio, GPIO_PULLDOWN_ONLY);
+}
 
 static void reset_channels_state(void) {
     memset(s_ch, 0, sizeof(s_ch));
@@ -186,6 +197,9 @@ bool ul_white_engine_start(void)
         ESP_LOGE(TAG, "Failed to create white smoothing task (%ld)", (long)rc);
         s_white_task = NULL;
         ul_health_notify_white_engine_failure();
+        for (int i = 0; i < 4; ++i) {
+            pull_channel_low(&s_ch[i]);
+        }
         reset_channels_state();
         return false;
     }
@@ -199,6 +213,9 @@ void ul_white_engine_stop(void)
     if (s_white_task) {
         vTaskDelete(s_white_task);
         s_white_task = NULL;
+    }
+    for (int i = 0; i < 4; ++i) {
+        pull_channel_low(&s_ch[i]);
     }
     reset_channels_state();
 }
