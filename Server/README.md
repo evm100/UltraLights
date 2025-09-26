@@ -95,3 +95,7 @@ paths are unnecessary unless a custom trust store is desired.
 - The CLI respects the same SQLModel storage location as the API. Update the
   `AUTH_DB_URL` environment variable or pass `--database-url` to direct it at a
   different SQLite file or database server.
+- When launching the app with `runServer.sh`, the script attempts to open a
+  gnome-terminal window running `mosquitto_sub` for live MQTT monitoring. If no
+  terminal emulator is available, it falls back to a background `mosquitto_sub`
+  subscriber so message logging continues without blocking the server startup.
