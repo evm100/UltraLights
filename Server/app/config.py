@@ -24,6 +24,8 @@ class Settings:
     BROKER_TLS_CA_FILE = os.getenv("BROKER_TLS_CA_FILE", "")
     BROKER_TLS_CERTFILE = os.getenv("BROKER_TLS_CERTFILE", "")
     BROKER_TLS_KEYFILE = os.getenv("BROKER_TLS_KEYFILE", "")
+    BROKER_TLS_VERSION = os.getenv("BROKER_TLS_VERSION", "")
+    BROKER_TLS_CIPHERS = os.getenv("BROKER_TLS_CIPHERS", "")
     BROKER_TLS_INSECURE = os.getenv("BROKER_TLS_INSECURE", "0") == "1"
 
     FIRMWARE_DIR = Path(
