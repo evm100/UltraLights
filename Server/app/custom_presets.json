@@ -484,6 +484,40 @@
             "module": "white"
           }
         ]
+      },
+      {
+        "source": "custom",
+        "id": "night",
+        "name": "Night \ud83c\udf0c",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "8ez5evvir1dy86twmeglmyg9r2gzp19",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 36,
+            "params": [],
+            "channel": 1,
+            "node": "8ez5evvir1dy86twmeglmyg9r2gzp19",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "44r9iy1w0ufe8v5zi0f6w3jwiv7v044",
+            "module": "white"
+          }
+        ]
       }
     ]
   }

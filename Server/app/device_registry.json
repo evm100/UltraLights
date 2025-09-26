@@ -93,7 +93,26 @@
   {
     "id": "exampleHouse",
     "name": "Example House",
-    "rooms": [],
+    "rooms": [
+      {
+        "id": "example-room",
+        "name": "Example Room",
+        "nodes": [
+          {
+            "id": "2f3szzg1wvymixbdsn7kqq22fodfv4h",
+            "name": "Example Node",
+            "kind": "ultranode",
+            "modules": [
+              "ws",
+              "rgb",
+              "white",
+              "ota"
+            ],
+            "download_id": "6OtTPGXmhZ3GP7u3PmGLhDsRWcJj2ygBXxNeIosy8Mlq104M"
+          }
+        ]
+      }
+    ],
     "external_id": "Nbsw0Ag8pZhZeKv6S3x8vYogkFp12ZGlgBulNEa3NeNEBTuwGzfhV87pXSApI7nI"
   }
 ]

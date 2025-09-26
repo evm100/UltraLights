@@ -3,6 +3,24 @@
   "schedules": {
     "del-sur": {
       "kitchen": [
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
+        "night",
         "on",
         "on",
         "on",
@@ -29,28 +47,10 @@
         "on",
         "on",
         "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on",
-        "on"
+        "night",
+        "night",
+        "night",
+        "night"
       ],
       "master": [
         "preset-3",
@@ -107,8 +107,13 @@
   "preset_colors": {
     "del-sur": {
       "kitchen": {
+        "night": "#1A5FB4",
         "off": "#000000",
         "on": "#57E389"
+      },
+      "master": {
+        "preset-3": "#1A5FB4",
+        "preset-4": "#DEDDDA"
       }
     }
   }
