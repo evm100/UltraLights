@@ -8,10 +8,18 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
-from . import registry
+from . import node_builder, node_credentials, registry
 from .auth.access import AccessPolicy, HouseContext, NodeContext, RoomContext
 from .auth.dependencies import get_current_user
-from .auth.models import AuditLog, House, HouseMembership, HouseRole, RoomAccess, User
+from .auth.models import (
+    AuditLog,
+    House,
+    HouseMembership,
+    HouseRole,
+    NodeRegistration,
+    RoomAccess,
+    User,
+)
 from .auth.security import (
     SESSION_COOKIE_NAME,
     authenticate_user,
@@ -682,6 +690,32 @@ def server_admin_panel(
         for entry in audit_rows
     ]
 
+    available_regs = node_credentials.list_available_registrations(session)
+    assigned_regs = node_credentials.list_assigned_registrations(session)
+
+    def _factory_summary(registration: NodeRegistration) -> Dict[str, Any]:
+        metadata = registration.hardware_metadata or {}
+        board = None
+        if isinstance(metadata, dict):
+            board_value = metadata.get("board")
+            if isinstance(board_value, str):
+                board = board_value
+        return {
+            "nodeId": registration.node_id,
+            "downloadId": registration.download_id,
+            "displayName": registration.display_name,
+            "board": board,
+            "assigned": registration.assigned_at is not None,
+            "house": registration.house_slug,
+            "room": registration.room_id,
+        }
+
+    node_factory_context = {
+        "board_options": sorted(node_builder.SUPPORTED_TARGETS.keys()),
+        "available": [_factory_summary(reg) for reg in available_regs],
+        "assigned": [_factory_summary(reg) for reg in assigned_regs],
+    }
+
     return templates.TemplateResponse(
         request,
         "server_admin.html",
@@ -697,6 +731,7 @@ def server_admin_panel(
             "accounts": accounts_summary,
             "audit_entries": audit_entries,
             "total_nodes": total_nodes,
+            "node_factory": node_factory_context,
             **nav_context,
         },
     )
