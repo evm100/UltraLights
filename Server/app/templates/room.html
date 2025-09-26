@@ -133,9 +133,9 @@
       <input type="range"
              id="motionTimer-{{ loop.index0 }}"
              class="motion-timer-slider w-full"
-             min="10"
+             min="30"
              max="3600"
-             step="10"
+             step="30"
              value="{{ sensor.duration }}"
              data-node="{{ sensor.node_id }}"
              data-enabled="{{ 'true' if sensor.enabled else 'false' }}" />

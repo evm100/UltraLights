@@ -13,9 +13,9 @@ from .motion_schedule import motion_schedule
 from .motion_prefs import motion_preferences
 from . import registry
 
-MOTION_STATUS_REQUEST_INTERVAL = 30.0
+MOTION_STATUS_REQUEST_INTERVAL = 10.0
 # Matches the firmware's fade duration when clearing motion presets.
-MOTION_OFF_FADE_MS = 5000
+MOTION_OFF_FADE_MS = 3000
 
 
 logger = logging.getLogger(__name__)
