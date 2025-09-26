@@ -27,6 +27,10 @@ The client will dial `192.168.1.50:8883`, validate the certificate against
 `UL_MQTT_TLS_COMMON_NAME`, and only mark the MQTT subsystem ready once the TLS
 handshake succeeds.
 
+Leaving `UL_MQTT_TLS_COMMON_NAME` blank reuses the hostname from
+`UL_MQTT_URI`, which is useful when the certificate already matches the broker
+URI and only the dial host differs.
+
 ## Topic scheme
 
 All topics are rooted at `ul/<node-id>/`. The node subscribes to commands addressed to itself and to the broadcast topic `ul/+/cmd/#`.
