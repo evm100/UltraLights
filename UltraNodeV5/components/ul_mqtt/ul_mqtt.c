@@ -34,7 +34,7 @@ static const char *TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
 
-static mqtt_transport_t transport_from_uri(const char *uri, bool tls_enabled) {
+static esp_mqtt_transport_t transport_from_uri(const char *uri, bool tls_enabled) {
   if (!uri)
     return tls_enabled ? MQTT_TRANSPORT_OVER_SSL : MQTT_TRANSPORT_OVER_TCP;
   if (strncmp(uri, "mqtts://", strlen("mqtts://")) == 0)
@@ -48,7 +48,7 @@ static mqtt_transport_t transport_from_uri(const char *uri, bool tls_enabled) {
   return tls_enabled ? MQTT_TRANSPORT_OVER_SSL : MQTT_TRANSPORT_OVER_TCP;
 }
 
-static const char *transport_name(mqtt_transport_t transport) {
+static const char *transport_name(esp_mqtt_transport_t transport) {
   switch (transport) {
   case MQTT_TRANSPORT_OVER_TCP:
     return "tcp";
@@ -1120,7 +1120,7 @@ void ul_mqtt_start(void) {
   bool dial_override = CONFIG_UL_MQTT_DIAL_HOST[0] != '\0';
   if (dial_override) {
     bool tls = CONFIG_UL_MQTT_USE_TLS;
-    mqtt_transport_t transport = transport_from_uri(CONFIG_UL_MQTT_URI, tls);
+    esp_mqtt_transport_t transport = transport_from_uri(CONFIG_UL_MQTT_URI, tls);
     bool transport_tls =
         (transport == MQTT_TRANSPORT_OVER_SSL ||
          transport == MQTT_TRANSPORT_OVER_WSS);
