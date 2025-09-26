@@ -13,17 +13,30 @@
 </style>
 <body>
   <h1>Connect UltraLights to Wi-Fi</h1>
-  <p>Choose your home network, enter the password, and tap Connect.</p>
+  <p>Choose your home network, enter the password, and provide your UltraLights account credentials to finish setup.</p>
   <div class="row">
     <label for="ssid">Network</label>
     <select id="ssid"></select>
     <button id="rescan">Rescan</button>
   </div>
   <div class="row">
-    <label for="pwd">Password</label>
+    <label for="pwd">Wi-Fi Password</label>
     <input id="pwd" type="password" autocomplete="off" />
     <label style="font-weight: normal; margin-top: 8px;">
-      <input id="show" type="checkbox" /> Show password
+      <input id="showWifi" type="checkbox" /> Show Wi-Fi password
+    </label>
+  </div>
+  <h2 style="font-size: 1.2rem; margin-top: 32px;">UltraLights Account</h2>
+  <p>These credentials are sent securely to UltraLights to associate this device with your account.</p>
+  <div class="row">
+    <label for="user">Username</label>
+    <input id="user" type="text" autocomplete="username" />
+  </div>
+  <div class="row">
+    <label for="accountPassword">Account Password</label>
+    <input id="accountPassword" type="password" autocomplete="current-password" />
+    <label style="font-weight: normal; margin-top: 8px;">
+      <input id="showAccountPassword" type="checkbox" /> Show account password
     </label>
   </div>
   <div class="row">
@@ -34,14 +47,20 @@
 <script>
 const ssidSel = document.getElementById('ssid');
 const pwd = document.getElementById('pwd');
+const user = document.getElementById('user');
+const accountPassword = document.getElementById('accountPassword');
 const log = document.getElementById('log');
 
 function setLog(message) {
   log.textContent = message;
 }
 
-document.getElementById('show').addEventListener('change', (ev) => {
+document.getElementById('showWifi').addEventListener('change', (ev) => {
   pwd.type = ev.target.checked ? 'text' : 'password';
+});
+
+document.getElementById('showAccountPassword').addEventListener('change', (ev) => {
+  accountPassword.type = ev.target.checked ? 'text' : 'password';
 });
 
 document.getElementById('rescan').addEventListener('click', () => scan());
@@ -75,8 +94,18 @@ async function provision() {
     setLog('Select a network first.');
     return;
   }
+  const username = user.value.trim();
+  const passwordValue = accountPassword.value;
+  if (!username) {
+    setLog('Enter your UltraLights username.');
+    return;
+  }
+  if (!passwordValue) {
+    setLog('Enter your UltraLights password.');
+    return;
+  }
   setLog('Sending credentials...');
-  const body = { ssid, password: pwd.value };
+  const body = { ssid, password: pwd.value, username, account_password: passwordValue };
   try {
     const resp = await fetch('/api/provision', {
       method: 'POST',

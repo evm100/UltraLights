@@ -1,6 +1,7 @@
 import json
 import sys
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app import database
-from app.auth.models import House, HouseMembership, HouseRole, RoomAccess, User
+from app.auth.models import (
+    House,
+    HouseMembership,
+    HouseRole,
+    NodeRegistration,
+    RoomAccess,
+    User,
+)
 from app.auth.security import SESSION_COOKIE_NAME
 from app.auth.service import create_user, init_auth_storage
 from app.config import settings
@@ -67,12 +75,15 @@ def client(tmp_path, monkeypatch: pytest.MonkeyPatch):
 
     import app.motion
     import app.registry as registry_module
+    import app.account_linker as account_linker_module
     import app.status_monitor
     from app.main import app as fastapi_app
     monkeypatch.setattr(app.motion.motion_manager, "start", lambda: None)
     monkeypatch.setattr(app.motion.motion_manager, "stop", lambda: None)
     monkeypatch.setattr(app.status_monitor.status_monitor, "start", lambda: None)
     monkeypatch.setattr(app.status_monitor.status_monitor, "stop", lambda: None)
+    monkeypatch.setattr(account_linker_module.account_linker, "start", lambda: None)
+    monkeypatch.setattr(account_linker_module.account_linker, "stop", lambda: None)
 
     original_url = settings.AUTH_DB_URL
     db_path = tmp_path / "auth.sqlite3"
@@ -147,6 +158,22 @@ def _create_house_guest(username: str, password: str, *, house_external_id: str)
         house_external_id=house_external_id,
         role=HouseRole.GUEST,
     )
+
+
+def _create_house_admin_user(
+    username: str, password: str, *, house_external_id: str
+) -> User:
+    with database.SessionLocal() as session:
+        house = session.exec(
+            select(House).where(House.external_id == house_external_id)
+        ).first()
+        assert house is not None, "house missing in database"
+        user = create_user(session, username, password, server_admin=False)
+        membership = HouseMembership(user_id=user.id, house_id=house.id, role=HouseRole.ADMIN)
+        session.add(membership)
+        session.commit()
+        session.refresh(user)
+        return user
 
 
 def _membership_rooms(session, membership_id: int) -> set[str]:
@@ -312,3 +339,112 @@ def test_invalid_room_rejected_on_create(client: TestClient):
         },
     )
     assert response.status_code == 422
+
+
+def test_house_admin_assigns_pending_node_to_room(client: TestClient):
+    admin_user = _create_house_admin_user(
+        "alpha-admin", "admin-pass", house_external_id="alpha-public"
+    )
+    _login(client, "alpha-admin", "admin-pass")
+
+    import app.registry as registry_module
+
+    with database.SessionLocal() as session:
+        house = session.exec(
+            select(House).where(House.external_id == "alpha-public")
+        ).first()
+        assert house is not None
+        registration = NodeRegistration(
+            node_id="alpha-node-new",
+            download_id="alpha-download",
+            token_hash=registry_module.hash_node_token("pending-token"),
+            provisioning_token="pending-token",
+            assigned_user_id=admin_user.id,
+            assigned_house_id=house.id,
+            assigned_at=datetime.now(timezone.utc),
+        )
+        session.add(registration)
+        session.commit()
+
+    response = client.post(
+        "/api/house/alpha-public/nodes/assign",
+        json={
+            "nodeId": "alpha-node-new",
+            "roomId": "alpha-room",
+            "name": "Kitchen Node",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["node"]["roomId"] == "alpha-room"
+    assert body["node"]["name"] == "Kitchen Node"
+
+    with database.SessionLocal() as session:
+        stored = session.exec(
+            select(NodeRegistration).where(NodeRegistration.node_id == "alpha-node-new")
+        ).one()
+        assert stored.room_id == "alpha-room"
+        assert stored.house_slug == "alpha"
+        assert stored.display_name == "Kitchen Node"
+
+    house, room, node = registry_module.find_node("alpha-node-new")
+    assert room is not None
+    assert room.get("id") == "alpha-room"
+    assert node and node.get("name") == "Kitchen Node"
+
+
+def test_house_admin_moves_node_between_rooms(client: TestClient):
+    admin_user = _create_house_admin_user(
+        "alpha-admin", "admin-pass", house_external_id="alpha-public"
+    )
+    _login(client, "alpha-admin", "admin-pass")
+
+    import app.registry as registry_module
+
+    with database.SessionLocal() as session:
+        house = session.exec(
+            select(House).where(House.external_id == "alpha-public")
+        ).first()
+        assert house is not None
+        registration = NodeRegistration(
+            node_id="alpha-node-existing",
+            download_id="alpha-existing",
+            token_hash=registry_module.hash_node_token("existing-token"),
+            provisioning_token="existing-token",
+            assigned_user_id=admin_user.id,
+            assigned_house_id=house.id,
+            house_slug="alpha",
+            room_id="alpha-room",
+            display_name="Existing Node",
+            assigned_at=datetime.now(timezone.utc),
+        )
+        session.add(registration)
+        session.commit()
+
+    registry_module.place_node_in_room(
+        "alpha-node-existing", "alpha", "alpha-room", name="Existing Node"
+    )
+
+    response = client.post(
+        "/api/house/alpha-public/nodes/alpha-node-existing/move",
+        json={"roomId": "alpha-denied", "name": "Moved Node"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["node"]["roomId"] == "alpha-denied"
+    assert body["node"]["name"] == "Moved Node"
+
+    with database.SessionLocal() as session:
+        stored = session.exec(
+            select(NodeRegistration).where(
+                NodeRegistration.node_id == "alpha-node-existing"
+            )
+        ).one()
+        assert stored.room_id == "alpha-denied"
+        assert stored.house_slug == "alpha"
+        assert stored.display_name == "Moved Node"
+
+    house, room, node = registry_module.find_node("alpha-node-existing")
+    assert room is not None
+    assert room.get("id") == "alpha-denied"
+    assert node and node.get("name") == "Moved Node"
