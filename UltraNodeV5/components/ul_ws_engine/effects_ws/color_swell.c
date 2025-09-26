@@ -10,8 +10,7 @@
 static uint8_t s_color[2][3];
 static bool s_initialized;
 
-#define COLOR_SWELL_DURATION_MS 3000
-#define COLOR_SWELL_MIN_FRAMES 256
+#define COLOR_SWELL_STEP_INTERVAL_US 10000
 
 static inline bool valid_strip(int strip) {
     return strip >= 0 && strip < 2;
@@ -37,12 +36,25 @@ void color_swell_init(void) {
     ensure_initialized();
 }
 
-static int compute_total_frames(void) {
-    int frames = (COLOR_SWELL_DURATION_MS * CONFIG_UL_WS2812_FPS) / 1000;
-    if (frames < COLOR_SWELL_MIN_FRAMES) {
-        frames = COLOR_SWELL_MIN_FRAMES;
+static uint8_t compute_brightness_for_frame(int frame_idx) {
+    if (frame_idx <= 0) {
+        return 0;
     }
-    return frames;
+
+    int refresh_hz = CONFIG_UL_WS2812_FPS;
+    if (refresh_hz <= 0) {
+        return 255;
+    }
+
+    int64_t elapsed_us = ((int64_t)frame_idx * 1000000LL) / refresh_hz;
+    int64_t steps = elapsed_us / COLOR_SWELL_STEP_INTERVAL_US;
+    if (steps < 0) {
+        steps = 0;
+    }
+    if (steps > 255) {
+        steps = 255;
+    }
+    return (uint8_t)steps;
 }
 
 static uint8_t read_color_component(const cJSON* item, uint8_t fallback) {
@@ -65,20 +77,7 @@ void color_swell_render(uint8_t* frame_rgb, int pixels, int frame_idx) {
     int strip = ul_ws_effect_current_strip();
     if (!valid_strip(strip)) return;
 
-    int frames = compute_total_frames();
-    int value = 255;
-    if (frame_idx <= 0) {
-        value = 0;
-    } else if (frame_idx < frames - 1) {
-        int64_t scaled = ((int64_t)frame_idx * 255) / (frames - 1);
-        if (scaled < 0) {
-            scaled = 0;
-        }
-        if (scaled > 255) {
-            scaled = 255;
-        }
-        value = (int)scaled;
-    }
+    int value = compute_brightness_for_frame(frame_idx);
 
     for (int i = 0; i < pixels; ++i) {
         frame_rgb[3 * i + 0] = (uint8_t)((s_color[strip][0] * value) / 255);
