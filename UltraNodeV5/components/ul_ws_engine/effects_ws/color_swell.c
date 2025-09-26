@@ -11,6 +11,7 @@ static uint8_t s_color[2][3];
 static bool s_initialized;
 
 #define COLOR_SWELL_DURATION_MS 3000
+#define COLOR_SWELL_MIN_FRAMES 256
 
 static inline bool valid_strip(int strip) {
     return strip >= 0 && strip < 2;
@@ -38,8 +39,8 @@ void color_swell_init(void) {
 
 static int compute_total_frames(void) {
     int frames = (COLOR_SWELL_DURATION_MS * CONFIG_UL_WS2812_FPS) / 1000;
-    if (frames < 1) {
-        frames = 1;
+    if (frames < COLOR_SWELL_MIN_FRAMES) {
+        frames = COLOR_SWELL_MIN_FRAMES;
     }
     return frames;
 }
@@ -68,8 +69,8 @@ void color_swell_render(uint8_t* frame_rgb, int pixels, int frame_idx) {
     int value = 255;
     if (frame_idx <= 0) {
         value = 0;
-    } else if (frame_idx < frames) {
-        int64_t scaled = ((int64_t)frame_idx * 255 + frames / 2) / frames;
+    } else if (frame_idx < frames - 1) {
+        int64_t scaled = ((int64_t)frame_idx * 255) / (frames - 1);
         if (scaled < 0) {
             scaled = 0;
         }
