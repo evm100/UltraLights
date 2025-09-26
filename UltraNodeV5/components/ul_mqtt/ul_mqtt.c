@@ -29,10 +29,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 static const char *TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
+
+#if CONFIG_UL_MQTT_USE_TLS
+static const time_t kUlMqttMinValidTime = 1700000000;
+#endif
 
 static esp_mqtt_transport_t transport_from_uri(const char *uri, bool tls_enabled) {
   if (!uri)
@@ -1165,6 +1170,19 @@ void ul_mqtt_start(void) {
   }
 
   cancel_mqtt_retry();
+
+#if CONFIG_UL_MQTT_USE_TLS
+  time_t now = 0;
+  time(&now);
+  if (now < kUlMqttMinValidTime) {
+    ESP_LOGW(TAG,
+             "System time not yet synchronized (%ld); deferring MQTT start",
+             (long)now);
+    ul_health_notify_mqtt(false);
+    schedule_mqtt_retry();
+    return;
+  }
+#endif
 
 #ifndef UL_MQTT_TESTING
   EventGroupHandle_t group = mqtt_state_event_group();
