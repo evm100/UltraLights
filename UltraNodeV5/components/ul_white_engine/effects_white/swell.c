@@ -26,7 +26,7 @@ uint8_t white_swell_render(int frame_idx) {
     }
     if (frame_idx >= frames) {
         return 255;
-    }
+    } 
 
     int value = (int)((((int64_t)frame_idx) * 255 + frames / 2) / frames);
     if (value < 0) {

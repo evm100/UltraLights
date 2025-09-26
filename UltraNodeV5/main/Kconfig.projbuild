@@ -16,7 +16,7 @@ endmenu
 menu "Node / Network"
     config UL_NODE_ID
         string "Node ID"
-        default "node01"
+        default "node-id"
     config UL_WIFI_STATIC_CREDENTIALS
         bool "Provide built-in Wi-Fi credentials"
         default n
@@ -48,7 +48,7 @@ menu "Node / Network"
         config UL_WIFI_RESET_BUTTON_HOLD_MS
             int "Wi-Fi reset hold time (ms)"
             range 1000 60000
-            default 5000
+            default 4000
         config UL_WIFI_RESET_BUTTON_POLL_MS
             int "Wi-Fi reset button poll interval (ms)"
             range 10 1000
@@ -60,7 +60,7 @@ menu "Node / Network"
         default 21600
     config UL_TIMEZONE
         string "Time zone (TZ string)"
-        default ""
+        default "PST8PDT,M3.2.0/2:00:00,M11.1.0/2:00:00"
         help
             POSIX TZ string (e.g., "PST8PDT,M3.2.0/2,M11.1.0/2"). If left empty, UTC is used.
 endmenu
@@ -112,14 +112,14 @@ menu "MQTT"
     config UL_MQTT_CONNECT_TIMEOUT_MS
         int "MQTT connection timeout (ms)"
         range 1000 60000
-        default 20000
+        default 3000
         help
             Maximum time to wait for the MQTT transport to establish, including any TLS
             handshake, before considering the attempt failed.
     config UL_MQTT_RECONNECT_DELAY_MS
         int "MQTT reconnect delay (ms)"
         range 100 60000
-        default 3000
+        default 1000
         help
             Delay before retrying the MQTT connection after a failure. Shorter values
             improve responsiveness at the cost of more frequent retry attempts when the
@@ -158,11 +158,11 @@ menu "Engine"
     config UL_WHITE_SMOOTH_HZ
         int "White smoothing (Hz)"
         range 10 1000
-        default 200
+        default 100
     config UL_RGB_SMOOTH_HZ
         int "RGB smoothing (Hz)"
         range 10 1000
-        default 200
+        default 100
     config UL_GAMMA_ENABLE
         bool "Enable gamma correction"
         default y
@@ -171,19 +171,19 @@ endmenu
 menu "Sensors"
     config UL_PIR_ENABLED
         bool "PIR enabled"
-        default y
+        default n
     config UL_PIR_GPIO
         int "PIR GPIO"
-        default 25
+        default 0
     config UL_PIR_EVENT_MIN_INTERVAL_S
         int "PIR minimum publish interval (s)"
         range 1 600
-        default 1
+        default 9
 
     config UL_PIR_POLL_MS
         int "PIR poll rate (ms)"
-        range 100 10000
-        default 1000
+        range 100 1000
+        default 100
 
 endmenu
 
@@ -194,7 +194,7 @@ menu "RGB Strips (LEDC)"
             default n
         config UL_RGB0_PWM_HZ
             int "PWM Hz"
-            default 1000
+            default 3000
         config UL_RGB0_LEDC_MODE
             int "LEDC mode (0=low speed, 1=high speed)"
             range 0 1
@@ -227,7 +227,7 @@ menu "RGB Strips (LEDC)"
             default n
         config UL_RGB1_PWM_HZ
             int "PWM Hz"
-            default 1000
+            default 3000
         config UL_RGB1_LEDC_MODE
             int "LEDC mode (0=low speed, 1=high speed)"
             range 0 1
@@ -260,7 +260,7 @@ menu "RGB Strips (LEDC)"
             default n
         config UL_RGB2_PWM_HZ
             int "PWM Hz"
-            default 1000
+            default 3000
         config UL_RGB2_LEDC_MODE
             int "LEDC mode (0=low speed, 1=high speed)"
             range 0 1
@@ -293,7 +293,7 @@ menu "RGB Strips (LEDC)"
             default n
         config UL_RGB3_PWM_HZ
             int "PWM Hz"
-            default 1000
+            default 3000
         config UL_RGB3_LEDC_MODE
             int "LEDC mode (0=low speed, 1=high speed)"
             range 0 1
@@ -326,7 +326,7 @@ menu "WS2812 Strips"
     menu "Strip 0"
         config UL_WS0_ENABLED
             bool "Enabled"
-            default y
+            default n
         config UL_WS0_GPIO
             int "GPIO"
             default 18
@@ -351,7 +351,7 @@ menu "White Strips (LEDC)"
     menu "White 0"
         config UL_WHT0_ENABLED
             bool "Enabled"
-            default y
+            default n
         config UL_WHT0_GPIO
             int "GPIO"
             default 5
@@ -361,7 +361,7 @@ menu "White Strips (LEDC)"
             default 0
         config UL_WHT0_PWM_HZ
             int "PWM Hz"
-            default 1000
+            default 3000
         config UL_WHT0_MIN
             int "Min clamp"
             default 0
@@ -382,7 +382,7 @@ menu "White Strips (LEDC)"
             default 1
         config UL_WHT1_PWM_HZ
             int "PWM Hz"
-            default 1000
+            default 3000
         config UL_WHT1_MIN
             int "Min clamp"
             default 0
@@ -403,7 +403,7 @@ menu "White Strips (LEDC)"
             default 2
         config UL_WHT2_PWM_HZ
             int "PWM Hz"
-            default 1000
+            default 3000
         config UL_WHT2_MIN
             int "Min clamp"
             default 0
@@ -424,7 +424,7 @@ menu "White Strips (LEDC)"
             default 3
         config UL_WHT3_PWM_HZ
             int "PWM Hz"
-            default 1000
+            default 3000
         config UL_WHT3_MIN
             int "Min clamp"
             default 0
