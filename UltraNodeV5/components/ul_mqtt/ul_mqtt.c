@@ -30,10 +30,15 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <stdint.h>
 
 static const char *TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
+static uint32_t s_consecutive_start_failures = 0;
+static bool s_restart_on_next_retry = false;
+
+#define UL_MQTT_MAX_CONSECUTIVE_START_FAILURES 5
 
 #if CONFIG_UL_MQTT_USE_TLS
 static const time_t kUlMqttMinValidTime = 1700000000;
@@ -1031,6 +1036,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_CONNECTED: {
     ESP_LOGI(TAG, "MQTT connected");
     s_ready = true;
+    s_consecutive_start_failures = 0;
+    s_restart_on_next_retry = false;
 #ifndef UL_MQTT_TESTING
     EventGroupHandle_t group = mqtt_state_event_group();
     if (group)
@@ -1120,12 +1127,37 @@ static void cancel_mqtt_retry(void) {
 static void schedule_mqtt_retry(void);
 
 void ul_mqtt_start(void);
+void ul_mqtt_restart(void);
+
+static void note_mqtt_start_failure(void) {
+  if (s_consecutive_start_failures < UINT32_MAX)
+    s_consecutive_start_failures++;
+  if (!s_restart_on_next_retry &&
+      s_consecutive_start_failures >= UL_MQTT_MAX_CONSECUTIVE_START_FAILURES) {
+    s_restart_on_next_retry = true;
+    ESP_LOGW(TAG,
+             "MQTT start has failed %u consecutive times; scheduling component restart",
+             (unsigned)s_consecutive_start_failures);
+  }
+  ul_health_notify_mqtt(false);
+  schedule_mqtt_retry();
+}
 
 static void mqtt_retry_timer_cb(void *arg) {
   (void)arg;
   s_retry_pending = false;
-  ESP_LOGI(TAG, "Retrying MQTT client start");
-  ul_mqtt_start();
+  bool restart = s_restart_on_next_retry;
+  s_restart_on_next_retry = false;
+  if (restart) {
+    ESP_LOGW(TAG,
+             "Restarting MQTT component after repeated start failures (count=%u)",
+             (unsigned)s_consecutive_start_failures);
+    s_consecutive_start_failures = 0;
+    ul_mqtt_restart();
+  } else {
+    ESP_LOGI(TAG, "Retrying MQTT client start");
+    ul_mqtt_start();
+  }
 }
 
 static void schedule_mqtt_retry(void) {
@@ -1279,8 +1311,7 @@ void ul_mqtt_start(void) {
   esp_mqtt_client_handle_t client = esp_mqtt_client_init(&cfg);
   if (!client) {
     ESP_LOGE(TAG, "Failed to initialize MQTT client");
-    ul_health_notify_mqtt(false);
-    schedule_mqtt_retry();
+    note_mqtt_start_failure();
     return;
   }
 
@@ -1292,8 +1323,7 @@ void ul_mqtt_start(void) {
              (int)register_err);
     esp_mqtt_client_destroy(client);
     s_client = NULL;
-    ul_health_notify_mqtt(false);
-    schedule_mqtt_retry();
+    note_mqtt_start_failure();
     return;
   }
 
@@ -1303,8 +1333,7 @@ void ul_mqtt_start(void) {
     ESP_LOGE(TAG, "Failed to start MQTT client (%d)", (int)start_err);
     esp_mqtt_client_destroy(s_client);
     s_client = NULL;
-    ul_health_notify_mqtt(false);
-    schedule_mqtt_retry();
+    note_mqtt_start_failure();
     return;
   }
 
@@ -1326,6 +1355,8 @@ void ul_mqtt_stop(void) {
   }
   s_ready = false;
   ul_health_notify_mqtt(false);
+  s_consecutive_start_failures = 0;
+  s_restart_on_next_retry = false;
 }
 
 void ul_mqtt_restart(void) {
@@ -1407,4 +1438,8 @@ void ul_mqtt_run_local(const char *path, const char *json) {
 #ifdef UL_MQTT_TESTING
 esp_mqtt_client_handle_t ul_mqtt_test_get_client_handle(void) { return s_client; }
 bool ul_mqtt_test_retry_pending(void) { return s_retry_pending; }
+uint32_t ul_mqtt_test_consecutive_failures(void) {
+  return s_consecutive_start_failures;
+}
+bool ul_mqtt_test_restart_pending(void) { return s_restart_on_next_retry; }
 #endif

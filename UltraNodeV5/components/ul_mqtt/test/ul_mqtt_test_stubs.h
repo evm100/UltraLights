@@ -126,4 +126,6 @@ void mqtt_event_handler(void *handler_args, esp_event_base_t base,
 
 esp_mqtt_client_handle_t ul_mqtt_test_get_client_handle(void);
 bool ul_mqtt_test_retry_pending(void);
+uint32_t ul_mqtt_test_consecutive_failures(void);
+bool ul_mqtt_test_restart_pending(void);
 
