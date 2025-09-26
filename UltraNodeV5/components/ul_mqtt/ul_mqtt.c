@@ -34,6 +34,117 @@ static const char *TAG = "ul_mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
 
+static esp_mqtt_transport_t transport_from_uri(const char *uri, bool tls_enabled) {
+  if (!uri)
+    return tls_enabled ? MQTT_TRANSPORT_OVER_SSL : MQTT_TRANSPORT_OVER_TCP;
+  if (strncmp(uri, "mqtts://", strlen("mqtts://")) == 0)
+    return MQTT_TRANSPORT_OVER_SSL;
+  if (strncmp(uri, "mqtt://", strlen("mqtt://")) == 0)
+    return MQTT_TRANSPORT_OVER_TCP;
+  if (strncmp(uri, "wss://", strlen("wss://")) == 0)
+    return MQTT_TRANSPORT_OVER_WSS;
+  if (strncmp(uri, "ws://", strlen("ws://")) == 0)
+    return tls_enabled ? MQTT_TRANSPORT_OVER_WSS : MQTT_TRANSPORT_OVER_WS;
+  return tls_enabled ? MQTT_TRANSPORT_OVER_SSL : MQTT_TRANSPORT_OVER_TCP;
+}
+
+static const char *transport_name(esp_mqtt_transport_t transport) {
+  switch (transport) {
+  case MQTT_TRANSPORT_OVER_TCP:
+    return "tcp";
+  case MQTT_TRANSPORT_OVER_SSL:
+    return "ssl";
+  case MQTT_TRANSPORT_OVER_WS:
+    return "ws";
+  case MQTT_TRANSPORT_OVER_WSS:
+    return "wss";
+  default:
+    return "unknown";
+  }
+}
+
+static bool uri_authority_range(const char *uri, const char **authority_out,
+                                const char **end_out) {
+  if (!uri || !authority_out || !end_out)
+    return false;
+
+  const char *authority = uri;
+  const char *scheme_end = strstr(uri, "://");
+  if (scheme_end)
+    authority = scheme_end + 3;
+  if (!authority || *authority == '\0')
+    return false;
+
+  const char *path = strchr(authority, '/');
+  const char *end = path ? path : authority + strlen(authority);
+  if (authority == end)
+    return false;
+
+  *authority_out = authority;
+  *end_out = end;
+  return true;
+}
+
+static bool parse_host_from_uri(const char *uri, char *out, size_t out_len) {
+  if (!uri || !out || out_len == 0)
+    return false;
+
+  const char *authority = NULL;
+  const char *end = NULL;
+  if (!uri_authority_range(uri, &authority, &end))
+    return false;
+
+  if (*authority == '[') {
+    const char *closing = memchr(authority, ']', end - authority);
+    if (!closing)
+      return false;
+    size_t len = closing - authority - 1;
+    if (len + 1 > out_len)
+      len = out_len - 1;
+    memcpy(out, authority + 1, len);
+    out[len] = '\0';
+    return true;
+  }
+
+  const char *colon = memchr(authority, ':', end - authority);
+  if (colon)
+    end = colon;
+
+  size_t len = end - authority;
+  if (len == 0)
+    return false;
+  if (len + 1 > out_len)
+    len = out_len - 1;
+  memcpy(out, authority, len);
+  out[len] = '\0';
+  return true;
+}
+
+static int parse_port_from_uri(const char *uri, int default_port) {
+  if (!uri)
+    return default_port;
+
+  const char *authority = NULL;
+  const char *end = NULL;
+  if (!uri_authority_range(uri, &authority, &end))
+    return default_port;
+  const char *colon = NULL;
+  if (authority < end && authority[0] == '[') {
+    const char *closing = memchr(authority, ']', end - authority);
+    if (closing && closing + 1 < end && closing[1] == ':') {
+      colon = closing + 1;
+    }
+  } else {
+    colon = memchr(authority, ':', end - authority);
+  }
+  if (!colon)
+    return default_port;
+  int port = atoi(colon + 1);
+  if (port <= 0 || port > 65535)
+    return default_port;
+  return port;
+}
+
 #ifndef UL_MQTT_TESTING
 static EventGroupHandle_t s_state_event_group;
 static portMUX_TYPE s_state_event_group_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -969,6 +1080,21 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_DATA:
     on_message(event);
     break;
+  case MQTT_EVENT_ERROR: {
+    esp_mqtt_error_codes_t *err = event->error_handle;
+    if (err) {
+      ESP_LOGE(TAG,
+               "MQTT error: type=%d socket_errno=%d tls_err=0x%x"
+               " tls_cert_flags=0x%x conn_return=%d",
+               err->error_type, err->esp_transport_sock_errno,
+               (unsigned int)err->esp_tls_last_esp_err,
+               (unsigned int)err->esp_tls_cert_verify_flags,
+               err->connect_return_code);
+    } else {
+      ESP_LOGE(TAG, "MQTT error with no detail payload");
+    }
+    break;
+  }
   default:
     break;
   }
@@ -1062,6 +1188,51 @@ void ul_mqtt_start(void) {
       .task.stack_size = 6144,
   };
 
+  bool dial_override = CONFIG_UL_MQTT_DIAL_HOST[0] != '\0';
+  if (dial_override) {
+    bool tls = CONFIG_UL_MQTT_USE_TLS;
+    esp_mqtt_transport_t transport = transport_from_uri(CONFIG_UL_MQTT_URI, tls);
+    bool transport_tls =
+        (transport == MQTT_TRANSPORT_OVER_SSL ||
+         transport == MQTT_TRANSPORT_OVER_WSS);
+    int fallback_port = 1883;
+    switch (transport) {
+    case MQTT_TRANSPORT_OVER_SSL:
+      fallback_port = 8883;
+      break;
+    case MQTT_TRANSPORT_OVER_TCP:
+      fallback_port = 1883;
+      break;
+    case MQTT_TRANSPORT_OVER_WSS:
+      fallback_port = 443;
+      break;
+    case MQTT_TRANSPORT_OVER_WS:
+      fallback_port = 80;
+      break;
+    default:
+      fallback_port = transport_tls ? 8883 : 1883;
+      break;
+    }
+    int default_port = parse_port_from_uri(CONFIG_UL_MQTT_URI, fallback_port);
+    int port = CONFIG_UL_MQTT_DIAL_PORT;
+    if (port <= 0 || port > 65535)
+      port = parse_port_from_uri(CONFIG_UL_MQTT_DIAL_HOST, default_port);
+    if (port <= 0 || port > 65535)
+      port = default_port;
+    cfg.broker.address.uri = NULL;
+    static char s_dial_host[128];
+    const char *dial_host = CONFIG_UL_MQTT_DIAL_HOST;
+    if (parse_host_from_uri(CONFIG_UL_MQTT_DIAL_HOST, s_dial_host,
+                            sizeof(s_dial_host))) {
+      dial_host = s_dial_host;
+    }
+    cfg.broker.address.hostname = dial_host;
+    cfg.broker.address.port = port;
+    cfg.broker.address.transport = transport;
+    ESP_LOGI(TAG, "MQTT dialing override host %s:%d (transport %s)",
+             dial_host, port, transport_name(transport));
+  }
+
 #if CONFIG_UL_MQTT_USE_TLS
 #ifndef UL_MQTT_TESTING
   cfg.broker.verification.crt_bundle_attach = esp_crt_bundle_attach;
@@ -1071,6 +1242,10 @@ void ul_mqtt_start(void) {
 #else
   if (CONFIG_UL_MQTT_TLS_COMMON_NAME[0] != '\0') {
     cfg.broker.verification.common_name = CONFIG_UL_MQTT_TLS_COMMON_NAME;
+  } else {
+    static char s_tls_host[128];
+    if (parse_host_from_uri(CONFIG_UL_MQTT_URI, s_tls_host, sizeof(s_tls_host)))
+      cfg.broker.verification.common_name = s_tls_host;
   }
 #endif
 #endif

@@ -2,6 +2,35 @@
 
 This document describes how the ESP32 firmware communicates via MQTT and how to format control messages.
 
+## Broker connection settings
+
+The firmware reads its connection details from the MQTT section of
+`menuconfig` (or from `sdkconfig.defaults` when building in CI). The
+`UL_MQTT_URI` option continues to define the canonical broker address, scheme
+and default port. When migrating to `mqtts` it is common to terminate TLS on a
+broker that is only reachable via a LAN IP. Use the new
+`UL_MQTT_DIAL_HOST`/`UL_MQTT_DIAL_PORT` pair to point the transport layer at
+that local endpoint while keeping certificate validation tied to
+`UL_MQTT_TLS_COMMON_NAME`.
+
+Example: if your certificate is issued for `lights.example.org` but Mosquitto is
+reachable inside the house at `192.168.1.50`, set:
+
+```
+CONFIG_UL_MQTT_URI="mqtts://lights.example.org:8883"
+CONFIG_UL_MQTT_DIAL_HOST="192.168.1.50"
+CONFIG_UL_MQTT_DIAL_PORT=8883
+CONFIG_UL_MQTT_TLS_COMMON_NAME="lights.example.org"
+```
+
+The client will dial `192.168.1.50:8883`, validate the certificate against
+`UL_MQTT_TLS_COMMON_NAME`, and only mark the MQTT subsystem ready once the TLS
+handshake succeeds.
+
+Leaving `UL_MQTT_TLS_COMMON_NAME` blank reuses the hostname from
+`UL_MQTT_URI`, which is useful when the certificate already matches the broker
+URI and only the dial host differs.
+
 ## Topic scheme
 
 All topics are rooted at `ul/<node-id>/`. The node subscribes to commands addressed to itself and to the broadcast topic `ul/+/cmd/#`.
