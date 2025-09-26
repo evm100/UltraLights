@@ -326,22 +326,7 @@ void ul_provisioning_make_default_config(ul_provisioning_config_t *cfg) {
     suffix = node_id + strlen(node_id) - 4;
   }
   snprintf(cfg->ap_ssid, sizeof(cfg->ap_ssid), "UltraLights-%s", suffix);
-  static const char alphabet[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  uint8_t mac[6] = {0};
-  if (esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP) != ESP_OK) {
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
-  }
-  uint32_t seed = 0x42f3a9c5;
-  for (size_t i = 0; i < sizeof(mac); ++i) {
-    seed ^= ((uint32_t)mac[i]) << ((i % 3) * 8);
-    seed = (seed << 7) | (seed >> 25);
-  }
-  for (size_t i = 0; i < 12; ++i) {
-    seed = seed * 1103515245u + 12345u;
-    cfg->ap_password[i] = alphabet[seed % (sizeof(alphabet) - 1)];
-  }
-  cfg->ap_password[8] = '\0';
-  memset(&cfg->ap_password[8], 0, sizeof(cfg->ap_password) - 8);
+  strlcpy(cfg->ap_password, "UltraLights", sizeof(cfg->ap_password));
 }
 
 esp_err_t ul_provisioning_start(const ul_provisioning_config_t *cfg) {
