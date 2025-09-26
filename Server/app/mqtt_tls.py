@@ -1,11 +1,26 @@
-"""Helpers for configuring MQTT clients with TLS."""
+"""Helpers for configuring MQTT clients with TLS and connection overrides."""
 from __future__ import annotations
+
+import logging
 import ssl
+from dataclasses import dataclass
 from types import MethodType
 from typing import Dict, Optional
 
 import paho.mqtt.client as mqtt
 from .config import settings
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _MQTTConnection:
+    """Connection parameters derived from the active configuration."""
+
+    connect_host: str
+    dial_host: str
+    port: int
 
 
 _TLS_VERSION_ALIASES = {
@@ -99,33 +114,91 @@ def configure_client_tls(client: mqtt.Client) -> None:
         insecure_set(settings.BROKER_TLS_INSECURE)
 
 
-def connect_mqtt_client(client: mqtt.Client, *, keepalive: int = 30) -> None:
-    """Configure TLS (if enabled) and connect ``client`` to the broker."""
+def configure_client_connection(
+    client: mqtt.Client,
+    *,
+    keepalive: int = 30,
+) -> _MQTTConnection:
+    """Prepare ``client`` for connection and return the resolved endpoints."""
 
     configure_client_tls(client)
+
+    if settings.BROKER_USERNAME or settings.BROKER_PASSWORD:
+        set_credentials = getattr(client, "username_pw_set", None)
+        if callable(set_credentials):
+            set_credentials(settings.BROKER_USERNAME, settings.BROKER_PASSWORD)
+
     dial_host = settings.BROKER_CONNECT_HOST or settings.BROKER_HOST
     connect_host = dial_host
     if settings.BROKER_TLS_ENABLED:
         sni_host = settings.BROKER_TLS_SERVERNAME or settings.BROKER_HOST
         connect_host = sni_host
-        if dial_host != connect_host:
-            _override_client_connect_host(client, dial_host)
-    if settings.BROKER_USERNAME or settings.BROKER_PASSWORD:
-        set_credentials = getattr(client, "username_pw_set", None)
-        if callable(set_credentials):
-            set_credentials(settings.BROKER_USERNAME, settings.BROKER_PASSWORD)
-    client.connect(connect_host, settings.BROKER_PORT, keepalive=keepalive)
+        if dial_host and dial_host != connect_host:
+            _override_client_dial_host(client, dial_host)
+
+    reconnect_delay = getattr(client, "reconnect_delay_set", None)
+    if callable(reconnect_delay):
+        # Encourage aggressive reconnects during broker upgrades without
+        # overwhelming the server with rapid retries.
+        reconnect_delay(min_delay=1, max_delay=30)
+
+    return _MQTTConnection(connect_host=connect_host, dial_host=dial_host, port=settings.BROKER_PORT)
 
 
-def _override_client_connect_host(client: mqtt.Client, connect_host: str) -> None:
-    """Force ``client`` to connect to ``connect_host`` while keeping TLS SNI."""
+def connect_mqtt_client(
+    client: mqtt.Client,
+    *,
+    keepalive: int = 30,
+    start_async: bool = False,
+    raise_on_failure: bool = True,
+) -> bool:
+    """Configure ``client`` and initiate a broker connection.
+
+    When ``start_async`` is ``True`` the client uses ``connect_async`` so it can
+    reconnect in the background if the broker is unavailable.  In synchronous
+    mode, connection errors are logged and optionally re-raised.
+    """
+
+    params = configure_client_connection(client, keepalive=keepalive)
+
+    try:
+        if start_async:
+            connect_async = getattr(client, "connect_async", None)
+            if callable(connect_async):
+                connect_async(params.connect_host, params.port, keepalive=keepalive)
+                return True
+        client.connect(params.connect_host, params.port, keepalive=keepalive)
+        return True
+    except Exception as exc:
+        logger.error(
+            "MQTT connection to %s:%d failed: %s",
+            params.dial_host or params.connect_host,
+            params.port,
+            exc,
+        )
+        if start_async:
+            # Fall back to an async reconnect attempt so clients can recover
+            # automatically once the broker returns.
+            try:
+                connect_async = getattr(client, "connect_async", None)
+                if callable(connect_async):
+                    connect_async(params.connect_host, params.port, keepalive=keepalive)
+            except Exception:
+                logger.debug("Unable to schedule async reconnect", exc_info=True)
+        if raise_on_failure:
+            raise
+        return False
+
+
+def _override_client_dial_host(client: mqtt.Client, dial_host: str) -> None:
+    """Force ``client`` to dial ``dial_host`` while keeping TLS SNI."""
 
     original_create_socket = mqtt.Client._create_socket_connection
 
     def _create_socket_connection_override(self: mqtt.Client):
         original_host = self._host
         try:
-            self._host = connect_host
+            self._host = dial_host
             return original_create_socket(self)
         finally:
             self._host = original_host

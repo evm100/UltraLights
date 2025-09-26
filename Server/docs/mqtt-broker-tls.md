@@ -27,6 +27,11 @@ When using certificates issued by a public CA such as Let's Encrypt, it is safe
 to leave `BROKER_TLS_CA_FILE` blank.  If you deploy a private CA, provide the
 path to the CA bundle so the clients can validate the broker certificate.
 
+The server now establishes MQTT sessions asynchronously and will keep retrying
+in the background while the broker restarts.  The application logs its MQTT
+state transitions so you can monitor the cutover from plaintext `mqtt` to
+encrypted `mqtts` without dropping motion events or UI commands.
+
 If the broker is reached through an IP address but presents a certificate for a
 DNS name, populate `BROKER_TLS_SERVERNAME` with that DNS name. When
 `BROKER_CONNECT_HOST` is set, the application still opens the TCP connection
