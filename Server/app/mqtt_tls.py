@@ -8,7 +8,6 @@ from types import MethodType
 from typing import Dict, Optional
 
 import paho.mqtt.client as mqtt
-
 from .config import settings
 
 
