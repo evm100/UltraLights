@@ -73,6 +73,22 @@ menu "MQTT"
     config UL_MQTT_PASS
         string "MQTT Password"
         default "ulpwd"
+    config UL_MQTT_DIAL_HOST
+        string "Override MQTT dial host/IP"
+        default ""
+        help
+            If set, connections to the MQTT broker will be made using this host or
+            IP address instead of the hostname in UL_MQTT_URI. TLS verification still
+            uses UL_MQTT_TLS_COMMON_NAME so certificates can be validated while
+            dialing a local address (e.g., when the broker is on the LAN).
+    config UL_MQTT_DIAL_PORT
+        int "Override MQTT dial port"
+        range 0 65535
+        default 0
+        help
+            Optional TCP port used with UL_MQTT_DIAL_HOST. Leave as 0 to reuse the
+            port from UL_MQTT_URI. Set a non-zero value to explicitly choose the
+            listening port when overriding the dial host.
     config UL_MQTT_USE_TLS
         bool "Use TLS for MQTT"
         default y

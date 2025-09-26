@@ -1,10 +1,12 @@
-import threading
 import json
+import threading
 import time
-from typing import Optional, List, Dict, Union, Tuple
+from typing import Dict, List, Optional, Tuple, Union
+
 import paho.mqtt.client as paho
 
 from .mqtt_tls import connect_mqtt_client
+
 
 def topic_cmd(node_id: str, path: str) -> str:
     return f"ul/{node_id}/cmd/{path}"
@@ -29,6 +31,8 @@ class MqttBus:
         self._pending_commands: Dict[str, PendingCommand] = {}
         self._rate_condition = threading.Condition()
         self._shutdown = False
+        self._rate_thread: Optional[threading.Thread] = None
+        self.thread: Optional[threading.Thread] = None
         self._rate_thread = threading.Thread(target=self._rate_worker, daemon=True)
         self.thread = threading.Thread(target=self.client.loop_forever, daemon=True)
         self._rate_thread.start()
@@ -115,9 +119,14 @@ class MqttBus:
         with self._rate_condition:
             self._shutdown = True
             self._rate_condition.notify_all()
-        self.client.disconnect()
-        self._rate_thread.join(timeout=5.0)
-        self.thread.join(timeout=5.0)
+        try:
+            self.client.disconnect()
+        except Exception:
+            pass
+        if self._rate_thread is not None:
+            self._rate_thread.join(timeout=5.0)
+        if self.thread is not None:
+            self.thread.join(timeout=5.0)
 
     # ---- WS strip commands ----
     def ws_set(
