@@ -48,7 +48,7 @@ static esp_mqtt_transport_t transport_from_uri(const char *uri, bool tls_enabled
   return tls_enabled ? MQTT_TRANSPORT_OVER_SSL : MQTT_TRANSPORT_OVER_TCP;
 }
 
-static const char *transport_name(esp_mqtt_transport_t transport) {
+static inline const char *transport_name(esp_mqtt_transport_t transport) {
   switch (transport) {
   case MQTT_TRANSPORT_OVER_TCP:
     return "tcp";
@@ -171,7 +171,8 @@ static EventGroupHandle_t mqtt_state_event_group(void) {
 static QueueHandle_t s_publish_ack_queue = NULL;
 #endif
 
-#define UL_MQTT_RETRY_DELAY_US (5ULL * 1000000ULL)
+#define UL_MQTT_RETRY_DELAY_US                                             \
+  ((uint64_t)CONFIG_UL_MQTT_RECONNECT_DELAY_MS * 1000ULL)
 
 static esp_timer_handle_t s_retry_timer = NULL;
 static bool s_retry_pending = false;
@@ -1147,6 +1148,8 @@ static void schedule_mqtt_retry(void) {
     ESP_LOGE(TAG, "Failed to start MQTT retry timer (%d)", (int)err);
     return;
   }
+  ESP_LOGW(TAG, "Retrying MQTT connection in %d ms",
+           CONFIG_UL_MQTT_RECONNECT_DELAY_MS);
   s_retry_pending = true;
 }
 
@@ -1187,6 +1190,11 @@ void ul_mqtt_start(void) {
       .task.priority = 5,
       .task.stack_size = 6144,
   };
+
+  if (CONFIG_UL_MQTT_CONNECT_TIMEOUT_MS > 0)
+    cfg.network.timeout_ms = CONFIG_UL_MQTT_CONNECT_TIMEOUT_MS;
+  if (CONFIG_UL_MQTT_RECONNECT_DELAY_MS > 0)
+    cfg.network.reconnect_timeout_ms = CONFIG_UL_MQTT_RECONNECT_DELAY_MS;
 
   bool dial_override = CONFIG_UL_MQTT_DIAL_HOST[0] != '\0';
   if (dial_override) {

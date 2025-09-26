@@ -107,6 +107,21 @@ menu "MQTT"
                 Disable certificate common name validation. Only enable this for development
                 scenarios with self-signed certificates.
     endif
+    config UL_MQTT_CONNECT_TIMEOUT_MS
+        int "MQTT connection timeout (ms)"
+        range 1000 60000
+        default 20000
+        help
+            Maximum time to wait for the MQTT transport to establish, including any TLS
+            handshake, before considering the attempt failed.
+    config UL_MQTT_RECONNECT_DELAY_MS
+        int "MQTT reconnect delay (ms)"
+        range 100 60000
+        default 3000
+        help
+            Delay before retrying the MQTT connection after a failure. Shorter values
+            improve responsiveness at the cost of more frequent retry attempts when the
+            broker is unavailable.
 endmenu
 
 menu "OTA"
