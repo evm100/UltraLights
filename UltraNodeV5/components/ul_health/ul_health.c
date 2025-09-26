@@ -50,6 +50,9 @@ typedef struct {
   uint32_t white_engine_failures;
   uint64_t white_first_failure_us;
   uint64_t white_last_failure_us;
+  uint32_t relay_engine_failures;
+  uint64_t relay_first_failure_us;
+  uint64_t relay_last_failure_us;
 } ul_health_state_t;
 
 static ul_health_state_t s_state;
@@ -230,6 +233,42 @@ void ul_health_notify_white_engine_failure(void) {
   uint64_t elapsed_us = now_us - first_failure_us;
   ESP_LOGW(TAG,
            "White smoothing task creation failed %u time%s (%llus since first failure)",
+           (unsigned)failures, failures == 1 ? "" : "s",
+           elapsed_us / 1000000ULL);
+}
+
+void ul_health_notify_relay_engine_ok(void) {
+  portENTER_CRITICAL(&s_lock);
+  if (s_state.started) {
+    s_state.relay_engine_failures = 0;
+    s_state.relay_first_failure_us = 0;
+    s_state.relay_last_failure_us = 0;
+  }
+  portEXIT_CRITICAL(&s_lock);
+}
+
+void ul_health_notify_relay_engine_failure(void) {
+  uint64_t now_us = esp_timer_get_time();
+  uint32_t failures = 0;
+  uint64_t first_failure_us = 0;
+  portENTER_CRITICAL(&s_lock);
+  if (s_state.started) {
+    if (s_state.relay_engine_failures == 0)
+      s_state.relay_first_failure_us = now_us;
+    if (s_state.relay_engine_failures < UINT32_MAX)
+      s_state.relay_engine_failures++;
+    failures = s_state.relay_engine_failures;
+    first_failure_us = s_state.relay_first_failure_us;
+    s_state.relay_last_failure_us = now_us;
+  }
+  portEXIT_CRITICAL(&s_lock);
+
+  if (failures == 0)
+    return;
+
+  uint64_t elapsed_us = now_us - first_failure_us;
+  ESP_LOGW(TAG,
+           "Relay engine initialization failed %u time%s (%llus since first failure)",
            (unsigned)failures, failures == 1 ? "" : "s",
            elapsed_us / 1000000ULL);
 }

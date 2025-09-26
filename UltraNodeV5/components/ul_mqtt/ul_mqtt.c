@@ -19,6 +19,7 @@
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
 #include "ul_rgb_engine.h"
+#include "ul_relay.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -26,6 +27,7 @@
 #endif
 
 #include <ctype.h>
+#include <strings.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -192,6 +194,7 @@ static bool s_retry_pending = false;
 #define UL_WS_MAX_STRIPS 2
 #define UL_RGB_MAX_STRIPS 4
 #define UL_WHITE_MAX_CHANNELS 4
+#define UL_RELAY_MAX_CHANNELS 4
 
 static uint8_t s_ws_saved_bri[UL_WS_MAX_STRIPS];
 static bool s_ws_saved_valid[UL_WS_MAX_STRIPS];
@@ -663,6 +666,25 @@ static void publish_status_snapshot(void) {
   }
   cJSON_AddItemToObject(root, "white", jw);
 
+  // Relay channels
+  cJSON *jrelay = cJSON_CreateArray();
+  for (int i = 0; i < UL_RELAY_MAX_CHANNELS; ++i) {
+    ul_relay_status_t st;
+    if (ul_relay_get_status(i, &st)) {
+      cJSON *o = cJSON_CreateObject();
+      cJSON_AddNumberToObject(o, "channel", i);
+      cJSON_AddBoolToObject(o, "enabled", st.enabled);
+      cJSON_AddBoolToObject(o, "state", st.state);
+      cJSON_AddBoolToObject(o, "active_high", st.active_high);
+      cJSON_AddNumberToObject(o, "gpio", st.gpio);
+      cJSON_AddNumberToObject(o, "min_interval_ms", st.min_interval_ms);
+      double last_change_ms = (double)st.last_change_us / 1000.0;
+      cJSON_AddNumberToObject(o, "last_change_ms", last_change_ms);
+      cJSON_AddItemToArray(jrelay, o);
+    }
+  }
+  cJSON_AddItemToObject(root, "relay", jrelay);
+
   // *Debugging only- download_id is secret
   // OTA (static fields from Kconfig)
   //cJSON *jota = cJSON_CreateObject();
@@ -770,6 +792,29 @@ static void publish_white_ack(int channel, const char *effect, cJSON *params,
   } else {
     cJSON_AddStringToObject(root, "status", "error");
     cJSON_AddStringToObject(root, "error", "invalid effect");
+  }
+  char *json = cJSON_PrintUnformatted(root);
+  publish_json(topic, json);
+  cJSON_free(json);
+  cJSON_Delete(root);
+}
+
+static void publish_relay_ack(int channel, bool desired_state, bool actual_state,
+                              bool ok, const char *error) {
+  char topic[128];
+  snprintf(topic, sizeof(topic), "ul/%s/evt/status", ul_core_get_node_id());
+  cJSON *root = cJSON_CreateObject();
+  cJSON_AddStringToObject(root, "event", "ack");
+  cJSON_AddStringToObject(root, "target", "relay");
+  cJSON_AddNumberToObject(root, "channel", channel);
+  cJSON_AddBoolToObject(root, "desired_state", desired_state);
+  cJSON_AddBoolToObject(root, "state", actual_state);
+  if (ok) {
+    cJSON_AddStringToObject(root, "status", "ok");
+  } else {
+    cJSON_AddStringToObject(root, "status", "error");
+    if (error)
+      cJSON_AddStringToObject(root, "error", error);
   }
   char *json = cJSON_PrintUnformatted(root);
   publish_json(topic, json);
@@ -923,6 +968,75 @@ static bool handle_cmd_white_set(cJSON *root, int *out_channel) {
 
   return (!effect || ok);
 }
+
+static bool handle_cmd_relay_set(cJSON *root, int *out_channel, bool *out_desired) {
+  if (!root)
+    return false;
+
+  int channel = 0;
+  cJSON *jch = cJSON_GetObjectItem(root, "channel");
+  if (jch && cJSON_IsNumber(jch))
+    channel = jch->valueint;
+
+  bool desired = false;
+  bool have_state = false;
+
+  cJSON *jstate = cJSON_GetObjectItem(root, "state");
+  if (jstate) {
+    if (cJSON_IsBool(jstate)) {
+      desired = cJSON_IsTrue(jstate);
+      have_state = true;
+    } else if (cJSON_IsString(jstate) && jstate->valuestring) {
+      if (strcasecmp(jstate->valuestring, "on") == 0) {
+        desired = true;
+        have_state = true;
+      } else if (strcasecmp(jstate->valuestring, "off") == 0) {
+        desired = false;
+        have_state = true;
+      }
+    }
+  }
+
+  if (!have_state) {
+    cJSON *jon = cJSON_GetObjectItem(root, "on");
+    if (jon && cJSON_IsBool(jon)) {
+      desired = cJSON_IsTrue(jon);
+      have_state = true;
+    }
+  }
+
+  if (out_channel)
+    *out_channel = channel;
+  if (out_desired)
+    *out_desired = desired;
+
+  ul_relay_status_t st;
+  bool have_status = ul_relay_get_status(channel, &st);
+
+  bool applied = false;
+  if (have_state)
+    applied = ul_relay_set_state(channel, desired);
+
+  if (have_state)
+    have_status = ul_relay_get_status(channel, &st);
+
+  bool ok = have_state && have_status && st.state == desired;
+  const char *error = NULL;
+  bool actual_state = have_status ? st.state : false;
+
+  if (!have_state) {
+    error = "missing state";
+  } else if (!have_status) {
+    error = "invalid channel";
+  } else if (!applied && st.state != desired) {
+    error = "rate limited";
+  } else if (st.state != desired) {
+    error = "state mismatch";
+  }
+
+  publish_relay_ack(channel, desired, actual_state, ok, error);
+  return ok;
+}
 static void on_message(esp_mqtt_event_handle_t event) {
   // topic expected: ul/<node>/cmd/...
   char node[64] = {0};
@@ -997,6 +1111,16 @@ static void on_message(esp_mqtt_event_handle_t event) {
       if (applied) {
         if (event->data && event->data_len > 0) {
           ul_state_record_white(channel, event->data, event->data_len);
+        }
+      }
+    } else if (starts_with(sub, "relay/set")) {
+      motion_fade_cancel();
+      override_index_from_path(root, sub, "relay/set", "channel");
+      int channel = 0;
+      bool applied = handle_cmd_relay_set(root, &channel, NULL);
+      if (applied) {
+        if (event->data && event->data_len > 0) {
+          ul_state_record_relay(channel, event->data, event->data_len);
         }
       }
     } else if (starts_with(sub, "motion/off")) {
@@ -1428,6 +1552,15 @@ void ul_mqtt_run_local(const char *path, const char *json) {
     if (applied) {
       if (payload_len > 0) {
         ul_state_record_white(channel, json, payload_len);
+      }
+    }
+  } else if (starts_with(path, "relay/set")) {
+    override_index_from_path(root, path, "relay/set", "channel");
+    int channel = 0;
+    bool applied = handle_cmd_relay_set(root, &channel, NULL);
+    if (applied) {
+      if (payload_len > 0) {
+        ul_state_record_relay(channel, json, payload_len);
       }
     }
   }

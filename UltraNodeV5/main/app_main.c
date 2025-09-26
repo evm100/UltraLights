@@ -24,6 +24,7 @@
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
 #include "ul_rgb_engine.h"
+#include "ul_relay.h"
 #include "ul_wifi_credentials.h"
 #if CONFIG_UL_PIR_ENABLED
 #include "ul_pir.h"
@@ -142,6 +143,10 @@ static void service_manager_task(void *ctx) {
           if (!white_started) {
             ESP_LOGE(TAG, "White engine failed to start; running without it");
           }
+          bool relay_started = ul_relay_start();
+          if (!relay_started) {
+            ESP_LOGE(TAG, "Relay engine failed to start; running without it");
+          }
 #if CONFIG_UL_PIR_ENABLED
           ul_pir_start();
 #endif
@@ -157,6 +162,7 @@ static void service_manager_task(void *ctx) {
           ul_ws_engine_stop();
           ul_rgb_engine_stop();
           ul_white_engine_stop();
+          ul_relay_stop();
 #if CONFIG_UL_PIR_ENABLED
           ul_pir_stop();
 #endif
