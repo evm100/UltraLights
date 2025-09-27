@@ -25,6 +25,27 @@ Following the checklist keeps the registry, firmware and OTA distribution in
 sync so devices can report status and accept updates immediately after they boot
 on the network.
 
+## Firmware build prerequisites
+
+The ESP-IDF toolchain expects a number of helper modules to be available on the
+Python path when you call `idf.py`. The upstream installer wires everything up
+automatically, but our containerized development environment does not ship with
+those extras pre-installed. If you see an error such as
+
+```
+No module named 'esp_idf_monitor'
+```
+
+install the optional firmware dependencies before invoking any `idf.py`
+commands:
+
+```
+python -m pip install -r UltraNodeV5/requirements-dev.txt
+```
+
+Make sure you also activate an ESP-IDF environment (so `idf.py` resolves the
+cross-compilers) before running `idf.py build` or `idf.py -p <port> flash`.
+
 ### Resetting a node for reprovisioning
 
 If the installation Wi-Fi changes, press and hold the ESP32's **BOOT** button

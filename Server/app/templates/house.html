@@ -9,6 +9,54 @@
     {% endif %}
   </div>
 </div>
+{% if can_manage_house and house_pending_nodes %}
+<section class="glass rounded-xl p-6 mb-6" data-node-assignment data-house-id="{{ house_public_id }}">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <h3 class="text-xl font-semibold">Unassigned Nodes</h3>
+      <p class="text-sm opacity-70">Place captured nodes into rooms and give them a friendly name.</p>
+    </div>
+  </div>
+  {% if house_room_options %}
+  <div class="mt-4 grid gap-4" data-node-assignment-list>
+    {% for node in house_pending_nodes %}
+    <div class="glass rounded-lg p-4 border border-slate-700/60" data-node-entry="{{ node.id }}">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <div class="text-sm font-semibold uppercase tracking-wide opacity-70">Node</div>
+          <div class="text-lg font-semibold">{{ node.name }}</div>
+          <div class="text-xs opacity-60">ID: {{ node.id }}</div>
+        </div>
+        <div class="text-xs opacity-60 break-all">Download ID: {{ node.downloadId }}</div>
+      </div>
+      <div class="mt-4 grid gap-3 md:grid-cols-2">
+        <label class="block text-sm font-semibold">
+          <span>Display name</span>
+          <input type="text" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" value="{{ node.name }}" data-node-name>
+        </label>
+        <label class="block text-sm font-semibold">
+          <span>Room</span>
+          <select class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" data-node-room>
+            {% for room in house_room_options %}
+            <option value="{{ room.id }}">{{ room.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <button type="button" class="px-4 py-2 pill bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold" data-node-assign>Assign Node</button>
+        <div class="text-sm opacity-70" data-node-status role="status" aria-live="polite"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="mt-4 text-sm opacity-70">
+    Create a room before assigning nodes.
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 {% if house.rooms %}
 <div class="grid md:grid-cols-3 gap-4" data-room-grid data-can-manage="{{ 'true' if can_manage_house else 'false' }}">
   {% for r in house.rooms %}
@@ -123,6 +171,65 @@ if(grid && grid.dataset.canManage === 'true'){
     if(!dragging) return;
     event.preventDefault();
     dropOccurred = true;
+  });
+}
+
+const assignmentSection = document.querySelector('[data-node-assignment]');
+if (assignmentSection) {
+  const houseId = assignmentSection.dataset.houseId;
+  assignmentSection.querySelectorAll('[data-node-assign]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!houseId || button.disabled) {
+        return;
+      }
+      const entry = button.closest('[data-node-entry]');
+      if (!entry) {
+        return;
+      }
+      const nodeId = entry.dataset.nodeEntry;
+      const nameInput = entry.querySelector('[data-node-name]');
+      const roomSelect = entry.querySelector('[data-node-room]');
+      const statusEl = entry.querySelector('[data-node-status]');
+      if (!nodeId || !roomSelect || !roomSelect.value) {
+        if (statusEl) {
+          statusEl.textContent = 'Select a room before assigning.';
+        }
+        return;
+      }
+      const payload = {
+        nodeId,
+        roomId: roomSelect.value,
+        name: nameInput ? nameInput.value.trim() : undefined,
+      };
+      button.disabled = true;
+      button.textContent = 'Assigning…';
+      if (statusEl) {
+        statusEl.textContent = '';
+      }
+      try {
+        const res = await fetch(`/api/house/${encodeURIComponent(houseId)}/nodes/assign`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const message = await res.text();
+          throw new Error(message || `HTTP ${res.status}`);
+        }
+        location.reload();
+      } catch (err) {
+        console.error('Failed to assign node', err);
+        if (statusEl) {
+          statusEl.textContent = err instanceof Error ? err.message : 'Failed to assign node.';
+        } else {
+          alert('Failed to assign node.');
+        }
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Assign Node';
+      }
+    });
   });
 }
 </script>

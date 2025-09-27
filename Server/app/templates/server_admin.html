@@ -85,6 +85,172 @@
   {% endif %}
 </section>
 
+<section class="mt-12 space-y-4" aria-labelledby="nodeFactoryHeading">
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+    <div>
+      <h3 id="nodeFactoryHeading" class="text-2xl font-semibold">Node factory</h3>
+      <p class="text-sm opacity-70">Pre-register nodes, customize firmware, and trigger builds directly from the server.</p>
+    </div>
+    <div class="text-xs opacity-60 md:text-right">
+      Use the same hardware definition when flashing or building to ensure consistent sdkconfig values.
+    </div>
+  </div>
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div class="glass rounded-xl p-4 space-y-4" data-node-factory>
+      <form class="space-y-4" data-node-factory-form>
+        <div class="grid gap-4 md:grid-cols-2">
+          <label class="block text-sm font-semibold">
+            <span>How many nodes?</span>
+            <input type="number" name="count" min="1" max="50" value="1" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2">
+          </label>
+          <label class="block text-sm font-semibold">
+            <span>Display name (optional)</span>
+            <input type="text" name="displayName" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2">
+          </label>
+        </div>
+        <label class="block text-sm font-semibold">
+          <span>ESP32 target</span>
+          <select name="board" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" required>
+            {% for option in node_factory.board_options %}
+            <option value="{{ option }}">{{ option|upper }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="grid gap-4" data-channel-group="ws" data-channel-type="ws2812">
+          <div class="text-sm font-semibold">WS2812 strips</div>
+          {% for idx in range(2) %}
+          <div class="grid gap-3 md:grid-cols-4 items-end" data-channel-row data-index="{{ idx }}">
+            <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
+              <input type="checkbox" data-channel-enabled>
+              Enable strip {{ idx }}
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>GPIO</span>
+              <input type="number" data-channel-field="gpio" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>Pixels</span>
+              <input type="number" data-channel-field="pixels" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="grid gap-4" data-channel-group="white" data-channel-type="white">
+          <div class="text-sm font-semibold">White channels</div>
+          {% for idx in range(4) %}
+          <div class="grid gap-3 md:grid-cols-6 items-end" data-channel-row data-index="{{ idx }}">
+            <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
+              <input type="checkbox" data-channel-enabled>
+              Enable {{ idx }}
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>GPIO</span>
+              <input type="number" data-channel-field="gpio" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>LEDC</span>
+              <input type="number" data-channel-field="ledc_channel" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>PWM Hz</span>
+              <input type="number" data-channel-field="pwm_hz" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>Min</span>
+              <input type="number" data-channel-field="minimum" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>Max</span>
+              <input type="number" data-channel-field="maximum" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="grid gap-4" data-channel-group="rgb" data-channel-type="rgb">
+          <div class="text-sm font-semibold">RGB channels</div>
+          {% for idx in range(4) %}
+          <div class="grid gap-3 md:grid-cols-7 items-end" data-channel-row data-index="{{ idx }}">
+            <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
+              <input type="checkbox" data-channel-enabled>
+              Enable {{ idx }}
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>PWM Hz</span>
+              <input type="number" data-channel-field="pwm_hz" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>Mode</span>
+              <input type="number" data-channel-field="ledc_mode" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>R GPIO</span>
+              <input type="number" data-channel-field="r_gpio" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>R LEDC</span>
+              <input type="number" data-channel-field="r_ledc_ch" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>G GPIO</span>
+              <input type="number" data-channel-field="g_gpio" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>G LEDC</span>
+              <input type="number" data-channel-field="g_ledc_ch" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>B GPIO</span>
+              <input type="number" data-channel-field="b_gpio" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>B LEDC</span>
+              <input type="number" data-channel-field="b_ledc_ch" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="grid gap-4 md:grid-cols-2">
+          <label class="flex items-center gap-3 text-sm font-semibold">
+            <input type="checkbox" data-pir-enabled>
+            Enable PIR sensor
+          </label>
+          <label class="block text-sm font-semibold">
+            <span>PIR GPIO</span>
+            <input type="number" data-pir-gpio class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2">
+          </label>
+        </div>
+        <label class="block text-sm font-semibold">
+          <span>Overrides (JSON object)</span>
+          <textarea data-overrides class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2 h-24" placeholder="{\"CONFIG_UL_WIFI_RESET_BUTTON_GPIO\": 0}"></textarea>
+        </label>
+        <button type="submit" class="px-4 py-2 pill bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold">Generate node IDs</button>
+      </form>
+      <div class="space-y-2 text-xs">
+        <div class="font-semibold uppercase opacity-70">Generated nodes</div>
+        <pre class="bg-slate-900/80 border border-slate-800 rounded p-3 text-xs overflow-x-auto" data-node-factory-output>No nodes generated yet.</pre>
+      </div>
+    </div>
+    <div class="space-y-4">
+      <div class="glass rounded-xl p-4 space-y-4">
+        <div>
+          <h4 class="text-xl font-semibold">Available registrations</h4>
+          <p class="text-xs opacity-70">New nodes appear here after generation.</p>
+        </div>
+        <div class="space-y-2 text-xs" data-node-factory-list></div>
+      </div>
+      <div class="glass rounded-xl p-4 space-y-4">
+        <div>
+          <h4 class="text-xl font-semibold">Firmware tooling</h4>
+          <p class="text-xs opacity-70">Use the standalone command line utility to build or flash firmware with the saved hardware profiles.</p>
+        </div>
+        <p class="text-xs opacity-70">
+          Run <code>python tools/firmware_cli/cli.py --help</code> from the repository root for instructions on generating artifacts or flashing hardware using the stored registrations.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="mt-12 grid gap-6 md:grid-cols-2" aria-labelledby="accountHeading">
   <div class="space-y-4">
     <div>
@@ -186,7 +352,18 @@
   {% endif %}
 </section>
 
+<script type="application/json" id="nodeFactoryData">{{ node_factory | tojson }}</script>
 <script>
+const nodeFactoryDataEl = document.getElementById('nodeFactoryData');
+let nodeFactoryData = {available: [], assigned: [], board_options: []};
+if (nodeFactoryDataEl) {
+  try {
+    nodeFactoryData = JSON.parse(nodeFactoryDataEl.textContent) || nodeFactoryData;
+  } catch (err) {
+    console.warn('Failed to parse node factory data', err);
+  }
+}
+
 const houseCards = Array.from(document.querySelectorAll('[data-house-card]'));
 houseCards.forEach((card) => {
   const revealButton = card.querySelector('[data-reveal-id]');
@@ -369,5 +546,150 @@ if (accountList) {
     }
   });
 }
+
+function collectChannels(groupEl) {
+  const rows = Array.from(groupEl.querySelectorAll('[data-channel-row]'));
+  const channels = [];
+  rows.forEach((row) => {
+    const index = parseInt(row.getAttribute('data-index') || '0', 10);
+    const enabled = row.querySelector('[data-channel-enabled]')?.checked || false;
+    const fields = row.querySelectorAll('[data-channel-field]');
+    const payload = {index, enabled};
+    fields.forEach((field) => {
+      const key = field.getAttribute('data-channel-field');
+      if (!key) return;
+      const raw = field.value.trim();
+      if (raw === '') {
+        return;
+      }
+      const num = Number(raw);
+      payload[key] = Number.isFinite(num) ? num : raw;
+    });
+    if (enabled || Object.keys(payload).length > 2) {
+      channels.push(payload);
+    }
+  });
+  return channels;
+}
+
+function collectHardwarePayload(root) {
+  const board = root.querySelector('select[name="board"]')?.value || 'esp32';
+  const wsGroup = root.querySelector('[data-channel-group="ws"]');
+  const whiteGroup = root.querySelector('[data-channel-group="white"]');
+  const rgbGroup = root.querySelector('[data-channel-group="rgb"]');
+  const overridesText = root.querySelector('[data-overrides]')?.value || '';
+  const pirEnabled = root.querySelector('[data-pir-enabled]')?.checked || false;
+  const pirGpioRaw = root.querySelector('[data-pir-gpio]')?.value || '';
+
+  let overrides = {};
+  if (overridesText.trim()) {
+    try {
+      const parsed = JSON.parse(overridesText);
+      if (parsed && typeof parsed === 'object') {
+        overrides = parsed;
+      }
+    } catch (err) {
+      throw new Error('Overrides must be valid JSON');
+    }
+  }
+
+  const hardware = {
+    board,
+    ws2812: wsGroup ? collectChannels(wsGroup) : [],
+    white: whiteGroup ? collectChannels(whiteGroup) : [],
+    rgb: rgbGroup ? collectChannels(rgbGroup) : [],
+    overrides,
+  };
+
+  if (pirEnabled || pirGpioRaw.trim()) {
+    const pirGpio = Number(pirGpioRaw);
+    hardware.pir = {
+      enabled: pirEnabled,
+      gpio: Number.isFinite(pirGpio) ? pirGpio : undefined,
+    };
+  }
+
+  return hardware;
+}
+
+function renderNodeList(container, available, assigned) {
+  if (!container) return;
+  const parts = [];
+  if (available.length) {
+    parts.push('<div class="font-semibold text-xs uppercase opacity-70">Available</div>');
+    available.forEach((entry) => {
+      parts.push(`<div class="border border-slate-800/60 rounded px-3 py-2"><div class="font-semibold">${entry.nodeId}</div><div class="opacity-70">${entry.board || 'board?'}</div></div>`);
+    });
+  }
+  if (assigned.length) {
+    parts.push('<div class="font-semibold text-xs uppercase opacity-70 mt-2">Assigned</div>');
+    assigned.forEach((entry) => {
+      const location = entry.house && entry.room ? `${entry.house} / ${entry.room}` : (entry.house || entry.room || '—');
+      parts.push(`<div class="border border-slate-800/60 rounded px-3 py-2"><div class="font-semibold">${entry.nodeId}</div><div class="opacity-70">${location}</div></div>`);
+    });
+  }
+  if (!parts.length) {
+    parts.push('<div class="opacity-60">No registrations yet.</div>');
+  }
+  container.innerHTML = parts.join('');
+}
+
+const nodeListContainer = document.querySelector('[data-node-factory-list]');
+if (nodeListContainer) {
+  renderNodeList(nodeListContainer, nodeFactoryData.available || [], nodeFactoryData.assigned || []);
+}
+
+async function refreshNodeFactory() {
+  try {
+    const res = await fetch('/api/server-admin/node-factory/registrations', {credentials: 'same-origin'});
+    if (!res.ok) return;
+    const data = await res.json();
+    renderNodeList(nodeListContainer, data.available || [], data.assigned || []);
+  } catch (err) {
+    console.warn('Failed to refresh node factory list', err);
+  }
+}
+
+const nodeFactoryForm = document.querySelector('[data-node-factory-form]');
+if (nodeFactoryForm) {
+  const outputEl = document.querySelector('[data-node-factory-output]');
+  nodeFactoryForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      const hardware = collectHardwarePayload(nodeFactoryForm);
+      const count = Number(nodeFactoryForm.querySelector('input[name="count"]').value) || 1;
+      const displayName = nodeFactoryForm.querySelector('input[name="displayName"]').value;
+      const payload = {
+        count,
+        displayName: displayName || undefined,
+        hardware,
+      };
+      const res = await fetch('/api/server-admin/node-factory/registrations', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      const lines = [];
+      (data.nodes || []).forEach((node) => {
+        lines.push(`Node ${node.nodeId}`);
+        lines.push(`  Download: ${node.downloadId}`);
+        lines.push(`  Manifest: ${node.manifestUrl}`);
+        lines.push(`  Token: ${node.otaToken}`);
+        lines.push('');
+      });
+      outputEl.textContent = lines.join('\n') || 'No nodes generated yet.';
+      await refreshNodeFactory();
+    } catch (err) {
+      outputEl.textContent = `Error generating nodes: ${err}`;
+    }
+  });
+}
+
 </script>
 {% endblock %}

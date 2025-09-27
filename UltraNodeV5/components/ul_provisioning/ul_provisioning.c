@@ -253,7 +253,7 @@ static void begin_connect(const char *ssid, const char *password) {
 
 static esp_err_t provision_handler(httpd_req_t *req) {
   reset_idle_timer();
-  char body[256];
+  char body[512];
   size_t len = 0;
   if (!parse_body(req, body, sizeof(body), &len)) {
     return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
@@ -263,16 +263,37 @@ static esp_err_t provision_handler(httpd_req_t *req) {
     return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
   }
   const cJSON *ssid = cJSON_GetObjectItem(root, "ssid");
-  const cJSON *password = cJSON_GetObjectItem(root, "password");
+  const cJSON *account_password_json =
+      cJSON_GetObjectItem(root, "account_password");
+  const cJSON *username = cJSON_GetObjectItem(root, "username");
+  const cJSON *wifi_password_json = cJSON_GetObjectItem(root, "password");
   if (!ssid || !cJSON_IsString(ssid) || ssid->valuestring[0] == '\0') {
     cJSON_Delete(root);
     return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing ssid");
   }
-  const char *pass_str = (password && cJSON_IsString(password)) ? password->valuestring : "";
+  const char *wifi_pass_str =
+      (wifi_password_json && cJSON_IsString(wifi_password_json))
+          ? wifi_password_json->valuestring
+          : "";
+  if (!username || !cJSON_IsString(username) || username->valuestring[0] == '\0') {
+    cJSON_Delete(root);
+    return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing username");
+  }
+  const char *account_password_str =
+      (account_password_json && cJSON_IsString(account_password_json))
+          ? account_password_json->valuestring
+          : "";
+  if (account_password_str[0] == '\0') {
+    cJSON_Delete(root);
+    return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing password");
+  }
 
   ul_wifi_credentials_t creds = {0};
   strlcpy(creds.ssid, ssid->valuestring, sizeof(creds.ssid));
-  strlcpy(creds.password, pass_str, sizeof(creds.password));
+  strlcpy(creds.password, wifi_pass_str, sizeof(creds.password));
+  strlcpy(creds.user, username->valuestring, sizeof(creds.user));
+  strlcpy(creds.user_password, account_password_str,
+          sizeof(creds.user_password));
   esp_err_t err = ul_wifi_credentials_save(&creds);
   if (err != ESP_OK) {
     cJSON_Delete(root);

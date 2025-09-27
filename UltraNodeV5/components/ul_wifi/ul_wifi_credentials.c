@@ -49,6 +49,36 @@ bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
     return false;
   }
 
+  size_t user_len = sizeof(out->user);
+  err = nvs_get_str(handle, "user", out->user, &user_len);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    out->user[0] = '\0';
+    err = ESP_OK;
+  }
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to read stored user: %s", esp_err_to_name(err));
+    nvs_close(handle);
+    return false;
+  }
+
+  size_t pass_len = sizeof(out->user_password);
+  err = nvs_get_str(handle, "user_password", out->user_password, &pass_len);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    // Fall back to legacy key name "secret" for compatibility.
+    pass_len = sizeof(out->user_password);
+    err = nvs_get_str(handle, "secret", out->user_password, &pass_len);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+      out->user_password[0] = '\0';
+      err = ESP_OK;
+    }
+  }
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to read stored account password: %s",
+             esp_err_to_name(err));
+    nvs_close(handle);
+    return false;
+  }
+
   nvs_close(handle);
   return out->ssid[0] != '\0';
 }
@@ -83,6 +113,27 @@ esp_err_t ul_wifi_credentials_save(const ul_wifi_credentials_t *creds) {
     return err;
   }
 
+  err = nvs_set_str(handle, "user", creds->user);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to save user: %s", esp_err_to_name(err));
+    nvs_close(handle);
+    return err;
+  }
+
+  err = nvs_set_str(handle, "user_password", creds->user_password);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to save account password: %s", esp_err_to_name(err));
+    nvs_close(handle);
+    return err;
+  }
+
+  // Remove legacy key if it exists so future reads use the new name.
+  esp_err_t erase_legacy = nvs_erase_key(handle, "secret");
+  if (erase_legacy != ESP_OK && erase_legacy != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_LOGW(TAG, "Failed to erase legacy account secret key: %s",
+             esp_err_to_name(erase_legacy));
+  }
+
   err = nvs_commit(handle);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to commit credentials: %s", esp_err_to_name(err));
@@ -108,6 +159,20 @@ esp_err_t ul_wifi_credentials_clear(void) {
   erase_err = nvs_erase_key(handle, "password");
   if (erase_err != ESP_OK && erase_err != ESP_ERR_NVS_NOT_FOUND) {
     ESP_LOGW(TAG, "Failed to erase password key: %s", esp_err_to_name(erase_err));
+  }
+  erase_err = nvs_erase_key(handle, "user");
+  if (erase_err != ESP_OK && erase_err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_LOGW(TAG, "Failed to erase user key: %s", esp_err_to_name(erase_err));
+  }
+  erase_err = nvs_erase_key(handle, "user_password");
+  if (erase_err != ESP_OK && erase_err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_LOGW(TAG, "Failed to erase account password key: %s",
+             esp_err_to_name(erase_err));
+  }
+  erase_err = nvs_erase_key(handle, "secret");
+  if (erase_err != ESP_OK && erase_err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_LOGW(TAG, "Failed to erase legacy secret key: %s",
+             esp_err_to_name(erase_err));
   }
   err = nvs_commit(handle);
   if (err != ESP_OK) {
