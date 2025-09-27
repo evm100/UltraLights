@@ -14,6 +14,7 @@
 #include "cJSON.h"
 #include "esp_system.h"
 #include "esp_mac.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -103,6 +104,19 @@ static esp_err_t send_index_html(httpd_req_t *req) {
   const size_t len = portal_index_html_end - portal_index_html_start;
   httpd_resp_set_type(req, "text/html");
   return httpd_resp_send(req, (const char *)portal_index_html_start, len);
+}
+
+static void copy_username_lowercase(char *dest, size_t dest_size,
+                                    const char *src) {
+  if (!dest || dest_size == 0)
+    return;
+  dest[0] = '\0';
+  if (!src)
+    return;
+  strlcpy(dest, src, dest_size);
+  for (char *p = dest; *p; ++p) {
+    *p = (char)tolower((unsigned char)*p);
+  }
 }
 
 static void append_hotspot_headers(httpd_req_t *req) {
@@ -291,7 +305,8 @@ static esp_err_t provision_handler(httpd_req_t *req) {
   ul_wifi_credentials_t creds = {0};
   strlcpy(creds.ssid, ssid->valuestring, sizeof(creds.ssid));
   strlcpy(creds.password, wifi_pass_str, sizeof(creds.password));
-  strlcpy(creds.user, username->valuestring, sizeof(creds.user));
+  copy_username_lowercase(creds.user, sizeof(creds.user),
+                          username->valuestring);
   strlcpy(creds.user_password, account_password_str,
           sizeof(creds.user_password));
   esp_err_t err = ul_wifi_credentials_save(&creds);
