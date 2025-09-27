@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 import re
 import sys
 from pathlib import Path
@@ -16,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from app import database, node_credentials, ota, registry
 from app.auth.service import init_auth_storage
 from app.config import settings
-from scripts import manage_node_credentials, provision_node_firmware
+from scripts import generate_node_ids, manage_node_credentials, provision_node_firmware
 
 
 class _NoopBus:
@@ -77,9 +78,6 @@ def ota_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(ota.settings, "AUTH_DB_URL", db_url)
     init_auth_storage()
 
-    with database.SessionLocal() as session:
-        node_credentials.sync_registry_nodes(session)
-
     yield {
         "registry": settings.DEVICE_REGISTRY,
         "firmware_dir": firmware_dir,
@@ -101,7 +99,6 @@ def ota_environment(tmp_path, monkeypatch):
 
 @pytest.fixture()
 def node_credential_info(ota_environment):
-    token = "node-token-value"
     download_id = "DLTESTID1234"
     with database.SessionLocal() as session:
         node_credentials.ensure_for_node(
@@ -111,9 +108,9 @@ def node_credential_info(ota_environment):
             room_id="lab",
             display_name="Test Node",
             download_id=download_id,
-            token_hash=registry.hash_node_token(token),
         )
-        node_credentials.sync_registry_nodes(session)
+        credential, token = node_credentials.rotate_token(session, "test-node")
+        download_id = credential.download_id
 
     node_dir = settings.FIRMWARE_DIR / "test-node"
     node_dir.mkdir(parents=True, exist_ok=True)
@@ -246,6 +243,9 @@ def test_manage_node_credentials_cli_creates_token(tmp_path, monkeypatch):
     firmware_dir.mkdir()
     monkeypatch.setattr(settings, "FIRMWARE_DIR", firmware_dir)
     monkeypatch.setattr(registry.settings, "FIRMWARE_DIR", firmware_dir)
+    monkeypatch.setattr(settings, "PUBLIC_BASE", "https://example.test")
+    monkeypatch.setattr(registry.settings, "PUBLIC_BASE", "https://example.test")
+    monkeypatch.setattr(ota.settings, "PUBLIC_BASE", "https://example.test")
 
     db_path = tmp_path / "auth.sqlite3"
     db_url = f"sqlite:///{db_path}"
@@ -360,6 +360,8 @@ def test_provision_node_firmware_updates_sdkconfig(tmp_path, monkeypatch, capsys
             "--config",
             str(sdkconfig),
             "--rotate-download",
+            "--ota-token",
+            "seed-token",
         ]
     )
     assert result == 0
@@ -380,7 +382,8 @@ def test_provision_node_firmware_updates_sdkconfig(tmp_path, monkeypatch, capsys
     with database.SessionLocal() as session:
         record = node_credentials.get_by_node_id(session, "provision-node")
         assert record is not None
-        assert record.download_id in manifest_url
+        expected_suffix = f"/firmware/{record.download_id}/manifest.json"
+        assert manifest_url.endswith(expected_suffix)
         assert record.token_hash == registry.hash_node_token(token_value)
         assert record.provisioned_at is not None
 
@@ -399,3 +402,46 @@ def test_provision_node_firmware_updates_sdkconfig(tmp_path, monkeypatch, capsys
     database.reset_session_factory(original_db_url)
     monkeypatch.setattr(settings, "AUTH_DB_URL", original_db_url)
     monkeypatch.setattr(ota.settings, "AUTH_DB_URL", original_db_url)
+
+
+def test_pre_registered_node_provisioning(tmp_path, ota_environment, capsys):
+    metadata = {"gpio": {"relay": 5}, "enabled": True}
+    records = generate_node_ids.generate_nodes(
+        count=1, metadata_entries=[metadata]
+    )
+    record = records[0]
+    node_id = record["node_id"]
+
+    sdkconfig = tmp_path / "sdkconfig"
+    sdkconfig.write_text("\n")
+
+    exit_code = provision_node_firmware.main(
+        [
+            node_id,
+            "--config",
+            str(sdkconfig),
+            "--ota-token",
+            record["ota_token"],
+        ]
+    )
+    assert exit_code == 0
+    output = capsys.readouterr().out
+
+    config_text = sdkconfig.read_text()
+    assert f'CONFIG_UL_NODE_ID="{node_id}"' in config_text
+    assert f'CONFIG_UL_OTA_BEARER_TOKEN="{record["ota_token"]}"' in config_text
+    metadata_json = json.dumps(metadata, separators=(",", ":"), sort_keys=True)
+    assert f'CONFIG_UL_NODE_METADATA="{metadata_json}"' in config_text
+
+    download_dir = settings.FIRMWARE_DIR / record["download_id"]
+    assert download_dir.exists()
+    assert download_dir.is_dir()
+
+    with database.SessionLocal() as session:
+        registration = node_credentials.get_registration_by_node_id(session, node_id)
+        assert registration is not None
+        assert registration.provisioning_token is None
+        assert registration.token_hash == registry.hash_node_token(record["ota_token"])
+        assert registration.provisioned_at is not None
+
+    assert "Hardware metadata" in output

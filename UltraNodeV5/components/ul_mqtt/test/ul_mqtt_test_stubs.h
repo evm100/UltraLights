@@ -112,6 +112,23 @@ esp_err_t esp_mqtt_client_start(esp_mqtt_client_handle_t client);
 esp_err_t esp_mqtt_client_stop(esp_mqtt_client_handle_t client);
 esp_err_t esp_mqtt_client_destroy(esp_mqtt_client_handle_t client);
 
+typedef struct {
+  char ssid[33];
+  char password[65];
+  char user[65];
+  char user_password[129];
+} ul_wifi_credentials_t;
+
+static inline bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
+  if (!out)
+    return false;
+  out->ssid[0] = '\0';
+  out->password[0] = '\0';
+  out->user[0] = '\0';
+  out->user_password[0] = '\0';
+  return false;
+}
+
 bool ul_core_is_connected(void);
 void ul_health_notify_mqtt(bool connected);
 
