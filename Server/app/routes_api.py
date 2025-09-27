@@ -644,6 +644,51 @@ def api_move_node(
     }
 
 
+@router.post("/api/house/{house_id}/nodes/{node_id}/unassign")
+def api_unassign_node(
+    house_id: str,
+    node_id: str,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    house_ctx = _require_house(policy, house_id)
+    _ensure_can_manage_house(house_ctx, current_user)
+
+    registration = node_credentials.get_registration_by_node_id(session, node_id)
+    credential = node_credentials.get_by_node_id(session, node_id)
+    if registration is None and credential is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
+
+    try:
+        updated = node_credentials.unassign_node(
+            session,
+            node_id=node_id,
+            assigned_user_id=current_user.id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+    try:
+        registry.remove_node(node_id)
+    except KeyError:
+        pass
+
+    motion_manager.forget_node(node_id)
+    status_monitor.forget(node_id)
+
+    return {
+        "ok": True,
+        "node": {
+            "id": updated.node_id,
+            "name": updated.display_name,
+            "house": updated.house_slug,
+            "roomId": updated.room_id,
+        },
+    }
+
+
 @router.post("/api/house/{house_id}/room/{room_id}/nodes")
 def api_add_node(
     house_id: str,

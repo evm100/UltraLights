@@ -137,6 +137,14 @@
           {% if not node.has_ota %}disabled{% endif %}>
           OTA Check
         </button>
+        {% if status_house_id %}
+        <button
+          class="px-3 py-1.5 pill text-sm font-semibold bg-amber-600 hover:bg-amber-500 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          data-node-unassign="{{ node.id }}"
+          data-node-name="{{ node.name }}">
+          Unassign Room
+        </button>
+        {% endif %}
         {% if allow_remove %}
         <button
           class="px-3 py-1.5 pill text-sm font-semibold bg-rose-600 hover:bg-rose-500 transition disabled:opacity-40 disabled:cursor-not-allowed"
@@ -669,6 +677,48 @@ document.querySelectorAll('[data-node-ota]').forEach((btn) => {
       btn.textContent = 'Failed';
       setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2000);
       alert(`OTA check failed for ${nodeId}`);
+    }
+  });
+});
+
+document.querySelectorAll('[data-node-unassign]').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    if (btn.disabled) return;
+    const nodeId = btn.dataset.nodeUnassign;
+    if (!nodeId) return;
+    const nodeName = btn.dataset.nodeName || nodeId;
+    if (!STATUS_HOUSE_ID) {
+      alert('Unable to unassign node: missing house identifier.');
+      return;
+    }
+    if (!confirm(`Unassign ${nodeName} from its room? The node will return to the unassigned list.`)) {
+      return;
+    }
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Unassigning…';
+    const card = btn.closest('[data-node-card]');
+    try {
+      const res = await fetch(`/api/house/${encodeURIComponent(STATUS_HOUSE_ID)}/nodes/${encodeURIComponent(nodeId)}/unassign`, {
+        method: 'POST',
+        credentials: 'same-origin'
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (card) {
+        card.remove();
+        updateEmptyState();
+      }
+      btn.textContent = 'Unassigned';
+      setTimeout(() => {
+        btn.textContent = original || 'Unassign Room';
+        btn.disabled = false;
+      }, 1500);
+      refreshStatuses();
+    } catch (err) {
+      console.error('Failed to unassign node', err);
+      btn.disabled = false;
+      btn.textContent = original || 'Unassign Room';
+      alert(`Failed to unassign ${nodeName}.`);
     }
   });
 });
