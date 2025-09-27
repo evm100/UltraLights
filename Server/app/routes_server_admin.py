@@ -226,7 +226,6 @@ def _hardware_to_metadata(config: NodeHardwareConfig) -> Dict[str, Any]:
     return config.model_dump(mode="python", by_alias=False, exclude_none=True)
 
 
-
 def _registration_summary(registration: NodeRegistration) -> NodeFactoryRegistrationInfo:
     metadata = registration.hardware_metadata or {}
     board = None
