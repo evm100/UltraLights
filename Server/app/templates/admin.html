@@ -137,7 +137,7 @@
           {% if not node.has_ota %}disabled{% endif %}>
           OTA Check
         </button>
-        {% if status_house_id %}
+        {% if status_house_id and not node.is_unassigned %}
         <button
           class="px-3 py-1.5 pill text-sm font-semibold bg-amber-600 hover:bg-amber-500 transition disabled:opacity-40 disabled:cursor-not-allowed"
           data-node-unassign="{{ node.id }}"
@@ -149,7 +149,9 @@
         <button
           class="px-3 py-1.5 pill text-sm font-semibold bg-rose-600 hover:bg-rose-500 transition disabled:opacity-40 disabled:cursor-not-allowed"
           data-node-remove="{{ node.id }}"
-          data-node-name="{{ node.name }}">
+          data-node-name="{{ node.name }}"
+          data-node-is-unassigned="{{ 'true' if node.is_unassigned else 'false' }}"
+          {% if not node.is_unassigned %}disabled title="Unassign this node from its room before removing."{% endif %}>
           Remove Node
         </button>
         {% endif %}
@@ -703,7 +705,10 @@ document.querySelectorAll('[data-node-unassign]').forEach((btn) => {
         method: 'POST',
         credentials: 'same-origin'
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const message = await readErrorMessage(res);
+        throw new Error(message || `HTTP ${res.status}`);
+      }
       if (card) {
         card.remove();
         updateEmptyState();
@@ -718,7 +723,8 @@ document.querySelectorAll('[data-node-unassign]').forEach((btn) => {
       console.error('Failed to unassign node', err);
       btn.disabled = false;
       btn.textContent = original || 'Unassign Room';
-      alert(`Failed to unassign ${nodeName}.`);
+      const message = err instanceof Error ? err.message : 'Failed to unassign node.';
+      alert(`Failed to unassign ${nodeName}: ${message}`);
     }
   });
 });
@@ -729,6 +735,10 @@ document.querySelectorAll('[data-node-remove]').forEach((btn) => {
     const nodeId = btn.dataset.nodeRemove;
     if (!nodeId) return;
     const nodeName = btn.dataset.nodeName || nodeId;
+    if (btn.dataset.nodeIsUnassigned !== 'true') {
+      alert(`Unassign ${nodeName} from its room before removing it.`);
+      return;
+    }
     if (!confirm(`Remove ${nodeName} from this house? This cannot be undone.`)) {
       return;
     }
@@ -741,7 +751,10 @@ document.querySelectorAll('[data-node-remove]').forEach((btn) => {
         method: 'DELETE',
         credentials: 'same-origin'
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const message = await readErrorMessage(res);
+        throw new Error(message || `HTTP ${res.status}`);
+      }
       if (card) {
         card.remove();
         updateEmptyState();
@@ -754,7 +767,8 @@ document.querySelectorAll('[data-node-remove]').forEach((btn) => {
       console.error('Failed to remove node', err);
       btn.disabled = false;
       btn.textContent = original;
-      alert(`Failed to remove ${nodeName}.`);
+      const message = err instanceof Error ? err.message : 'Failed to remove node.';
+      alert(`Failed to remove ${nodeName}: ${message}`);
     }
   });
 });

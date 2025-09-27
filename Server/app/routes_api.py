@@ -382,8 +382,42 @@ def api_remove_node(
     session: Session = Depends(get_session),
 ):
     policy = _build_policy(session, current_user)
-    node_ctx = _require_node(policy, node_id)
-    _ensure_can_manage_house(node_ctx.room.house, current_user)
+    registration = node_credentials.get_registration_by_node_id(session, node_id)
+    credential = node_credentials.get_by_node_id(session, node_id)
+
+    house_entry, room_entry, _ = registry.find_node(node_id)
+
+    if room_entry is not None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Unassign this node from its room before removing it.",
+        )
+
+    if registration and registration.room_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Unassign this node from its room before removing it.",
+        )
+    if credential and credential.room_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Unassign this node from its room before removing it.",
+        )
+
+    house_slug: Optional[str] = None
+    if house_entry is not None:
+        house_slug = registry.get_house_slug(house_entry)
+    elif registration and registration.house_slug:
+        house_slug = registration.house_slug
+    elif credential and credential.house_slug:
+        house_slug = credential.house_slug
+
+    if not house_slug:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
+
+    house_ctx = _require_house(policy, house_slug)
+    _ensure_can_manage_house(house_ctx, current_user)
+
     try:
         removed = registry.remove_node(node_id)
     except KeyError:
@@ -674,6 +708,18 @@ def api_unassign_node(
     if registration is None and credential is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
 
+    modules_for_registry: Optional[List[str]] = None
+    _, _, existing_node = registry.find_node(node_id)
+    if existing_node is not None:
+        raw_modules = existing_node.get("modules")
+        if isinstance(raw_modules, list):
+            cleaned: List[str] = []
+            for entry in raw_modules:
+                text = str(entry).strip()
+                if text:
+                    cleaned.append(text)
+            modules_for_registry = cleaned or None
+
     try:
         updated = node_credentials.unassign_node(
             session,
@@ -683,8 +729,28 @@ def api_unassign_node(
     except KeyError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
+    metadata = (
+        updated.hardware_metadata
+        if isinstance(updated.hardware_metadata, dict)
+        else {}
+    )
+    if not modules_for_registry:
+        raw_meta_modules = metadata.get("modules")
+        if isinstance(raw_meta_modules, list):
+            cleaned_meta: List[str] = []
+            for entry in raw_meta_modules:
+                text = str(entry).strip()
+                if text:
+                    cleaned_meta.append(text)
+            modules_for_registry = cleaned_meta or None
+
     try:
-        registry.remove_node(node_id)
+        registry.move_node_to_unassigned(
+            node_id,
+            house_ctx.slug,
+            name=updated.display_name or node_id,
+            modules=modules_for_registry,
+        )
     except KeyError:
         pass
 

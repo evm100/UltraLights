@@ -298,10 +298,40 @@ def find_room(house_id: str, room_id: str) -> Tuple[Optional[House], Optional[Ro
 
 
 def find_node(node_id: str) -> Tuple[Optional[House], Optional[Room], Optional[Node]]:
-    for house, room, node in iter_nodes():
-        if node.get("id") == node_id:
-            return house, room, node
+    """Return ``(house, room, node)`` for ``node_id`` if present in the registry."""
+
+    for house in settings.DEVICE_REGISTRY:
+        if not isinstance(house, dict):
+            continue
+        for room in house.get("rooms", []) or []:
+            if not isinstance(room, dict):
+                continue
+            for node in room.get("nodes", []) or []:
+                if isinstance(node, dict) and node.get("id") == node_id:
+                    return house, room, node
+        for node in house.get("nodes", []) or []:
+            if isinstance(node, dict) and node.get("id") == node_id:
+                return house, None, node
     return None, None, None
+
+
+def iter_unassigned_nodes(
+    registry: Optional[Registry] = None,
+) -> Iterator[Tuple[House, Node]]:
+    """Yield ``(house, node)`` pairs for nodes not placed in a room."""
+
+    if registry is None:
+        registry = settings.DEVICE_REGISTRY
+
+    for house in registry:
+        if not isinstance(house, dict):
+            continue
+        orphan_nodes = house.get("nodes")
+        if not isinstance(orphan_nodes, list):
+            continue
+        for node in orphan_nodes:
+            if isinstance(node, dict):
+                yield house, node
 
 
 def set_node_download_id(
@@ -599,6 +629,78 @@ def remove_node(node_id: str) -> Node:
                     save_registry()
                     return removed
     raise KeyError("node not found")
+
+
+def move_node_to_unassigned(
+    node_id: str,
+    house_id: str,
+    *,
+    name: Optional[str] = None,
+    modules: Optional[Iterable[str]] = None,
+    persist: bool = True,
+) -> Node:
+    """Place ``node_id`` in the unassigned pool for ``house_id``."""
+
+    house, _ = require_house(house_id)
+
+    source_house, source_room, source_node = find_node(node_id)
+    node_entry: Dict[str, Any]
+
+    if source_node is not None:
+        if source_house is not house:
+            raise KeyError("node belongs to a different house")
+        node_entry = dict(source_node)
+        if source_room is not None:
+            nodes_in_room = source_room.get("nodes")
+            if isinstance(nodes_in_room, list):
+                for idx in range(len(nodes_in_room) - 1, -1, -1):
+                    entry = nodes_in_room[idx]
+                    if isinstance(entry, dict) and entry.get("id") == node_id:
+                        nodes_in_room.pop(idx)
+                        break
+    else:
+        pool = house.get("nodes") if isinstance(house.get("nodes"), list) else []
+        node_entry = {}
+        for idx in range(len(pool) - 1, -1, -1):
+            entry = pool[idx]
+            if isinstance(entry, dict) and entry.get("id") == node_id:
+                node_entry = dict(entry)
+                pool.pop(idx)
+                break
+        if not node_entry:
+            node_entry = {"id": node_id}
+
+    display_name = (name or node_entry.get("name") or node_id).strip()
+    node_entry["id"] = node_id
+    node_entry["name"] = display_name or node_id
+
+    if modules is not None:
+        cleaned: List[str] = []
+        for entry in modules:
+            text = str(entry).strip()
+            if text:
+                cleaned.append(text)
+        if cleaned:
+            node_entry["modules"] = cleaned
+
+    modules_value = node_entry.get("modules")
+    if not isinstance(modules_value, list) or not modules_value:
+        node_entry["modules"] = list(DEFAULT_NODE_MODULES)
+
+    if not node_entry.get("kind"):
+        node_entry["kind"] = "ultranode"
+
+    orphan_nodes = house.setdefault("nodes", [])
+    for idx in range(len(orphan_nodes) - 1, -1, -1):
+        entry = orphan_nodes[idx]
+        if isinstance(entry, dict) and entry.get("id") == node_id:
+            orphan_nodes.pop(idx)
+    orphan_nodes.append(node_entry)
+
+    if persist and settings.DEVICE_REGISTRY is not None:
+        save_registry()
+
+    return node_entry
 
 
 def remove_room(house_id: str, room_id: str) -> Room:

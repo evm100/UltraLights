@@ -621,6 +621,9 @@ def unassign_node(
     if registration.assigned_house_id is not None:
         registration.assigned_house_id = None
         registration_changed = True
+    if registration.assigned_at is not None:
+        registration.assigned_at = None
+        registration_changed = True
     if assigned_user_id is not None and registration.assigned_user_id != assigned_user_id:
         registration.assigned_user_id = assigned_user_id
         registration_changed = True
