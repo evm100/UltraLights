@@ -60,7 +60,7 @@ def _sanitize_node_for_path(node_id: str) -> str:
     return "".join(safe).strip() or "node"
 
 
-def _config_value(value: Any, *, quoted: bool = False) -> Tuple[Any, bool]:
+def _config_value(value: Any, quoted: bool = False) -> Tuple[Any, bool]:
     return value, quoted
 
 
