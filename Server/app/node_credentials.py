@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 
 from . import registry
 from .auth.models import (
+    House,
     HouseMembership,
     NodeCredential,
     NodeRegistration,
@@ -742,12 +743,99 @@ def record_account_credentials(
             select(HouseMembership).where(HouseMembership.user_id == user.id)
         )
     )
+    house_row: Optional[House] = None
+    if membership:
+        house_row = _first_result(
+            session.exec(select(House).where(House.id == membership.house_id))
+        )
     if membership and registration.assigned_house_id != membership.house_id:
         registration.assigned_house_id = membership.house_id
         changed = True
 
+    credential_removed = False
+
+    if house_row and isinstance(house_row.external_id, str) and house_row.external_id:
+        try:
+            _, house_slug = registry.require_house(house_row.external_id)
+        except KeyError:
+            house_slug = None
+        else:
+            existing_house, existing_room, existing_node = registry.find_node(node_id)
+            existing_modules: Optional[List[str]] = None
+            existing_name: Optional[str] = None
+            if isinstance(existing_node, dict):
+                raw_modules = existing_node.get("modules")
+                if isinstance(raw_modules, list):
+                    cleaned_modules = [
+                        str(entry).strip()
+                        for entry in raw_modules
+                        if isinstance(entry, str) and entry.strip()
+                    ]
+                    existing_modules = cleaned_modules or None
+                raw_name = existing_node.get("name")
+                if isinstance(raw_name, str) and raw_name.strip():
+                    existing_name = raw_name.strip()
+
+            relocate = False
+            if existing_house is None:
+                relocate = True
+            else:
+                existing_external = registry.get_house_external_id(existing_house)
+                if existing_external != house_row.external_id:
+                    relocate = True
+                    try:
+                        registry.remove_node(node_id)
+                    except KeyError:
+                        pass
+
+            metadata = (
+                registration.hardware_metadata
+                if isinstance(registration.hardware_metadata, dict)
+                else {}
+            )
+            metadata_modules: Optional[List[str]] = None
+            modules_value = metadata.get("modules") if isinstance(metadata, dict) else None
+            if isinstance(modules_value, list):
+                cleaned_meta = [
+                    str(entry).strip()
+                    for entry in modules_value
+                    if str(entry).strip()
+                ]
+                metadata_modules = cleaned_meta or None
+
+            modules = existing_modules or metadata_modules
+            display_name = (
+                registration.display_name
+                or existing_name
+                or registration.node_id
+            )
+
+            if relocate:
+                registry.move_node_to_unassigned(
+                    node_id,
+                    house_row.external_id,
+                    name=display_name,
+                    modules=modules,
+                )
+                if registration.room_id is not None:
+                    registration.room_id = None
+                    changed = True
+                credential = _get_by_node_id(session, node_id)
+                if credential is not None:
+                    session.delete(credential)
+                    credential_removed = True
+
+            if house_slug and registration.house_slug != house_slug:
+                registration.house_slug = house_slug
+                changed = True
+            if registration.assigned_at is None:
+                registration.assigned_at = now
+                changed = True
+
     if changed:
         session.add(registration)
+
+    if changed or credential_removed:
         session.commit()
         session.refresh(registration)
 
