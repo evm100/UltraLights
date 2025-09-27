@@ -184,6 +184,18 @@ class NodeRegistration(SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(JSON, nullable=False, default=dict),
     )
+    account_username: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(64), nullable=True, index=True),
+    )
+    account_password_hash: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+    )
+    account_credentials_received_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
 
 
 class NodeCredential(SQLModel, table=True):

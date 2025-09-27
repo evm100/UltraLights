@@ -4,12 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import logging
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from sqlmodel import Session, select
 
 from . import registry
-from .auth.models import NodeCredential, NodeRegistration
+from .auth.models import (
+    HouseMembership,
+    NodeCredential,
+    NodeRegistration,
+    User,
+)
+from .auth.security import hash_password, verify_password
 
 
 @dataclass
@@ -164,7 +171,6 @@ def create_batch(
             node_id=node_id,
             download_id=download_id,
             token_hash=token_hash,
-            provisioning_token=plaintext_token,
             hardware_metadata=metadata_entry,
         )
         session.add(registration)
@@ -178,6 +184,11 @@ def create_batch(
     for entry in registrations:
         session.refresh(entry.registration)
 
+        if entry.registration.provisioning_token:
+            entry.registration.provisioning_token = None
+            session.add(entry.registration)
+
+    session.commit()
     return registrations
 
 
@@ -195,6 +206,23 @@ def list_assigned_registrations(session: Session) -> List[NodeRegistration]:
 
     result = session.exec(
         select(NodeRegistration).where(NodeRegistration.assigned_at.is_not(None))
+    )
+    return result.all()
+
+
+def list_pending_registrations_for_user(
+    session: Session, user_id: Optional[int]
+) -> List[NodeRegistration]:
+    """Return unassigned registrations claimed by ``user_id``."""
+
+    if not user_id:
+        return []
+
+    result = session.exec(
+        select(NodeRegistration)
+        .where(NodeRegistration.assigned_user_id == user_id)
+        .where(NodeRegistration.room_id.is_(None))
+        .order_by(NodeRegistration.created_at)
     )
     return result.all()
 
@@ -244,6 +272,10 @@ def claim_registration(
         if merged != registration.hardware_metadata:
             registration.hardware_metadata = merged
             changed = True
+
+    if registration.provisioning_token:
+        registration.provisioning_token = None
+        changed = True
 
     if changed:
         session.add(registration)
@@ -327,7 +359,6 @@ def ensure_for_node(
             node_id=node_id,
             download_id=download_id,
             token_hash=token_hash,
-            provisioning_token=plaintext,
             assigned_at=_now(),
             house_slug=house_slug,
             room_id=room_id,
@@ -349,6 +380,10 @@ def ensure_for_node(
         )
         registration_changed |= updated
 
+        if registration.provisioning_token:
+            registration.provisioning_token = None
+            registration_changed = True
+
         if download_id and registration.download_id != download_id:
             registration.download_id = download_id
             registration_changed = True
@@ -357,7 +392,6 @@ def ensure_for_node(
             plaintext = registry.generate_node_token()
             registration.token_hash = registry.hash_node_token(plaintext)
             registration.token_issued_at = _now()
-            registration.provisioning_token = plaintext
             registration_changed = True
         elif token_hash and registration.token_hash != token_hash:
             registration.token_hash = token_hash
@@ -385,7 +419,6 @@ def ensure_for_node(
             plaintext = plaintext or registry.generate_node_token()
             registration.token_hash = registry.hash_node_token(plaintext)
             registration.token_issued_at = _now()
-            registration.provisioning_token = plaintext
             credential.token_hash = registration.token_hash
             credential.token_issued_at = registration.token_issued_at
             credential_changed = True
@@ -400,9 +433,6 @@ def ensure_for_node(
             if registration.token_hash != token_hash:
                 registration.token_hash = token_hash
                 registration.token_issued_at = _now()
-                registration_changed = True
-            if registration.provisioning_token != plaintext:
-                registration.provisioning_token = plaintext
                 registration_changed = True
         credential = NodeCredential(
             node_id=node_id,
@@ -430,6 +460,141 @@ def ensure_for_node(
     return NodeCredentialWithToken(credential=credential, plaintext_token=plaintext)
 
 
+def assign_registration_to_room(
+    session: Session,
+    *,
+    node_id: str,
+    house_slug: str,
+    room_id: str,
+    display_name: str,
+    assigned_house_id: Optional[int] = None,
+    assigned_user_id: Optional[int] = None,
+) -> NodeRegistration:
+    """Place ``node_id`` into ``house_slug``/``room_id`` and update metadata."""
+
+    if not node_id:
+        raise ValueError("node_id must be provided")
+
+    normalized_name = str(display_name or "").strip() or node_id
+
+    house, room = registry.find_room(house_slug, room_id)
+    if room is None:
+        raise KeyError("room not found")
+
+    existing_registration = _get_registration_by_node_id(session, node_id)
+    existing_credential = _get_by_node_id(session, node_id)
+
+    previous_house_slug = existing_registration.house_slug if existing_registration else None
+    previous_room_id = existing_registration.room_id if existing_registration else None
+    previous_display = (
+        existing_registration.display_name if existing_registration else None
+    )
+    previous_assigned_house = (
+        existing_registration.assigned_house_id if existing_registration else None
+    )
+    previous_assigned_user = (
+        existing_registration.assigned_user_id if existing_registration else None
+    )
+
+    if assigned_house_id is None and existing_registration:
+        assigned_house_id = existing_registration.assigned_house_id
+    if assigned_user_id is None and existing_registration:
+        assigned_user_id = existing_registration.assigned_user_id
+
+    normalized_lower = normalized_name.lower()
+    raw_nodes = room.get("nodes")
+    nodes_in_room = raw_nodes if isinstance(raw_nodes, list) else []
+    for entry in nodes_in_room:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("id") == node_id:
+            continue
+        raw_name = entry.get("name")
+        if isinstance(raw_name, str) and raw_name.strip().lower() == normalized_lower:
+            raise ValueError("node name already exists")
+
+    download_id = (
+        existing_registration.download_id
+        if existing_registration is not None
+        else (
+            existing_credential.download_id
+            if existing_credential is not None
+            else None
+        )
+    )
+    token_hash = (
+        existing_registration.token_hash
+        if existing_registration is not None
+        else (
+            existing_credential.token_hash
+            if existing_credential is not None
+            else None
+        )
+    )
+    hardware_metadata: Optional[Dict[str, Any]] = (
+        existing_registration.hardware_metadata
+        if existing_registration is not None
+        else None
+    )
+
+    ensured = ensure_for_node(
+        session,
+        node_id=node_id,
+        house_slug=house_slug,
+        room_id=room_id,
+        display_name=normalized_name,
+        download_id=download_id,
+        token_hash=token_hash,
+        assigned_house_id=assigned_house_id,
+        assigned_user_id=assigned_user_id,
+        hardware_metadata=hardware_metadata,
+    )
+
+    registration = _get_registration_by_node_id(session, node_id)
+    if registration is None:
+        raise KeyError("node registration not found")
+
+    metadata = (
+        registration.hardware_metadata if isinstance(registration.hardware_metadata, dict) else {}
+    )
+    modules_meta: Optional[List[str]] = None
+    modules_value = metadata.get("modules") if isinstance(metadata, dict) else None
+    if isinstance(modules_value, list):
+        cleaned: List[str] = []
+        for entry in modules_value:
+            text = str(entry).strip()
+            if text:
+                cleaned.append(text)
+        modules_meta = cleaned or None
+
+    try:
+        registry.place_node_in_room(
+            node_id,
+            house_slug,
+            room_id,
+            name=normalized_name,
+            modules=modules_meta,
+        )
+    except Exception:
+        if previous_house_slug is not None and previous_room_id is not None:
+            ensure_for_node(
+                session,
+                node_id=node_id,
+                house_slug=previous_house_slug,
+                room_id=previous_room_id,
+                display_name=previous_display or node_id,
+                download_id=registration.download_id,
+                token_hash=registration.token_hash,
+                assigned_house_id=previous_assigned_house,
+                assigned_user_id=previous_assigned_user,
+                hardware_metadata=metadata,
+            )
+        raise
+
+    session.refresh(registration)
+    return registration
+
+
 def rotate_token(
     session: Session, node_id: str, *, token: Optional[str] = None
 ) -> Tuple[NodeCredential, str]:
@@ -450,7 +615,8 @@ def rotate_token(
     if registration is not None:
         registration.token_hash = token_hash
         registration.token_issued_at = issued_at
-        registration.provisioning_token = plaintext
+        if registration.provisioning_token:
+            registration.provisioning_token = None
         session.add(registration)
 
     session.commit()
@@ -473,6 +639,78 @@ def rotate_token(
         token_issued_at=registration.token_issued_at,
     )
     return legacy, plaintext
+
+
+def record_account_credentials(
+    session: Session, node_id: str, username: str, password: str
+) -> Optional[NodeRegistration]:
+    """Persist account credentials observed from firmware."""
+
+    username = (username or "").strip()
+    password = password or ""
+    if not username or not password:
+        raise ValueError("username and password are required")
+
+    registration = _get_registration_by_node_id(session, node_id)
+    if registration is None:
+        raise KeyError("node registration not found")
+
+    user = _first_result(session.exec(select(User).where(User.username == username)))
+    if user is None:
+        logging.warning(
+            "Received credentials for unknown user '%s' on node '%s'",
+            username,
+            node_id,
+        )
+        return None
+
+    if not verify_password(password, user.hashed_password):
+        logging.warning(
+            "Credential verification failed for user '%s' on node '%s'",
+            username,
+            node_id,
+        )
+        return None
+
+    hashed = hash_password(password)
+    now = _now()
+    changed = False
+
+    if registration.account_username != username:
+        registration.account_username = username
+        changed = True
+    if registration.account_password_hash != hashed:
+        registration.account_password_hash = hashed
+        changed = True
+    registration.account_credentials_received_at = now
+    changed = True
+
+    if registration.assigned_user_id != user.id:
+        registration.assigned_user_id = user.id
+        changed = True
+
+    membership = _first_result(
+        session.exec(
+            select(HouseMembership).where(HouseMembership.user_id == user.id)
+        )
+    )
+    if membership and registration.assigned_house_id != membership.house_id:
+        registration.assigned_house_id = membership.house_id
+        changed = True
+
+    if changed:
+        session.add(registration)
+        session.commit()
+        session.refresh(registration)
+
+    logging.info(
+        "Associated node '%s' with user '%s'%s",
+        node_id,
+        username,
+        "" if not membership else f" in house {membership.house_id}",
+    )
+
+    return registration
 
 
 def update_download_id(
@@ -553,6 +791,20 @@ def mark_provisioned(
         provisioned_at=registration.provisioned_at,
     )
     return legacy
+
+
+def clear_stored_provisioning_token(session: Session, node_id: str) -> bool:
+    """Remove any legacy plaintext provisioning token for ``node_id``."""
+
+    registration = _get_registration_by_node_id(session, node_id)
+    if registration is None or not registration.provisioning_token:
+        return False
+
+    registration.provisioning_token = None
+    session.add(registration)
+    session.commit()
+    session.refresh(registration)
+    return True
 
 
 def clear_provisioned(session: Session, node_id: str) -> NodeCredential:
@@ -687,6 +939,7 @@ __all__ = [
     "create_batch",
     "delete_credentials",
     "ensure_for_node",
+    "assign_registration_to_room",
     "get_by_node_id",
     "get_by_download_id",
     "get_by_token_hash",
@@ -697,6 +950,7 @@ __all__ = [
     "list_unprovisioned",
     "list_unprovisioned_registrations",
     "mark_provisioned",
+    "record_account_credentials",
     "rotate_token",
     "sync_registry_nodes",
     "update_download_id",

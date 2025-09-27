@@ -1,12 +1,14 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlmodel import Session, select
 from .mqtt_bus import MqttBus
 from . import node_credentials, registry
 from .auth.access import AccessPolicy, HouseContext
 from .auth.dependencies import get_current_user
-from .auth.models import User
+from .auth.models import House, User
 from .effects import WS_EFFECTS, WHITE_EFFECTS, RGB_EFFECTS
 from .presets import (
     get_preset,
@@ -39,6 +41,61 @@ def _build_policy(session: Session, user: User) -> AccessPolicy:
     return AccessPolicy.from_session(session, user)
 
 
+class AssignNodePayload(BaseModel):
+    """Request body for assigning a pending node to a room."""
+
+    node_id: str = Field(..., alias="nodeId")
+    room_id: str = Field(..., alias="roomId")
+    name: Optional[str] = Field(None, alias="name", max_length=MAX_NODE_NAME_LENGTH)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("node_id", "room_id")
+    @classmethod
+    def _require_value(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValueError("must be a string")
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("must be a non-empty string")
+        return cleaned
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _clean_name(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        return cleaned or None
+
+
+class MoveNodePayload(BaseModel):
+    """Request body for moving an assigned node to another room."""
+
+    room_id: str = Field(..., alias="roomId")
+    name: Optional[str] = Field(None, alias="name", max_length=MAX_NODE_NAME_LENGTH)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("room_id")
+    @classmethod
+    def _clean_room(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValueError("must be a string")
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("must be a non-empty string")
+        return cleaned
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _clean_name(cls, value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        return cleaned or None
+
+
 def _require_house(policy: AccessPolicy, house_id: str):
     try:
         return policy.ensure_house(house_id)
@@ -69,6 +126,15 @@ def _require_node(policy: AccessPolicy, node_id: str):
 def _ensure_can_manage_house(house_ctx: HouseContext, user: User) -> None:
     if not house_ctx.access.can_manage(user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
+
+
+def _house_record(session: Session, house_ctx: HouseContext) -> Optional[House]:
+    house = house_ctx.access.house
+    if house is not None:
+        return house
+    return session.exec(
+        select(House).where(House.external_id == house_ctx.external_id)
+    ).first()
 
 
 def get_bus() -> MqttBus:
@@ -448,6 +514,134 @@ def api_delete_room(
     motion_schedule.remove_room(room_ctx.house.slug, room_id)
 
     return {"ok": True, "room": removed, "removed_nodes": node_ids}
+
+
+@router.post("/api/house/{house_id}/nodes/assign")
+def api_assign_pending_node(
+    house_id: str,
+    payload: AssignNodePayload,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    house_ctx = _require_house(policy, house_id)
+    _ensure_can_manage_house(house_ctx, current_user)
+    room_ctx = _require_room(policy, house_id, payload.room_id)
+
+    registration = node_credentials.get_registration_by_node_id(
+        session, payload.node_id
+    )
+    if registration is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
+    if registration.room_id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Node already assigned")
+    if (
+        registration.assigned_user_id not in (None, current_user.id)
+        and not current_user.server_admin
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
+
+    desired_name = (
+        payload.name
+        or registration.display_name
+        or registration.node_id
+        or payload.node_id
+    )
+
+    house_db = _house_record(session, house_ctx)
+    assigned_house_id = house_db.id if house_db is not None else None
+    assigned_user_id = registration.assigned_user_id or current_user.id
+
+    try:
+        updated = node_credentials.assign_registration_to_room(
+            session,
+            node_id=payload.node_id,
+            house_slug=house_ctx.slug,
+            room_id=payload.room_id,
+            display_name=desired_name,
+            assigned_house_id=assigned_house_id,
+            assigned_user_id=assigned_user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+    room_name = str(room_ctx.room.get("name") or room_ctx.room.get("id") or "")
+    return {
+        "ok": True,
+        "node": {
+            "id": updated.node_id,
+            "name": updated.display_name,
+            "roomId": updated.room_id,
+            "roomName": room_name,
+            "house": updated.house_slug,
+        },
+    }
+
+
+@router.post("/api/house/{house_id}/nodes/{node_id}/move")
+def api_move_node(
+    house_id: str,
+    node_id: str,
+    payload: MoveNodePayload,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    house_ctx = _require_house(policy, house_id)
+    _ensure_can_manage_house(house_ctx, current_user)
+    room_ctx = _require_room(policy, house_id, payload.room_id)
+
+    registration = node_credentials.get_registration_by_node_id(session, node_id)
+    credential = node_credentials.get_by_node_id(session, node_id)
+    if registration is None and credential is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
+
+    desired_name = (
+        payload.name
+        or (registration.display_name if registration and registration.display_name else None)
+        or (credential.display_name if credential else None)
+        or node_id
+    )
+
+    assigned_house_id = (
+        registration.assigned_house_id if registration else None
+    )
+    if assigned_house_id is None:
+        house_db = _house_record(session, house_ctx)
+        assigned_house_id = house_db.id if house_db is not None else None
+
+    assigned_user_id = registration.assigned_user_id if registration else None
+
+    try:
+        updated = node_credentials.assign_registration_to_room(
+            session,
+            node_id=node_id,
+            house_slug=house_ctx.slug,
+            room_id=payload.room_id,
+            display_name=desired_name,
+            assigned_house_id=assigned_house_id,
+            assigned_user_id=assigned_user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+    room_name = str(room_ctx.room.get("name") or room_ctx.room.get("id") or "")
+    return {
+        "ok": True,
+        "node": {
+            "id": updated.node_id,
+            "name": updated.display_name,
+            "roomId": updated.room_id,
+            "roomName": room_name,
+            "house": updated.house_slug,
+        },
+    }
 
 
 @router.post("/api/house/{house_id}/room/{room_id}/nodes")

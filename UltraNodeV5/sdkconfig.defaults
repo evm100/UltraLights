@@ -1,5 +1,7 @@
 # ---- System ----
+CONFIG_UL_TARGET_CHIP="esp32"
 CONFIG_UL_IS_ESP32C3=n
+CONFIG_UL_IS_ESP32S3=n
 
 # ---- Node / Network ----
 CONFIG_UL_NODE_ID="node-id"
