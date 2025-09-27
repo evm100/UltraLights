@@ -382,6 +382,28 @@ def normalize_hardware_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
 
     used_ledc: set[int] = set()
 
+    ws_entries: list[dict[str, Any]] = []
+    for raw in normalized.get("ws2812") or []:
+        if not isinstance(raw, dict):
+            continue
+        idx = _int_or_none(raw.get("index"))
+        if idx is None or idx < 0 or idx > 1:
+            continue
+        entry: Dict[str, Any] = {
+            "index": idx,
+            "enabled": bool(raw.get("enabled")),
+        }
+        gpio = _int_or_none(raw.get("gpio"))
+        if gpio is not None:
+            entry["gpio"] = gpio
+        pixels = _int_or_none(raw.get("pixels"))
+        if pixels is not None:
+            entry["pixels"] = pixels
+        ws_entries.append(entry)
+
+    ws_entries.sort(key=lambda item: item["index"])
+    normalized["ws2812"] = ws_entries
+
     white_entries = []
     for raw in normalized.get("white") or []:
         if not isinstance(raw, dict):
@@ -489,10 +511,21 @@ def _white_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
         entry = indexed.get(idx) or {}
         enabled = bool(entry.get("enabled"))
         overrides[f"CONFIG_UL_WHT{idx}_ENABLED"] = _bool_flag(enabled)
-        for key in ("GPIO", "LEDC_CH", "PWM_HZ", "MIN", "MAX"):
-            field_key = key.lower()
-            value = entry.get(field_key)
-            overrides[f"CONFIG_UL_WHT{idx}_{key}"] = _config_value(*_coerce_numeric(value))
+        overrides[f"CONFIG_UL_WHT{idx}_GPIO"] = _config_value(
+            *_coerce_numeric(entry.get("gpio"))
+        )
+        overrides[f"CONFIG_UL_WHT{idx}_LEDC_CH"] = _config_value(
+            *_coerce_numeric(entry.get("ledc_channel"))
+        )
+        overrides[f"CONFIG_UL_WHT{idx}_PWM_HZ"] = _config_value(
+            *_coerce_numeric(entry.get("pwm_hz"))
+        )
+        overrides[f"CONFIG_UL_WHT{idx}_MIN"] = _config_value(
+            *_coerce_numeric(entry.get("minimum"))
+        )
+        overrides[f"CONFIG_UL_WHT{idx}_MAX"] = _config_value(
+            *_coerce_numeric(entry.get("maximum"))
+        )
     return overrides
 
 
@@ -704,8 +737,8 @@ def build_individual_node(
     metadata_payload = metadata or dict(registration.hardware_metadata or {})
     if board:
         metadata_payload["board"] = board
-    else:
-        metadata_payload.setdefault("board", "esp32")
+
+    metadata_payload = normalize_hardware_metadata(metadata_payload)
 
     metadata_serialized = json.dumps(
         metadata_payload or {}, separators=(",", ":"), sort_keys=True

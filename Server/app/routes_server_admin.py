@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -559,7 +560,7 @@ def create_node_factory_registrations(
             registration.display_name = display_name
             needs_commit = True
 
-        registration.hardware_metadata = metadata.copy()
+        registration.hardware_metadata = copy.deepcopy(metadata)
         needs_commit = True
 
         if (
@@ -588,7 +589,7 @@ def create_node_factory_registrations(
                 downloadId=registration.download_id,
                 otaToken=entry.plaintext_token,
                 manifestUrl=manifest_url,
-                metadata=metadata.copy(),
+                metadata=copy.deepcopy(metadata),
             )
         )
         node_ids.append(registration.node_id)

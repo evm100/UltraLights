@@ -229,7 +229,9 @@ def _handle_update_all(args, firmware_dir: Path, archive_dir: Path) -> int:
 
         exit_code = 0
         for registration in registrations:
-            metadata = dict(registration.hardware_metadata or {})
+            metadata = node_builder.normalize_hardware_metadata(
+                dict(registration.hardware_metadata or {})
+            )
             board = metadata.get("board") if isinstance(metadata.get("board"), str) else None
             try:
                 result = node_builder.build_individual_node(
