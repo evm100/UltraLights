@@ -28,7 +28,7 @@ import json
 import re
 import secrets
 import string
-from typing import Any, Dict, Iterable, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
 from .config import settings
 
@@ -51,6 +51,8 @@ MAX_NODE_ID_LENGTH = 31
 DEFAULT_DOWNLOAD_ID_LENGTH = 48
 DEFAULT_NODE_ID_LENGTH = MAX_NODE_ID_LENGTH
 DEFAULT_TOKEN_BYTES = 32
+
+DEFAULT_NODE_MODULES = ["ws", "rgb", "white", "ota"]
 
 NODE_DOWNLOAD_ID_KEY = "download_id"
 NODE_TOKEN_HASH_KEY = "ota_token_hash"
@@ -447,10 +449,109 @@ def add_node(
             break
 
     node = {"id": node_id, "name": normalized_name, "kind": kind}
-    node["modules"] = modules or ["ws", "rgb", "white", "ota"]
+    node["modules"] = modules or list(DEFAULT_NODE_MODULES)
     room.setdefault("nodes", []).append(node)
     save_registry()
     return node
+
+
+def place_node_in_room(
+    node_id: str,
+    house_id: str,
+    room_id: str,
+    *,
+    name: str,
+    kind: Optional[str] = None,
+    modules: Optional[Iterable[str]] = None,
+    persist: bool = True,
+) -> Node:
+    """Attach ``node_id`` to ``house_id``/``room_id`` and return the node entry."""
+
+    if not node_id:
+        raise ValueError("node_id must be provided")
+
+    normalized_name = str(name or "").strip()
+    if not normalized_name:
+        raise ValueError("name must be a non-empty string")
+
+    house, room = find_room(house_id, room_id)
+    if room is None:
+        raise KeyError("room not found")
+
+    module_list: Optional[List[str]] = None
+    if modules is not None:
+        cleaned: List[str] = []
+        for entry in modules:
+            text = str(entry).strip()
+            if text:
+                cleaned.append(text)
+        module_list = cleaned or None
+
+    existing_house, existing_room, existing_node = find_node(node_id)
+
+    if existing_node is not None and existing_room is None and existing_house is None:
+        existing_node = dict(existing_node)
+
+    node_entry: Node
+    if isinstance(existing_node, dict):
+        node_entry = dict(existing_node)
+        node_entry["name"] = normalized_name
+        if module_list is not None:
+            node_entry["modules"] = module_list
+        elif not isinstance(node_entry.get("modules"), list) or not node_entry["modules"]:
+            node_entry["modules"] = list(DEFAULT_NODE_MODULES)
+        if kind:
+            node_entry["kind"] = kind
+        elif not node_entry.get("kind"):
+            node_entry["kind"] = "ultranode"
+
+        if existing_room is not None:
+            nodes_in_room = existing_room.get("nodes")
+            if isinstance(nodes_in_room, list):
+                existing_room["nodes"] = [
+                    entry
+                    for entry in nodes_in_room
+                    if not (isinstance(entry, dict) and entry.get("id") == node_id)
+                ]
+        if existing_room is None and existing_house is not None:
+            orphan_nodes = existing_house.get("nodes")
+            if isinstance(orphan_nodes, list):
+                existing_house["nodes"] = [
+                    entry
+                    for entry in orphan_nodes
+                    if not (isinstance(entry, dict) and entry.get("id") == node_id)
+                ]
+    else:
+        node_entry = {
+            "id": node_id,
+            "name": normalized_name,
+            "kind": kind or "ultranode",
+            "modules": module_list or list(DEFAULT_NODE_MODULES),
+        }
+
+    nodes_in_target = room.setdefault("nodes", [])
+
+    normalized_lower = normalized_name.lower()
+    for entry in nodes_in_target:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("id") == node_id:
+            continue
+        raw_name = entry.get("name")
+        if isinstance(raw_name, str) and raw_name.strip().lower() == normalized_lower:
+            raise ValueError("node name already exists")
+
+    for index in range(len(nodes_in_target) - 1, -1, -1):
+        entry = nodes_in_target[index]
+        if isinstance(entry, dict) and entry.get("id") == node_id:
+            nodes_in_target.pop(index)
+
+    nodes_in_target.append(node_entry)
+
+    if persist and settings.DEVICE_REGISTRY is not None:
+        save_registry()
+
+    return node_entry
 
 
 def set_node_name(node_id: str, name: str) -> Node:

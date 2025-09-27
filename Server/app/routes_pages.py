@@ -8,10 +8,18 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
-from . import registry
+from . import node_builder, node_credentials, registry
 from .auth.access import AccessPolicy, HouseContext, NodeContext, RoomContext
 from .auth.dependencies import get_current_user
-from .auth.models import AuditLog, House, HouseMembership, HouseRole, RoomAccess, User
+from .auth.models import (
+    AuditLog,
+    House,
+    HouseMembership,
+    HouseRole,
+    NodeRegistration,
+    RoomAccess,
+    User,
+)
 from .auth.security import (
     SESSION_COOKIE_NAME,
     authenticate_user,
@@ -468,6 +476,7 @@ def _collect_admin_nodes(
                 "name": node_name,
                 "house": house_name,
                 "room": room_name,
+                "room_id": room.get("id") if isinstance(room, dict) else None,
                 "has_ota": "ota" in (node.get("modules") or []),
             }
         )
@@ -513,6 +522,7 @@ def _admin_template_context(
     status_house_id: Optional[str] = None,
     allow_remove: bool = False,
     house_rooms: Optional[List[Dict[str, Any]]] = None,
+    house_node_assignments: Optional[List[Dict[str, Any]]] = None,
     house_memberships: Optional[List[Dict[str, Any]]] = None,
     house_member_options: Optional[List[Dict[str, Any]]] = None,
     house_member_roles: Optional[List[Dict[str, str]]] = None,
@@ -531,6 +541,7 @@ def _admin_template_context(
         "status_house_id": status_house_id,
         "allow_remove": allow_remove,
         "house_rooms": house_rooms,
+        "house_node_assignments": house_node_assignments,
         "house_memberships": house_memberships,
         "house_member_options": house_member_options,
         "house_member_roles": house_member_roles,
@@ -682,6 +693,32 @@ def server_admin_panel(
         for entry in audit_rows
     ]
 
+    available_regs = node_credentials.list_available_registrations(session)
+    assigned_regs = node_credentials.list_assigned_registrations(session)
+
+    def _factory_summary(registration: NodeRegistration) -> Dict[str, Any]:
+        metadata = registration.hardware_metadata or {}
+        board = None
+        if isinstance(metadata, dict):
+            board_value = metadata.get("board")
+            if isinstance(board_value, str):
+                board = board_value
+        return {
+            "nodeId": registration.node_id,
+            "downloadId": registration.download_id,
+            "displayName": registration.display_name,
+            "board": board,
+            "assigned": registration.assigned_at is not None,
+            "house": registration.house_slug,
+            "room": registration.room_id,
+        }
+
+    node_factory_context = {
+        "board_options": sorted(node_builder.SUPPORTED_TARGETS.keys()),
+        "available": [_factory_summary(reg) for reg in available_regs],
+        "assigned": [_factory_summary(reg) for reg in assigned_regs],
+    }
+
     return templates.TemplateResponse(
         request,
         "server_admin.html",
@@ -697,6 +734,7 @@ def server_admin_panel(
             "accounts": accounts_summary,
             "audit_entries": audit_entries,
             "total_nodes": total_nodes,
+            "node_factory": node_factory_context,
             **nav_context,
         },
     )
@@ -813,6 +851,15 @@ def admin_house_panel(
                     ],
                 }
             )
+    node_assignment_options = [
+        {
+            "id": entry["id"],
+            "name": entry["name"],
+            "roomId": entry.get("room_id"),
+        }
+        for entry in nodes
+    ]
+
     return templates.TemplateResponse(
         request,
         "admin.html",
@@ -826,6 +873,7 @@ def admin_house_panel(
             status_house_id=house_ctx.external_id,
             allow_remove=True,
             house_rooms=rooms,
+            house_node_assignments=node_assignment_options,
             house_memberships=memberships,
             house_member_options=available_room_options,
             house_member_roles=role_options,
@@ -868,6 +916,38 @@ def house_page(
 
     can_manage = house_ctx.access.can_manage(current_user)
     public_house_id = house_ctx.external_id
+    pending_nodes: List[Dict[str, Any]] = []
+    room_options: List[Dict[str, str]] = []
+
+    rooms = house_ctx.filtered.get("rooms")
+    if isinstance(rooms, list):
+        for entry in rooms:
+            if not isinstance(entry, dict):
+                continue
+            room_id = str(entry.get("id") or "").strip()
+            if not room_id:
+                continue
+            room_name_value = entry.get("name")
+            room_name = (
+                str(room_name_value).strip()
+                if isinstance(room_name_value, str)
+                else room_id
+            )
+            room_options.append({"id": room_id, "name": room_name})
+
+    if can_manage:
+        pending_regs = node_credentials.list_pending_registrations_for_user(
+            session, current_user.id
+        )
+        for registration in pending_regs:
+            pending_nodes.append(
+                {
+                    "id": registration.node_id,
+                    "name": registration.display_name or registration.node_id,
+                    "downloadId": registration.download_id,
+                }
+            )
+
     return templates.TemplateResponse(
         request,
         "house.html",
@@ -878,6 +958,8 @@ def house_page(
             "title": house_ctx.filtered.get("name", house_id),
             "subtitle": house_ctx.filtered.get("name", house_id),
             "can_manage_house": can_manage,
+            "house_pending_nodes": pending_nodes,
+            "house_room_options": room_options,
             **nav_context,
         },
     )

@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import registry
+from .account_linker import account_linker
 from .auth import SESSION_TOKEN_TTL_SECONDS, init_auth_storage
 from .auth.throttling import reset_login_rate_limiter
 from .config import settings
@@ -55,6 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     motion_manager.start()
     status_monitor.start()
+    account_linker.start()
 
     registry.ensure_house_external_ids()
     init_auth_storage()
@@ -74,6 +76,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 pass
         motion_manager.stop()
         status_monitor.stop()
+        account_linker.stop()
 
 
 app = FastAPI(title="UltraLights Hub", version="2.0", lifespan=lifespan)
