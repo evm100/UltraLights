@@ -128,6 +128,76 @@ class AuditLog(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_utcnow, sa_column=_timestamp_column())
 
 
+class NodeRegistration(SQLModel, table=True):
+    """Opaque node identifiers that may be claimed and provisioned later."""
+
+    __tablename__ = "node_registrations"
+    __table_args__ = (
+        UniqueConstraint("download_id", name="uq_node_registrations_download_id"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    node_id: str = Field(
+        sa_column=Column(String(64), unique=True, nullable=False, index=True)
+    )
+    download_id: str = Field(
+        sa_column=Column(String(64), unique=True, nullable=False, index=True)
+    )
+    token_hash: str = Field(sa_column=Column(String(64), nullable=False))
+    provisioning_token: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+    )
+    created_at: datetime = Field(default_factory=_utcnow, sa_column=_timestamp_column())
+    token_issued_at: datetime = Field(
+        default_factory=_utcnow, sa_column=_timestamp_column(onupdate=True)
+    )
+    provisioned_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    assigned_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    assigned_user_id: Optional[int] = Field(
+        default=None,
+        foreign_key="users.id",
+    )
+    assigned_house_id: Optional[int] = Field(
+        default=None,
+        foreign_key="houses.id",
+    )
+    house_slug: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(64), nullable=True, index=True),
+    )
+    room_id: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(120), nullable=True, index=True),
+    )
+    display_name: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(120), nullable=True),
+    )
+    hardware_metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False, default=dict),
+    )
+    account_username: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(64), nullable=True, index=True),
+    )
+    account_password_hash: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+    )
+    account_credentials_received_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+
+
 class NodeCredential(SQLModel, table=True):
     __tablename__ = "node_credentials"
     __table_args__ = (
@@ -153,13 +223,6 @@ class NodeCredential(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
-    token_issued_at: datetime = Field(
-        default_factory=datetime.utcnow, sa_column=_timestamp_column(onupdate=True)
-    )
-    provisioned_at: Optional[datetime] = Field(
-        default=None,
-        sa_column=Column(DateTime(timezone=True), nullable=True),
-    )
 
 
 __all__ = [
@@ -168,6 +231,7 @@ __all__ = [
     "HouseMembership",
     "HouseRole",
     "NodeCredential",
+    "NodeRegistration",
     "RoomAccess",
     "User",
 ]

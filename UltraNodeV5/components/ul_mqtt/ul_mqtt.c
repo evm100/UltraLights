@@ -13,6 +13,7 @@
 #include "mqtt_client.h"
 #include "sdkconfig.h"
 #include "ul_core.h"
+#include "ul_wifi_credentials.h"
 #include "ul_health.h"
 #include "ul_state.h"
 #include "ul_ota.h"
@@ -37,6 +38,11 @@ static esp_mqtt_client_handle_t s_client = NULL;
 static bool s_ready = false;
 static uint32_t s_consecutive_start_failures = 0;
 static bool s_restart_on_next_retry = false;
+#ifdef UL_MQTT_TESTING
+static bool s_account_credentials_sent __attribute__((unused)) = false;
+#else
+static bool s_account_credentials_sent = false;
+#endif
 
 #define UL_MQTT_MAX_CONSECUTIVE_START_FAILURES 5
 
@@ -517,6 +523,59 @@ static int publish_json(const char *topic, const char *json) {
   if (!s_client || !ul_core_is_connected() || !json)
     return -1;
   return esp_mqtt_client_publish(s_client, topic, json, 0, 1, 0);
+}
+
+static void publish_account_credentials_if_secure(void) {
+#if !CONFIG_UL_MQTT_USE_TLS
+  ESP_LOGW(TAG,
+           "Skipping UltraLights account credential publish; MQTT TLS disabled");
+  return;
+#endif
+  if (s_account_credentials_sent)
+    return;
+  if (!ul_core_is_connected() || !s_client)
+    return;
+
+  ul_wifi_credentials_t stored = {0};
+  if (!ul_wifi_credentials_load(&stored))
+    return;
+
+  if (stored.user[0] == '\0' || stored.user_password[0] == '\0') {
+    memset(&stored, 0, sizeof(stored));
+    return;
+  }
+
+  cJSON *root = cJSON_CreateObject();
+  if (!root) {
+    memset(&stored, 0, sizeof(stored));
+    return;
+  }
+
+  cJSON_AddStringToObject(root, "event", "account_credentials");
+  cJSON_AddStringToObject(root, "username", stored.user);
+  cJSON_AddStringToObject(root, "password", stored.user_password);
+
+  char *json = cJSON_PrintUnformatted(root);
+  cJSON_Delete(root);
+  if (!json) {
+    memset(&stored, 0, sizeof(stored));
+    return;
+  }
+
+  char topic[128];
+  snprintf(topic, sizeof(topic), "ul/%s/evt/account", ul_core_get_node_id());
+
+  int msg_id = publish_json(topic, json);
+  cJSON_free(json);
+  memset(&stored, 0, sizeof(stored));
+
+  if (msg_id <= 0) {
+    ESP_LOGW(TAG, "Failed to publish UltraLights account credentials");
+    return;
+  }
+
+  ESP_LOGI(TAG, "Published UltraLights account credentials for association");
+  s_account_credentials_sent = true;
 }
 
 #ifndef UL_MQTT_TESTING
@@ -1054,6 +1113,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
       // Also allow broadcast to any node if you publish to ul/+/cmd/#
       esp_mqtt_client_subscribe(s_client, "ul/+/cmd/#", 0);
     }
+    publish_account_credentials_if_secure();
     break;
   }
 #ifndef UL_MQTT_TESTING
@@ -1080,6 +1140,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
   case MQTT_EVENT_DISCONNECTED:
     ESP_LOGW(TAG, "MQTT disconnected");
     s_ready = false;
+    s_account_credentials_sent = false;
     ul_health_notify_mqtt(false);
     dim_all_lights();
 #ifndef UL_MQTT_TESTING
@@ -1233,10 +1294,13 @@ void ul_mqtt_start(void) {
 
   // MQTT runs at modest priority. On the ESP32-C3 all tasks share the
   // single core, so no explicit core assignment is needed.
+  const char *mqtt_username = CONFIG_UL_MQTT_USER;
+  const char *mqtt_secret = CONFIG_UL_MQTT_PASS;
+
   esp_mqtt_client_config_t cfg = {
       .broker.address.uri = CONFIG_UL_MQTT_URI,
-      .credentials.username = CONFIG_UL_MQTT_USER,
-      .credentials.authentication.password = CONFIG_UL_MQTT_PASS,
+      .credentials.username = mqtt_username,
+      .credentials.authentication.password = mqtt_secret,
       .task.priority = 5,
       .task.stack_size = 6144,
   };
