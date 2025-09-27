@@ -17,6 +17,10 @@ from app.auth.models import NodeRegistration  # noqa: E402
 from app.config import settings  # noqa: E402
 from sqlmodel import select  # noqa: E402
 
+PROJECT_SDKCONFIG_PATHS: tuple[Path, ...] = (
+    node_builder.FIRMWARE_ROOT / "sdkconfig",
+)
+
 
 def _resolve_paths(firmware_dir_arg: Optional[str], archive_dir_arg: Optional[str]) -> tuple[Path, Path]:
     firmware_dir = (
@@ -152,6 +156,7 @@ def _handle_build(args, firmware_dir: Path, archive_dir: Path) -> int:
                 run_build=True,
                 firmware_version=args.firmware_version,
                 clean_build=not args.no_clean,
+                sdkconfig_paths=PROJECT_SDKCONFIG_PATHS,
             )
         except node_builder.NodeBuilderError as exc:  # pragma: no cover - defensive
             print(f"error: {exc}", file=sys.stderr)
@@ -170,6 +175,10 @@ def _handle_build(args, firmware_dir: Path, archive_dir: Path) -> int:
         )
         print(f"Built {result.node_id} -> {artifact.manifest_path}")
         print(f"Binary SHA256: {artifact.sha256_hex}")
+        if result.project_configs:
+            print("Updated configuration files:")
+            for cfg in result.project_configs:
+                print(f"  - {cfg}")
         return 0
 
 
@@ -185,6 +194,7 @@ def _handle_flash(args, firmware_dir: Path, archive_dir: Path) -> int:
                 ota_token=None,
                 firmware_version=args.firmware_version,
                 clean_build=not args.no_clean,
+                sdkconfig_paths=PROJECT_SDKCONFIG_PATHS,
             )
         except node_builder.NodeBuilderError as exc:  # pragma: no cover - defensive
             print(f"error: {exc}", file=sys.stderr)
@@ -203,6 +213,10 @@ def _handle_flash(args, firmware_dir: Path, archive_dir: Path) -> int:
         )
         print(f"Flashed {result.node_id} ({args.port}) -> {artifact.manifest_path}")
         print(f"Binary SHA256: {artifact.sha256_hex}")
+        if result.project_configs:
+            print("Updated configuration files:")
+            for cfg in result.project_configs:
+                print(f"  - {cfg}")
         return 0
 
 
@@ -227,6 +241,7 @@ def _handle_update_all(args, firmware_dir: Path, archive_dir: Path) -> int:
                     run_build=True,
                     firmware_version=args.firmware_version,
                     clean_build=not args.no_clean,
+                    sdkconfig_paths=PROJECT_SDKCONFIG_PATHS,
                 )
             except node_builder.NodeBuilderError as exc:  # pragma: no cover - defensive
                 print(f"error: {exc}", file=sys.stderr)
