@@ -342,6 +342,7 @@ def build_individual_node(
     board: Optional[str] = None,
     regenerate_token: bool = False,
     run_build: bool = True,
+    ota_token: Optional[str] = None,
 ) -> BuildResult:
     """Generate an sdkconfig for ``node_id`` and optionally run ``idf.py build``."""
 
@@ -350,12 +351,27 @@ def build_individual_node(
     if registration is None:
         raise NodeBuilderError(f"Unknown node id: {node_id}")
 
-    if not registration.provisioning_token or regenerate_token:
-        _, token = node_credentials.rotate_token(session, node_id)
-        registration = node_credentials.get_registration_by_node_id(session, node_id)
-        token_value = token
+    token_value: Optional[str] = None
+
+    if ota_token:
+        supplied = ota_token.strip()
+        if not supplied:
+            raise NodeBuilderError("OTA token must not be empty")
+        expected_hash = registry.hash_node_token(supplied)
+        if registration.token_hash and registration.token_hash != expected_hash:
+            raise NodeBuilderError(
+                "Provided OTA token does not match the stored hash for this node"
+            )
+        if registration.token_hash != expected_hash:
+            node_credentials.rotate_token(session, node_id, token=supplied)
+            registration = node_credentials.get_registration_by_node_id(session, node_id)
+        token_value = supplied
     else:
-        token_value = registration.provisioning_token or ""
+        _, token_value = node_credentials.rotate_token(session, node_id)
+        registration = node_credentials.get_registration_by_node_id(session, node_id)
+
+    if not token_value:
+        raise NodeBuilderError("Failed to resolve OTA token for node")
 
     download_id = registration.download_id
     manifest_url = f"{settings.PUBLIC_BASE}/firmware/{download_id}/manifest.json"
@@ -403,6 +419,7 @@ def first_time_flash(
     port: str,
     metadata: Optional[Dict[str, Any]] = None,
     board: Optional[str] = None,
+    ota_token: Optional[str] = None,
 ) -> BuildResult:
     """Perform ``idf.py -p <port> build flash`` for ``node_id``."""
 
@@ -413,6 +430,7 @@ def first_time_flash(
         board=board,
         regenerate_token=False,
         run_build=False,
+        ota_token=ota_token,
     )
 
     env = _prepare_environment(str(metadata or {}).get("board", board or "esp32"))

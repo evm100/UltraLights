@@ -171,7 +171,6 @@ def create_batch(
             node_id=node_id,
             download_id=download_id,
             token_hash=token_hash,
-            provisioning_token=plaintext_token,
             hardware_metadata=metadata_entry,
         )
         session.add(registration)
@@ -184,6 +183,12 @@ def create_batch(
     session.commit()
     for entry in registrations:
         session.refresh(entry.registration)
+
+        if entry.registration.provisioning_token:
+            entry.registration.provisioning_token = None
+            session.add(entry.registration)
+
+    session.commit()
 
     return registrations
 
@@ -269,6 +274,10 @@ def claim_registration(
             registration.hardware_metadata = merged
             changed = True
 
+    if registration.provisioning_token:
+        registration.provisioning_token = None
+        changed = True
+
     if changed:
         session.add(registration)
         session.commit()
@@ -351,7 +360,6 @@ def ensure_for_node(
             node_id=node_id,
             download_id=download_id,
             token_hash=token_hash,
-            provisioning_token=plaintext,
             assigned_at=_now(),
             house_slug=house_slug,
             room_id=room_id,
@@ -373,6 +381,10 @@ def ensure_for_node(
         )
         registration_changed |= updated
 
+        if registration.provisioning_token:
+            registration.provisioning_token = None
+            registration_changed = True
+
         if download_id and registration.download_id != download_id:
             registration.download_id = download_id
             registration_changed = True
@@ -381,7 +393,6 @@ def ensure_for_node(
             plaintext = registry.generate_node_token()
             registration.token_hash = registry.hash_node_token(plaintext)
             registration.token_issued_at = _now()
-            registration.provisioning_token = plaintext
             registration_changed = True
         elif token_hash and registration.token_hash != token_hash:
             registration.token_hash = token_hash
@@ -409,7 +420,6 @@ def ensure_for_node(
             plaintext = plaintext or registry.generate_node_token()
             registration.token_hash = registry.hash_node_token(plaintext)
             registration.token_issued_at = _now()
-            registration.provisioning_token = plaintext
             credential.token_hash = registration.token_hash
             credential.token_issued_at = registration.token_issued_at
             credential_changed = True
@@ -424,9 +434,6 @@ def ensure_for_node(
             if registration.token_hash != token_hash:
                 registration.token_hash = token_hash
                 registration.token_issued_at = _now()
-                registration_changed = True
-            if registration.provisioning_token != plaintext:
-                registration.provisioning_token = plaintext
                 registration_changed = True
         credential = NodeCredential(
             node_id=node_id,
@@ -586,12 +593,6 @@ def assign_registration_to_room(
         raise
 
     session.refresh(registration)
-    if ensured.plaintext_token is not None:
-        registration.provisioning_token = ensured.plaintext_token
-        session.add(registration)
-        session.commit()
-        session.refresh(registration)
-
     return registration
 
 
@@ -615,7 +616,8 @@ def rotate_token(
     if registration is not None:
         registration.token_hash = token_hash
         registration.token_issued_at = issued_at
-        registration.provisioning_token = plaintext
+        if registration.provisioning_token:
+            registration.provisioning_token = None
         session.add(registration)
 
     session.commit()
@@ -792,6 +794,20 @@ def mark_provisioned(
     return legacy
 
 
+def clear_stored_provisioning_token(session: Session, node_id: str) -> bool:
+    """Remove any legacy plaintext provisioning token for ``node_id``."""
+
+    registration = _get_registration_by_node_id(session, node_id)
+    if registration is None or not registration.provisioning_token:
+        return False
+
+    registration.provisioning_token = None
+    session.add(registration)
+    session.commit()
+    session.refresh(registration)
+    return True
+
+
 def clear_provisioned(session: Session, node_id: str) -> NodeCredential:
     credential = _get_by_node_id(session, node_id)
     registration = _get_registration_by_node_id(session, node_id)
@@ -920,6 +936,7 @@ __all__ = [
     "NodeRegistrationWithToken",
     "any_tokens",
     "claim_registration",
+    "clear_stored_provisioning_token",
     "clear_provisioned",
     "create_batch",
     "delete_credentials",

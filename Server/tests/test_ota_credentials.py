@@ -360,6 +360,8 @@ def test_provision_node_firmware_updates_sdkconfig(tmp_path, monkeypatch, capsys
             "--config",
             str(sdkconfig),
             "--rotate-download",
+            "--ota-token",
+            "seed-token",
         ]
     )
     assert result == 0
@@ -414,7 +416,13 @@ def test_pre_registered_node_provisioning(tmp_path, ota_environment, capsys):
     sdkconfig.write_text("\n")
 
     exit_code = provision_node_firmware.main(
-        [node_id, "--config", str(sdkconfig)]
+        [
+            node_id,
+            "--config",
+            str(sdkconfig),
+            "--ota-token",
+            record["ota_token"],
+        ]
     )
     assert exit_code == 0
     output = capsys.readouterr().out
@@ -432,7 +440,8 @@ def test_pre_registered_node_provisioning(tmp_path, ota_environment, capsys):
     with database.SessionLocal() as session:
         registration = node_credentials.get_registration_by_node_id(session, node_id)
         assert registration is not None
-        assert registration.provisioning_token == record["ota_token"]
+        assert registration.provisioning_token is None
+        assert registration.token_hash == registry.hash_node_token(record["ota_token"])
         assert registration.provisioned_at is not None
 
     assert "Hardware metadata" in output

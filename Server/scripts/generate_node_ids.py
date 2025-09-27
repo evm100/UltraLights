@@ -95,8 +95,7 @@ def generate_nodes(
             count,
             metadata=metadata_iter,
         )
-
-    return [_format_record(entry) for entry in entries]
+        return [_format_record(entry) for entry in entries]
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:

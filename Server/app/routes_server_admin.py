@@ -222,6 +222,7 @@ class NodeFactoryBuildRequest(BaseModel):
     regenerate_token: bool = Field(default=False, alias="regenerateToken")
     skip_build: bool = Field(default=False, alias="skipBuild")
     hardware: Optional[NodeHardwareConfig] = None
+    ota_token: Optional[str] = Field(default=None, alias="otaToken")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -242,6 +243,7 @@ class NodeFactoryFlashRequest(BaseModel):
     use_test_node: bool = Field(default=False, alias="useTestNode")
     port: str
     hardware: Optional[NodeHardwareConfig] = None
+    ota_token: Optional[str] = Field(default=None, alias="otaToken")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -713,14 +715,18 @@ def build_node_factory_firmware(
         session.add(registration)
         session.commit()
 
-    result = node_builder.build_individual_node(
-        session,
-        node_id,
-        metadata=metadata,
-        board=metadata.get("board"),
-        regenerate_token=payload.regenerate_token,
-        run_build=not payload.skip_build,
-    )
+    try:
+        result = node_builder.build_individual_node(
+            session,
+            node_id,
+            metadata=metadata,
+            board=metadata.get("board"),
+            regenerate_token=payload.regenerate_token,
+            run_build=not payload.skip_build,
+            ota_token=payload.ota_token,
+        )
+    except node_builder.NodeBuilderError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
     command_output = _command_output(result)
     registration = node_credentials.get_registration_by_node_id(session, node_id)
@@ -778,13 +784,17 @@ def flash_node_factory_firmware(
         session.add(registration)
         session.commit()
 
-    result = node_builder.first_time_flash(
-        session,
-        node_id,
-        port=payload.port,
-        metadata=metadata,
-        board=metadata.get("board"),
-    )
+    try:
+        result = node_builder.first_time_flash(
+            session,
+            node_id,
+            port=payload.port,
+            metadata=metadata,
+            board=metadata.get("board"),
+            ota_token=payload.ota_token,
+        )
+    except node_builder.NodeBuilderError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
     command_output = _command_output(result)
     return NodeFactoryBuildResponse(

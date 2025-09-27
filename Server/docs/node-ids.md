@@ -2,11 +2,11 @@
 
 Node identities are now generated ahead of time and stored in the
 `node_registrations` table. Each record reserves an opaque node ID, a firmware
-Download ID, a provisioning bearer token (both the plaintext value and its
-SHA-256 hash), and a JSON payload for hardware-specific metadata. Registrations
-can optionally track which authenticated user or house eventually claims the
-identifier, but they can remain unassigned indefinitely so manufacturing teams
-can mint identifiers in bulk before any customer data exists.
+download ID, the hashed OTA bearer token, and a JSON payload for hardware-
+specific metadata. Registrations can optionally track which authenticated user
+or house eventually claims the identifier, but they can remain unassigned
+indefinitely so manufacturing teams can mint identifiers in bulk before any
+customer data exists.
 
 ## Batch pre-registration
 
@@ -32,18 +32,18 @@ python Server/scripts/generate_node_ids.py 25 \
 The command initialises the auth database (creating tables if necessary),
 persists the requested number of registrations, and writes a machine-readable
 summary to stdout (JSON by default, or CSV when `--format csv` is supplied).
-Each entry includes the node ID, download ID, plaintext bearer token, hash, and
-creation timestamp. The metadata file may contain either a single JSON object
+Each entry includes the node ID, download ID, plaintext bearer token (returned
+only in the CLI response), hash, and creation timestamp. The metadata file may
+contain either a single JSON object
 (applied to every generated node) or a list of objects (applied positionally).
 Those metadata blobs are stored verbatim in the `hardware_metadata` column so
 future tooling—such as a firmware image generator—can inject per-device GPIO or
 feature flags. The Node factory UI simply builds these JSON objects for you.
 
-Because the plaintext token is stored alongside the hash in
-`node_registrations.provisioning_token`, the provisioning workflow can retrieve
-it later without rotating credentials. Treat the exported JSON/CSV like any
-other secret material and store it in your password manager or build system
-vault.
+The plaintext token is **not** stored in the database—only the hash is
+persisted—so the exported JSON/CSV is the sole record of the secret. Treat it
+like any other credential and keep it in your password manager or build system
+vault. If the token is lost you can mint a replacement during provisioning.
 
 To inspect reserved identifiers and their current assignment state, run the
 existing provisioning helper in list mode:
@@ -64,8 +64,9 @@ When it is time to flash a device you have two options:
    metadata (board type, enabled channels, overrides, etc.) and runs `idf.py`
    with the correct `IDF_TARGET`. The "Build & flash" action performs
    `idf.py -p <port> build flash` so you can program a device connected to the
-   server's USB port. Both actions reuse the provisioning token and download ID
-   that were minted during registration, writing `CONFIG_UL_NODE_ID`,
+   server's USB port. Both actions accept an optional OTA token value (so you
+   can reuse the pre-generated secret) and otherwise mint a fresh credential
+   before writing `CONFIG_UL_NODE_ID`,
    `CONFIG_UL_OTA_MANIFEST_URL`, `CONFIG_UL_OTA_BEARER_TOKEN`, and the compact
    metadata string (`CONFIG_UL_NODE_METADATA`) into the generated `sdkconfig`.
    Results are streamed back to the browser so you can review `idf.py` output
@@ -75,12 +76,14 @@ When it is time to flash a device you have two options:
 
 ```bash
 python Server/scripts/provision_node_firmware.py abcd1234efgh5678 \
-    --config UltraNodeV5/sdkconfig
+    --config UltraNodeV5/sdkconfig \
+    --ota-token $(jq -r '.[0].ota_token' new_nodes.json)
 ```
 
 Both approaches refuse unknown node IDs and no longer generate new identifiers
-on the fly. Instead they read the download ID, manifest URL, provisioning token,
-and metadata from the registration record. The CLI then:
+on the fly. Instead they read the download ID, manifest URL, and metadata from
+the registration record. The CLI expects the pre-generated OTA token (or
+`--rotate-token` to mint a replacement) and then:
 
 * patches the requested `sdkconfig` files with
   `CONFIG_UL_NODE_ID`, `CONFIG_UL_OTA_MANIFEST_URL`,
@@ -92,11 +95,13 @@ and metadata from the registration record. The CLI then:
   `--no-mark-provisioned` is supplied.
 
 `--rotate-download` remains available when you need to retire a compromised
-manifest URL, and the command will fall back to `rotate_token` if the stored
-plaintext token is missing. The summary printed at the end of the run (and the
-Node factory build panel) highlights the node's status (available, assigned, or
-provisioned), current assignment target, metadata payload, and download
-directory.
+manifest URL. Use `--rotate-token` to generate a brand new OTA token when the
+pre-generated secret is lost or needs to be rotated. The summary printed at the
+end of the run (and the Node factory build panel) highlights the node's status
+(available, assigned, or provisioned), current assignment target, metadata
+payload, and download directory. If the tool encounters a legacy record that
+still contains a plaintext token it will consume and erase it, warning you to
+switch to the explicit `--ota-token` workflow.
 
 The Node factory also exposes the legacy `UltraNodeV5/updateAllNodes.sh` script
 as a single click: enter the firmware version string, press "Run updateAllNodes",

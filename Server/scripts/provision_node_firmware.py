@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import argparse
 import json
 import sys
 from datetime import datetime
@@ -245,14 +246,49 @@ def _provision(args: argparse.Namespace) -> int:
 
         download_dir = _ensure_download_dir(download_id)
 
-        token = registration.provisioning_token
-        if not token:
-            _, token = node_credentials.rotate_token(session, args.node_id)
+        provided_token = (args.ota_token or "").strip() if args.ota_token else None
+        token_source = ""
+
+        if args.rotate_token:
+            credential, token = node_credentials.rotate_token(session, args.node_id)
+            registration = node_credentials.get_registration_by_node_id(
+                session, args.node_id
+            )
+            token_source = "rotated"
+        elif provided_token:
+            expected_hash = registry.hash_node_token(provided_token)
+            if registration.token_hash and registration.token_hash != expected_hash:
+                print(
+                    "Provided OTA token does not match stored hash. Use --rotate-token to"
+                    " generate a replacement or supply the correct token.",
+                    file=sys.stderr,
+                )
+                return 1
+            if registration.token_hash != expected_hash:
+                node_credentials.rotate_token(
+                    session, args.node_id, token=provided_token
+                )
+                registration = node_credentials.get_registration_by_node_id(
+                    session, args.node_id
+                )
+                credential = node_credentials.get_by_node_id(session, args.node_id)
+            token = provided_token
+            token_source = "provided"
+        elif registration.provisioning_token:
+            token = registration.provisioning_token
+            node_credentials.clear_stored_provisioning_token(session, args.node_id)
             registration = node_credentials.get_registration_by_node_id(
                 session, args.node_id
             )
             credential = node_credentials.get_by_node_id(session, args.node_id)
-            token = registration.provisioning_token or token
+            token_source = "legacy"
+        else:
+            print(
+                "No OTA token available. Provide --ota-token with the pre-generated token"
+                " or use --rotate-token to mint a new one.",
+                file=sys.stderr,
+            )
+            return 1
 
         manifest_url = f"{settings.PUBLIC_BASE}/firmware/{download_id}/manifest.json"
         values = {
@@ -336,6 +372,14 @@ def _provision(args: argparse.Namespace) -> int:
     print(f"Download ID: {download_id}")
     print(f"Manifest URL: {manifest_url}")
     print(f"Bearer Token: {token}")
+    if token_source == "legacy":
+        print(
+            "Warning: consumed legacy stored OTA token; future runs must provide"
+            " --ota-token or --rotate-token.",
+            file=sys.stderr,
+        )
+    elif token_source == "rotated":
+        print("Generated new OTA token via --rotate-token.")
     if metadata_payload:
         print("Hardware metadata:")
         print(json.dumps(metadata_payload, indent=2, sort_keys=True))
@@ -362,6 +406,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--rotate-download",
         action="store_true",
         help="Issue a new download identifier before provisioning.",
+    )
+    parser.add_argument(
+        "--ota-token",
+        dest="ota_token",
+        metavar="TOKEN",
+        help="Pre-generated OTA bearer token to embed in the firmware.",
+    )
+    parser.add_argument(
+        "--rotate-token",
+        action="store_true",
+        help="Generate a new OTA token instead of using a pre-generated one.",
     )
     parser.add_argument(
         "--allow-reprovision",

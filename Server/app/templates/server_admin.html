@@ -253,6 +253,10 @@
               <span>Use hardware from form</span>
               <input type="checkbox" name="useHardware" class="ml-2 align-middle">
             </label>
+            <label class="block text-sm font-semibold md:col-span-2">
+              <span>OTA token (optional)</span>
+              <input type="text" name="otaToken" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" placeholder="Paste pre-generated token to reuse">
+            </label>
           </div>
           <div class="flex flex-wrap gap-4 text-xs font-semibold uppercase tracking-wide">
             <label class="flex items-center gap-2"><input type="checkbox" name="useTestNode"> Test node</label>
@@ -271,6 +275,10 @@
             <label class="block text-sm font-semibold">
               <span>USB port</span>
               <input type="text" name="port" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" placeholder="/dev/ttyUSB0" required>
+            </label>
+            <label class="block text-sm font-semibold md:col-span-2">
+              <span>OTA token (optional)</span>
+              <input type="text" name="otaToken" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" placeholder="Reuse the batch-generated token if available">
             </label>
           </div>
           <div class="flex flex-wrap gap-4 text-xs font-semibold uppercase tracking-wide">
@@ -783,6 +791,10 @@ if (buildForm) {
         regenerateToken: buildForm.querySelector('input[name="regenerateToken"]').checked,
         skipBuild: buildForm.querySelector('input[name="skipBuild"]').checked,
       };
+      const tokenField = buildForm.querySelector('input[name="otaToken"]');
+      if (tokenField && tokenField.value.trim()) {
+        payload.otaToken = tokenField.value.trim();
+      }
       const hardware = maybeHardwarePayload(buildForm);
       if (hardware) {
         payload.hardware = hardware;
@@ -817,6 +829,10 @@ if (flashForm) {
         port: flashForm.querySelector('input[name="port"]').value,
         useTestNode: flashForm.querySelector('input[name="useTestNode"]').checked,
       };
+      const tokenField = flashForm.querySelector('input[name="otaToken"]');
+      if (tokenField && tokenField.value.trim()) {
+        payload.otaToken = tokenField.value.trim();
+      }
       const hardware = maybeHardwarePayload(flashForm);
       if (hardware) {
         payload.hardware = hardware;
