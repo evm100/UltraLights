@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -30,6 +31,7 @@ from .database import get_session
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 BUS: Optional[MqttBus] = None
 
 DEFAULT_SNAPSHOT_TIMEOUT = 3.0
@@ -387,6 +389,17 @@ def api_remove_node(
     except KeyError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
     node_credentials.delete_credentials(session, node_id)
+
+    try:
+        bus = get_bus()
+    except Exception:
+        logger.exception("Failed to acquire MQTT bus when removing node %s", node_id)
+    else:
+        try:
+            bus.wipe_nvs(node_id)
+        except Exception:
+            logger.exception("Failed to queue NVS wipe command for node %s", node_id)
+
     motion_manager.forget_node(node_id)
     status_monitor.forget(node_id)
     return {"ok": True, "node": removed}
