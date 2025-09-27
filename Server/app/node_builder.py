@@ -486,13 +486,27 @@ def _white_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
     overrides: Dict[str, Tuple[Any, bool]] = {}
     indexed = {int(entry.get("index", -1)): entry for entry in channels if isinstance(entry, dict)}
     for idx in range(4):
-        entry = indexed.get(idx) or {}
+        entry = indexed.get(idx)
+        if entry is None:
+            overrides[f"CONFIG_UL_WHT{idx}_ENABLED"] = _bool_flag(False)
+            continue
+
         enabled = bool(entry.get("enabled"))
         overrides[f"CONFIG_UL_WHT{idx}_ENABLED"] = _bool_flag(enabled)
-        for key in ("GPIO", "LEDC_CH", "PWM_HZ", "MIN", "MAX"):
-            field_key = key.lower()
+
+        field_map = {
+            "GPIO": "gpio",
+            "LEDC_CH": "ledc_channel",
+            "PWM_HZ": "pwm_hz",
+            "MIN": "minimum",
+            "MAX": "maximum",
+        }
+
+        for suffix, field_key in field_map.items():
             value = entry.get(field_key)
-            overrides[f"CONFIG_UL_WHT{idx}_{key}"] = _config_value(*_coerce_numeric(value))
+            overrides[f"CONFIG_UL_WHT{idx}_{suffix}"] = _config_value(
+                *_coerce_numeric(value)
+            )
     return overrides
 
 
