@@ -418,10 +418,11 @@ def api_remove_node(
     house_ctx = _require_house(policy, house_slug)
     _ensure_can_manage_house(house_ctx, current_user)
 
+    removed = None
     try:
         removed = registry.remove_node(node_id)
     except KeyError:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
+        removed = None
     node_credentials.delete_credentials(session, node_id)
 
     try:
@@ -436,7 +437,12 @@ def api_remove_node(
 
     motion_manager.forget_node(node_id)
     status_monitor.forget(node_id)
-    return {"ok": True, "node": removed}
+    payload: Dict[str, Any] = {"ok": True}
+    if removed is not None:
+        payload["node"] = removed
+    else:
+        payload["node_id"] = node_id
+    return payload
 
 
 @router.post("/api/node/{node_id}/name")
