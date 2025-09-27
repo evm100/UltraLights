@@ -609,7 +609,11 @@ def first_time_flash(
         clean_build=clean_build,
     )
 
-    env = _prepare_environment(str(metadata or {}).get("board", board or "esp32"))
+    metadata_payload = dict(metadata) if isinstance(metadata, dict) else {}
+    board_name = board or metadata_payload.get("board") or build_result.target or "esp32"
+    if not isinstance(board_name, str) or not board_name.strip():
+        board_name = build_result.target or "esp32"
+    env = _prepare_environment(str(board_name))
     env["SDKCONFIG"] = str(build_result.sdkconfig_path)
     if clean_build:
         clean_build_dir()
