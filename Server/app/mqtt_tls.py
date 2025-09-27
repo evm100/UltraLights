@@ -85,7 +85,14 @@ def configure_client_tls(client: mqtt.Client) -> None:
 
     set_context = getattr(client, "tls_set_context", None)
     if callable(set_context):
-        set_context(context)
+        try:
+            set_context(context)
+        except ValueError as exc:
+            message = str(exc).lower()
+            if "already been configured" in message:
+                logger.debug("MQTT client TLS context already configured; reusing existing context")
+            else:  # pragma: no cover - propagate unexpected errors
+                raise
         return
 
     # Fall back to the legacy ``tls_set`` API for test doubles and older Paho

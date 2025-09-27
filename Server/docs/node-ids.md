@@ -32,7 +32,6 @@ python Server/scripts/generate_node_ids.py 25 \
 The command initialises the auth database (creating tables if necessary),
 persists the requested number of registrations, and writes a machine-readable
 summary to stdout (JSON by default, or CSV when `--format csv` is supplied).
-
 Each entry includes the node ID, download ID, plaintext bearer token (returned
 only in the CLI response), hash, and creation timestamp. The metadata file may
 contain either a single JSON object
