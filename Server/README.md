@@ -88,18 +88,6 @@ The broker is configured with Let's Encrypt certificates at
 connections. Clients rely on the system CA bundle, so additional certificate
 paths are unnecessary unless a custom trust store is desired.
 
-## ESP-IDF toolchain integration
-
-Firmware builds launched from the Node factory or helper scripts call `idf.py`
-inside the `UltraNodeV5` directory. To ensure the correct ESP-IDF Python
-environment and tooling are available, set `ESP_IDF_EXPORT_SCRIPT` in your
-`.env` file to the path of the ESP-IDF export script (e.g.
-`/opt/esp/idf/export.sh`). `runServer.sh` sources this script during startup so
-`idf.py` can locate `idf_component_manager`, the managed component registry, and
-other ESP-IDF dependencies. The variable is optional—when it is not provided the
-server runs normally but firmware builds will fail unless the ESP-IDF
-environment is preloaded through other means.
-
 ## Operational notes
 
 - Authentication and administrative actions are persisted to the `audit_logs`

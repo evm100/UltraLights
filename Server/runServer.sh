@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+source .venv/bin/activate
 set -euo pipefail
 
 # Load .env (KEY=VALUE lines). This exports everything without parsing hacks.
@@ -7,28 +8,6 @@ if [[ -f .env ]]; then
   # shellcheck disable=SC1091
   . ./.env
   set +a
-fi
-
-# Optionally source the ESP-IDF environment so idf.py uses the correct toolchain.
-if [[ -n "${ESP_IDF_EXPORT_SCRIPT:-}" ]]; then
-  if [[ -f "${ESP_IDF_EXPORT_SCRIPT}" ]]; then
-    # shellcheck disable=SC1090
-    if ! . "${ESP_IDF_EXPORT_SCRIPT}"; then
-      echo "WARNING: Failed to source ESP-IDF environment from ${ESP_IDF_EXPORT_SCRIPT}" >&2
-    fi
-  else
-    echo "WARNING: ESP_IDF_EXPORT_SCRIPT points to ${ESP_IDF_EXPORT_SCRIPT} but the file does not exist" >&2
-  fi
-fi
-
-# Activate the application virtual environment after sourcing ESP-IDF so uvicorn
-# continues using the server dependencies while idf.py picks up ESP-IDF's python.
-if [[ -d .venv ]]; then
-  # shellcheck disable=SC1091
-  source .venv/bin/activate
-else
-  echo "ERROR: Python virtual environment missing (.venv). Run installServer.sh first." >&2
-  exit 1
 fi
 
 # Sanity: warn if JSON looks multiline (common mistake)
