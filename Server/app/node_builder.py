@@ -704,8 +704,8 @@ def build_individual_node(
     metadata_payload = metadata or dict(registration.hardware_metadata or {})
     if board:
         metadata_payload["board"] = board
-    else:
-        metadata_payload.setdefault("board", "esp32")
+
+    metadata_payload = normalize_hardware_metadata(metadata_payload)
 
     metadata_serialized = json.dumps(
         metadata_payload or {}, separators=(",", ":"), sort_keys=True
