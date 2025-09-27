@@ -242,27 +242,27 @@ def _config_value(value: Any, quoted: bool = False) -> Tuple[Any, bool]:
     return value, quoted
 
 
-def _bool_flag(value: bool) -> Tuple[str, bool]:
-    return ("y" if value else "n"), False
+def _bool_flag(value: bool) -> Tuple[bool, bool]:
+    return bool(value), False
 
 
-def _coerce_numeric(value: Any) -> Tuple[Any, bool]:
+def _coerce_numeric(value: Any) -> Optional[Tuple[Any, bool]]:
     if value in (None, ""):
-        return "", False
+        return (None, False)
     if isinstance(value, bool):
-        return value, False
+        return (int(value), False)
     if isinstance(value, (int, float)):
-        return int(value), False
+        return (int(value), False)
     if isinstance(value, str):
         trimmed = value.strip()
         if not trimmed:
-            return "", False
+            return (None, False)
         try:
             numeric = int(trimmed, 0)
-            return numeric, False
+            return (numeric, False)
         except ValueError:
-            return trimmed, True
-    return value, True
+            return (trimmed, True)
+    return (value, True)
 
 
 def _ensure_work_dir() -> Path:
@@ -476,8 +476,12 @@ def _ws_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
         overrides[f"CONFIG_UL_WS{idx}_ENABLED"] = _bool_flag(enabled)
         gpio = entry.get("gpio")
         pixels = entry.get("pixels")
-        overrides[f"CONFIG_UL_WS{idx}_GPIO"] = _config_value(*_coerce_numeric(gpio))
-        overrides[f"CONFIG_UL_WS{idx}_PIXELS"] = _config_value(*_coerce_numeric(pixels))
+        gpio_entry = _coerce_numeric(gpio)
+        if gpio_entry is not None:
+            overrides[f"CONFIG_UL_WS{idx}_GPIO"] = _config_value(*gpio_entry)
+        pixels_entry = _coerce_numeric(pixels)
+        if pixels_entry is not None:
+            overrides[f"CONFIG_UL_WS{idx}_PIXELS"] = _config_value(*pixels_entry)
     return overrides
 
 
@@ -486,13 +490,27 @@ def _white_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
     overrides: Dict[str, Tuple[Any, bool]] = {}
     indexed = {int(entry.get("index", -1)): entry for entry in channels if isinstance(entry, dict)}
     for idx in range(4):
-        entry = indexed.get(idx) or {}
+        entry = indexed.get(idx)
+        if entry is None:
+            overrides[f"CONFIG_UL_WHT{idx}_ENABLED"] = _bool_flag(False)
+            continue
+
         enabled = bool(entry.get("enabled"))
         overrides[f"CONFIG_UL_WHT{idx}_ENABLED"] = _bool_flag(enabled)
-        for key in ("GPIO", "LEDC_CH", "PWM_HZ", "MIN", "MAX"):
-            field_key = key.lower()
+
+        field_map = {
+            "GPIO": "gpio",
+            "LEDC_CH": "ledc_channel",
+            "PWM_HZ": "pwm_hz",
+            "MIN": "minimum",
+            "MAX": "maximum",
+        }
+
+        for suffix, field_key in field_map.items():
             value = entry.get(field_key)
-            overrides[f"CONFIG_UL_WHT{idx}_{key}"] = _config_value(*_coerce_numeric(value))
+            coerced = _coerce_numeric(value)
+            if coerced is not None:
+                overrides[f"CONFIG_UL_WHT{idx}_{suffix}"] = _config_value(*coerced)
     return overrides
 
 
@@ -506,13 +524,21 @@ def _rgb_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
         overrides[f"CONFIG_UL_RGB{idx}_ENABLED"] = _bool_flag(enabled)
         pwm_hz = entry.get("pwm_hz")
         ledc_mode = entry.get("ledc_mode")
-        overrides[f"CONFIG_UL_RGB{idx}_PWM_HZ"] = _config_value(*_coerce_numeric(pwm_hz))
-        overrides[f"CONFIG_UL_RGB{idx}_LEDC_MODE"] = _config_value(*_coerce_numeric(ledc_mode))
+        pwm_entry = _coerce_numeric(pwm_hz)
+        if pwm_entry is not None:
+            overrides[f"CONFIG_UL_RGB{idx}_PWM_HZ"] = _config_value(*pwm_entry)
+        ledc_mode_entry = _coerce_numeric(ledc_mode)
+        if ledc_mode_entry is not None:
+            overrides[f"CONFIG_UL_RGB{idx}_LEDC_MODE"] = _config_value(*ledc_mode_entry)
         for channel, suffix in (("r", "R"), ("g", "G"), ("b", "B")):
             gpio = entry.get(f"{channel}_gpio")
             ledc = entry.get(f"{channel}_ledc_ch")
-            overrides[f"CONFIG_UL_RGB{idx}_{suffix}_GPIO"] = _config_value(*_coerce_numeric(gpio))
-            overrides[f"CONFIG_UL_RGB{idx}_{suffix}_LEDC_CH"] = _config_value(*_coerce_numeric(ledc))
+            gpio_entry = _coerce_numeric(gpio)
+            if gpio_entry is not None:
+                overrides[f"CONFIG_UL_RGB{idx}_{suffix}_GPIO"] = _config_value(*gpio_entry)
+            ledc_entry = _coerce_numeric(ledc)
+            if ledc_entry is not None:
+                overrides[f"CONFIG_UL_RGB{idx}_{suffix}_LEDC_CH"] = _config_value(*ledc_entry)
     return overrides
 
 
@@ -521,14 +547,15 @@ def _pir_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
     if not isinstance(pir, dict):
         return {
             "CONFIG_UL_PIR_ENABLED": _bool_flag(False),
-            "CONFIG_UL_PIR_GPIO": _config_value("", quoted=False),
+            "CONFIG_UL_PIR_GPIO": _config_value(None, quoted=False),
         }
     enabled = bool(pir.get("enabled"))
     gpio = pir.get("gpio")
-    return {
-        "CONFIG_UL_PIR_ENABLED": _bool_flag(enabled),
-        "CONFIG_UL_PIR_GPIO": _config_value(*_coerce_numeric(gpio)),
-    }
+    overrides = {"CONFIG_UL_PIR_ENABLED": _bool_flag(enabled)}
+    gpio_entry = _coerce_numeric(gpio)
+    if gpio_entry is not None:
+        overrides["CONFIG_UL_PIR_GPIO"] = _config_value(*gpio_entry)
+    return overrides
 
 
 def _override_entries(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
@@ -541,8 +568,11 @@ def _override_entries(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
             if isinstance(value, bool):
                 result[key] = _bool_flag(value)
             else:
-                coerced, quoted = _coerce_numeric(value)
-                result[key] = _config_value(coerced, quoted)
+                coerced = _coerce_numeric(value)
+                if coerced is None:
+                    continue
+                coerced_value, quoted = coerced
+                result[key] = _config_value(coerced_value, quoted)
     return result
 
 
@@ -599,17 +629,20 @@ def render_sdkconfig(
 
 
 def update_sdkconfig_files(
-    values: Dict[str, str],
+    values: Dict[str, Tuple[Any, bool]],
     *,
     config_paths: Iterable[Path],
 ) -> List[Path]:
-    """Persist ``values`` into each sdkconfig file listed in ``config_paths``."""
+    """Persist override ``values`` into each sdkconfig in ``config_paths``."""
 
-    overrides = {
-        key: _config_value(value, quoted=True)
-        for key, value in values.items()
-        if value is not None
-    }
+    overrides: Dict[str, Tuple[Any, bool]] = {}
+    for key, value in values.items():
+        if value is None:
+            continue
+        if isinstance(value, tuple) and len(value) == 2:
+            overrides[key] = value
+            continue
+        overrides[key] = _config_value(value, quoted=True)
 
     updated: List[Path] = []
     for path in config_paths:
@@ -707,6 +740,8 @@ def build_individual_node(
     else:
         metadata_payload.setdefault("board", "esp32")
 
+    metadata_overrides = metadata_to_overrides(metadata_payload)
+
     metadata_serialized = json.dumps(
         metadata_payload or {}, separators=(",", ":"), sort_keys=True
     )
@@ -718,10 +753,19 @@ def build_individual_node(
         "CONFIG_UL_NODE_METADATA": metadata_serialized,
     }
 
+    combined_overrides: Dict[str, Tuple[Any, bool]] = dict(metadata_overrides)
+    combined_overrides.update(
+        {
+            key: _config_value(value, quoted=True)
+            for key, value in config_values.items()
+            if value is not None
+        }
+    )
+
     updated_configs: Tuple[Path, ...] = tuple()
     if sdkconfig_paths:
         try:
-            updated = update_sdkconfig_files(config_values, config_paths=sdkconfig_paths)
+            updated = update_sdkconfig_files(combined_overrides, config_paths=sdkconfig_paths)
         except FileNotFoundError as exc:  # pragma: no cover - defensive
             raise NodeBuilderError(str(exc)) from exc
         updated_configs = tuple(updated)

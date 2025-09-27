@@ -113,4 +113,8 @@ def test_create_node_registrations(admin_client: TestClient):
         assert all(reg.hardware_metadata.get("board") == "esp32c3" for reg in regs)
         assert all(reg.display_name.startswith("Batch Node") for reg in regs)
 
+        expected_metadata = node_builder.normalize_hardware_metadata(payload["hardware"])
+        for reg in regs:
+            assert reg.hardware_metadata == expected_metadata
+
 
