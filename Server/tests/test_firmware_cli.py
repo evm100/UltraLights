@@ -45,6 +45,9 @@ def _make_build_result(node_id: str, download_id: str) -> node_builder.BuildResu
         manifest_url=f"https://example.com/{download_id}/manifest.json",
         download_id=download_id,
         target="esp32",
+        metadata={},
+        ota_token="token",
+        sdkconfig_values={},
     )
 
 
@@ -105,6 +108,10 @@ def test_cli_build_invokes_builder_and_archiver(cli_environment, monkeypatch: py
     assert exit_code == 0
     assert calls["build"]["node"] == node_id
     assert calls["build"]["kwargs"]["firmware_version"] == "2024.09"
+    assert (
+        calls["build"]["kwargs"]["sdkconfig_paths"]
+        == firmware_cli.PROJECT_SDKCONFIG_PATHS
+    )
     assert calls["store"][0]["node_id"] == node_id
     assert Path(calls["store"][0]["firmware_dir"]) == firmware_dir
     assert Path(calls["store"][0]["archive_root"]) == archive_dir
@@ -131,6 +138,7 @@ def test_cli_update_all_builds_every_registration(cli_environment, monkeypatch: 
     def fake_build(session, node_id_arg, **kwargs):
         built_nodes.append(node_id_arg)
         download = node_downloads.get(node_id_arg, f"fallback-{len(built_nodes)}")
+        assert kwargs.get("sdkconfig_paths") == firmware_cli.PROJECT_SDKCONFIG_PATHS
         return _make_build_result(node_id_arg, download)
 
     def fake_store(**kwargs):

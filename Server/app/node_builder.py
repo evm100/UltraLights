@@ -7,7 +7,7 @@ import os
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -47,6 +47,10 @@ class BuildResult(CommandResult):
     manifest_url: str
     download_id: str
     target: str
+    metadata: Dict[str, Any]
+    ota_token: str
+    sdkconfig_values: Dict[str, str]
+    project_configs: Tuple[Path, ...] = field(default_factory=tuple)
 
 
 @dataclass
@@ -465,6 +469,31 @@ def render_sdkconfig(
     return output_path
 
 
+def update_sdkconfig_files(
+    values: Dict[str, str],
+    *,
+    config_paths: Iterable[Path],
+) -> List[Path]:
+    """Persist ``values`` into each sdkconfig file listed in ``config_paths``."""
+
+    overrides = {
+        key: _config_value(value, quoted=True)
+        for key, value in values.items()
+        if value is not None
+    }
+
+    updated: List[Path] = []
+    for path in config_paths:
+        resolved = Path(path).expanduser().resolve()
+        if not resolved.exists():
+            raise FileNotFoundError(f"sdkconfig file not found: {resolved}")
+        lines = resolved.read_text(encoding="utf-8").splitlines()
+        merged = _merge_sdkconfig(lines, overrides)
+        resolved.write_text("\n".join(merged), encoding="utf-8")
+        updated.append(resolved)
+    return updated
+
+
 def _prepare_environment(board: str, extra_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     env = os.environ.copy()
     target = SUPPORTED_TARGETS.get(board.lower(), "esp32")
@@ -509,6 +538,7 @@ def build_individual_node(
     ota_token: Optional[str] = None,
     firmware_version: Optional[str] = None,
     clean_build: bool = True,
+    sdkconfig_paths: Optional[Iterable[Path]] = None,
 ) -> BuildResult:
     """Generate an sdkconfig for ``node_id`` and optionally run ``idf.py build``."""
 
@@ -548,6 +578,25 @@ def build_individual_node(
     else:
         metadata_payload.setdefault("board", "esp32")
 
+    metadata_serialized = json.dumps(
+        metadata_payload or {}, separators=(",", ":"), sort_keys=True
+    )
+
+    config_values: Dict[str, str] = {
+        "CONFIG_UL_NODE_ID": node_id,
+        "CONFIG_UL_OTA_MANIFEST_URL": manifest_url,
+        "CONFIG_UL_OTA_BEARER_TOKEN": token_value,
+        "CONFIG_UL_NODE_METADATA": metadata_serialized,
+    }
+
+    updated_configs: Tuple[Path, ...] = tuple()
+    if sdkconfig_paths:
+        try:
+            updated = update_sdkconfig_files(config_values, config_paths=sdkconfig_paths)
+        except FileNotFoundError as exc:  # pragma: no cover - defensive
+            raise NodeBuilderError(str(exc)) from exc
+        updated_configs = tuple(updated)
+
     sdkconfig_path = render_sdkconfig(
         node_id=node_id,
         download_id=download_id,
@@ -581,6 +630,10 @@ def build_individual_node(
         manifest_url=manifest_url,
         download_id=download_id,
         target=SUPPORTED_TARGETS.get(str(metadata_payload.get("board", "esp32")).lower(), "esp32"),
+        metadata=dict(metadata_payload),
+        ota_token=token_value,
+        sdkconfig_values=config_values,
+        project_configs=updated_configs,
     )
 
 
@@ -594,6 +647,7 @@ def first_time_flash(
     ota_token: Optional[str] = None,
     firmware_version: Optional[str] = None,
     clean_build: bool = True,
+    sdkconfig_paths: Optional[Iterable[Path]] = None,
 ) -> BuildResult:
     """Perform ``idf.py -p <port> build flash`` for ``node_id``."""
 
@@ -607,9 +661,14 @@ def first_time_flash(
         ota_token=ota_token,
         firmware_version=firmware_version,
         clean_build=clean_build,
+        sdkconfig_paths=sdkconfig_paths,
     )
 
-    env = _prepare_environment(str(metadata or {}).get("board", board or "esp32"))
+    metadata_payload = dict(metadata) if isinstance(metadata, dict) else {}
+    board_name = board or metadata_payload.get("board") or build_result.target or "esp32"
+    if not isinstance(board_name, str) or not board_name.strip():
+        board_name = build_result.target or "esp32"
+    env = _prepare_environment(str(board_name))
     env["SDKCONFIG"] = str(build_result.sdkconfig_path)
     if clean_build:
         clean_build_dir()
@@ -627,6 +686,10 @@ def first_time_flash(
         manifest_url=build_result.manifest_url,
         download_id=build_result.download_id,
         target=build_result.target,
+        metadata=build_result.metadata,
+        ota_token=build_result.ota_token,
+        sdkconfig_values=build_result.sdkconfig_values,
+        project_configs=build_result.project_configs,
     )
 
 
