@@ -55,6 +55,51 @@
       </div>
     </div>
     {% endif %}
+    {% if house_node_assignments %}
+    <div class="relative md:self-end w-full md:w-auto" data-node-room-menu>
+      <button
+        type="button"
+        class="flex items-center justify-between gap-2 w-full md:w-auto px-4 py-2 pill bg-slate-800 hover:bg-slate-700 text-sm font-semibold transition"
+        data-node-room-toggle
+        aria-haspopup="true"
+        aria-expanded="false">
+        <span>Move Nodes</span>
+        <span aria-hidden="true" class="text-xs opacity-70">▾</span>
+      </button>
+      <div
+        class="absolute right-0 mt-2 w-full md:w-[24rem] glass rounded-xl p-4 shadow-xl z-20 hidden"
+        data-node-room-panel>
+        <div class="text-sm font-semibold">Reassign nodes</div>
+        <div class="text-xs opacity-60">Change a node’s room without leaving this page.</div>
+        <div class="mt-3 flex flex-col gap-3 max-h-72 overflow-y-auto">
+          {% for node in house_node_assignments %}
+          <div class="border border-slate-700/50 rounded-lg p-3 space-y-3" data-node-room-entry="{{ node.id }}">
+            <div>
+              <div class="text-sm font-semibold">{{ node.name }}</div>
+              <div class="text-xs opacity-60 break-all">ID: {{ node.id }}</div>
+            </div>
+            <label class="block text-xs font-semibold">
+              <span>Room</span>
+              <select class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1.5 text-sm" data-node-room-select>
+                {% for room in house_rooms or [] %}
+                <option value="{{ room.id }}"{% if node.roomId == room.id %} selected{% endif %}>{{ room.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="block text-xs font-semibold">
+              <span>Display name (optional)</span>
+              <input type="text" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1.5 text-sm" value="{{ node.name }}" data-node-room-name>
+            </label>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" class="px-3 py-1.5 pill bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold" data-node-room-save>Save</button>
+              <div class="text-xs opacity-70" data-node-room-status role="status" aria-live="polite"></div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
     <div class="text-xs opacity-70 md:text-right">
       <div>Healthy if last <code>{"status": "ok"}</code> within {{ status_timeout }}s.</div>
       <div id="statusRefresh" class="mt-1">Waiting for update…</div>
@@ -482,6 +527,124 @@ if (roomMenuContainer) {
       });
     });
   }
+}
+
+const nodeRoomMenu = document.querySelector('[data-node-room-menu]');
+if (nodeRoomMenu) {
+  const toggle = nodeRoomMenu.querySelector('[data-node-room-toggle]');
+  const panel = nodeRoomMenu.querySelector('[data-node-room-panel]');
+  let menuOpen = false;
+
+  const setExpanded = (value) => {
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', value ? 'true' : 'false');
+    }
+  };
+
+  const openMenu = () => {
+    if (!panel) return;
+    panel.classList.remove('hidden');
+    setExpanded(true);
+    menuOpen = true;
+  };
+
+  const closeMenu = () => {
+    if (!panel) return;
+    panel.classList.add('hidden');
+    setExpanded(false);
+    menuOpen = false;
+  };
+
+  if (toggle && panel) {
+    toggle.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (menuOpen || !panel.classList.contains('hidden')) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
+    });
+
+    panel.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!nodeRoomMenu.contains(event.target)) {
+        closeMenu();
+      }
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeMenu();
+      }
+    });
+  }
+
+  panel?.querySelectorAll('[data-node-room-save]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      if (!STATUS_HOUSE_ID) {
+        alert('Missing house identifier.');
+        return;
+      }
+      if (button.disabled) {
+        return;
+      }
+      const entry = button.closest('[data-node-room-entry]');
+      if (!entry) {
+        return;
+      }
+      const nodeId = entry.dataset.nodeRoomEntry;
+      const roomSelect = entry.querySelector('[data-node-room-select]');
+      const nameInput = entry.querySelector('[data-node-room-name]');
+      const statusEl = entry.querySelector('[data-node-room-status]');
+      if (!nodeId || !roomSelect || !roomSelect.value) {
+        if (statusEl) {
+          statusEl.textContent = 'Select a room before saving.';
+        }
+        return;
+      }
+      const payload = { roomId: roomSelect.value };
+      if (nameInput && nameInput.value.trim()) {
+        payload.name = nameInput.value.trim();
+      }
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Saving…';
+      if (statusEl) {
+        statusEl.textContent = '';
+      }
+      try {
+        const res = await fetch(
+          `/api/house/${encodeURIComponent(STATUS_HOUSE_ID)}/nodes/${encodeURIComponent(nodeId)}/move`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload),
+          },
+        );
+        if (!res.ok) {
+          const message = await readErrorMessage(res);
+          throw new Error(message);
+        }
+        location.reload();
+      } catch (err) {
+        console.error('Failed to move node', err);
+        if (statusEl) {
+          statusEl.textContent = err instanceof Error ? err.message : 'Failed to move node.';
+        } else {
+          alert('Failed to move node.');
+        }
+      } finally {
+        button.disabled = false;
+        button.textContent = original || 'Save';
+      }
+    });
+  });
 }
 
 document.querySelectorAll('[data-node-ota]').forEach((btn) => {
