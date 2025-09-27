@@ -189,6 +189,7 @@ def create_batch(
             session.add(entry.registration)
 
     session.commit()
+
     return registrations
 
 
