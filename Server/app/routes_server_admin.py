@@ -234,7 +234,7 @@ def _registration_summary(registration: NodeRegistration) -> NodeFactoryRegistra
         raw_board = metadata.get("board")
         if isinstance(raw_board, str):
             board = raw_board
-    assigned = bool(registration.assigned_at or registration.house_slug or registration.room_id)
+    assigned = bool(registration.room_id)
     return NodeFactoryRegistrationInfo(
         node_id=registration.node_id,
         download_id=registration.download_id,

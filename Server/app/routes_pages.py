@@ -457,17 +457,13 @@ def _collect_admin_nodes(
         access = policy.get_house_access(external_id)
         if access is None or not access.can_manage(policy.user):
             continue
-        if house_id:
-            slug = registry.get_house_slug(house) if house else None
-            if slug != house_id:
-                continue
-        house_name = ""
+        slug = registry.get_house_slug(house)
+        if house_id and slug != house_id:
+            continue
+        house_name = str(house.get("name") or house.get("id") or "")
         room_name = ""
-        node_name = ""
-        if house:
-            house_name = (house.get("name") or house.get("id") or "")
         if room:
-            room_name = (room.get("name") or room.get("id") or "")
+            room_name = str(room.get("name") or room.get("id") or "")
         node_name = node.get("name") or node.get("id") or ""
         node_id = node.get("id") or node_name
         nodes.append(
@@ -478,6 +474,34 @@ def _collect_admin_nodes(
                 "room": room_name,
                 "room_id": room.get("id") if isinstance(room, dict) else None,
                 "has_ota": "ota" in (node.get("modules") or []),
+                "is_unassigned": False,
+            }
+        )
+
+    for house, node in registry.iter_unassigned_nodes():
+        if not isinstance(house, dict):
+            continue
+        slug = registry.get_house_slug(house)
+        if house_id and slug != house_id:
+            continue
+        external_id = registry.get_house_external_id(house)
+        access = policy.get_house_access(external_id)
+        if access is None or not access.can_manage(policy.user):
+            continue
+        node_id = node.get("id")
+        if not isinstance(node_id, str) or not node_id:
+            continue
+        node_name = node.get("name") or node_id
+        house_name = str(house.get("name") or house.get("id") or "")
+        nodes.append(
+            {
+                "id": node_id,
+                "name": node_name,
+                "house": house_name,
+                "room": "Unassigned",
+                "room_id": None,
+                "has_ota": "ota" in (node.get("modules") or []),
+                "is_unassigned": True,
             }
         )
     nodes.sort(key=lambda item: (item["house"].lower(), item["room"].lower(), item["name"].lower()))

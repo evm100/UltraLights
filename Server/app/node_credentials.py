@@ -596,6 +596,53 @@ def assign_registration_to_room(
     return registration
 
 
+def unassign_node(
+    session: Session,
+    *,
+    node_id: str,
+    assigned_user_id: Optional[int] = None,
+) -> NodeRegistration:
+    """Detach ``node_id`` from its room while preserving the registration."""
+
+    registration = _get_registration_by_node_id(session, node_id)
+    if registration is None:
+        raise KeyError("node registration not found")
+
+    credential = _get_by_node_id(session, node_id)
+
+    registration_changed = False
+
+    if registration.room_id is not None:
+        registration.room_id = None
+        registration_changed = True
+    if registration.house_slug is not None:
+        registration.house_slug = None
+        registration_changed = True
+    if registration.assigned_house_id is not None:
+        registration.assigned_house_id = None
+        registration_changed = True
+    if registration.assigned_at is not None:
+        registration.assigned_at = None
+        registration_changed = True
+    if assigned_user_id is not None and registration.assigned_user_id != assigned_user_id:
+        registration.assigned_user_id = assigned_user_id
+        registration_changed = True
+
+    credential_removed = False
+    if credential is not None:
+        session.delete(credential)
+        credential_removed = True
+
+    if registration_changed:
+        session.add(registration)
+
+    if registration_changed or credential_removed:
+        session.commit()
+        session.refresh(registration)
+
+    return registration
+
+
 def rotate_token(
     session: Session, node_id: str, *, token: Optional[str] = None
 ) -> Tuple[NodeCredential, str]:
