@@ -613,17 +613,20 @@ def render_sdkconfig(
 
 
 def update_sdkconfig_files(
-    values: Dict[str, str],
+    values: Dict[str, Tuple[Any, bool]],
     *,
     config_paths: Iterable[Path],
 ) -> List[Path]:
-    """Persist ``values`` into each sdkconfig file listed in ``config_paths``."""
+    """Persist override ``values`` into each sdkconfig in ``config_paths``."""
 
-    overrides = {
-        key: _config_value(value, quoted=True)
-        for key, value in values.items()
-        if value is not None
-    }
+    overrides: Dict[str, Tuple[Any, bool]] = {}
+    for key, value in values.items():
+        if value is None:
+            continue
+        if isinstance(value, tuple) and len(value) == 2:
+            overrides[key] = value
+            continue
+        overrides[key] = _config_value(value, quoted=True)
 
     updated: List[Path] = []
     for path in config_paths:
@@ -721,6 +724,8 @@ def build_individual_node(
     else:
         metadata_payload.setdefault("board", "esp32")
 
+    metadata_overrides = metadata_to_overrides(metadata_payload)
+
     metadata_serialized = json.dumps(
         metadata_payload or {}, separators=(",", ":"), sort_keys=True
     )
@@ -732,10 +737,19 @@ def build_individual_node(
         "CONFIG_UL_NODE_METADATA": metadata_serialized,
     }
 
+    combined_overrides: Dict[str, Tuple[Any, bool]] = dict(metadata_overrides)
+    combined_overrides.update(
+        {
+            key: _config_value(value, quoted=True)
+            for key, value in config_values.items()
+            if value is not None
+        }
+    )
+
     updated_configs: Tuple[Path, ...] = tuple()
     if sdkconfig_paths:
         try:
-            updated = update_sdkconfig_files(config_values, config_paths=sdkconfig_paths)
+            updated = update_sdkconfig_files(combined_overrides, config_paths=sdkconfig_paths)
         except FileNotFoundError as exc:  # pragma: no cover - defensive
             raise NodeBuilderError(str(exc)) from exc
         updated_configs = tuple(updated)
