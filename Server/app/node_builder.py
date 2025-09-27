@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -18,6 +22,7 @@ from .config import settings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FIRMWARE_ROOT = PROJECT_ROOT / "UltraNodeV5"
+FIRMWARE_ARCHIVE_ROOT = PROJECT_ROOT / "firmware_artifacts"
 SDKCONFIG_TEMPLATE = FIRMWARE_ROOT / "sdkconfig.defaults"
 SDKCONFIG_WORK_DIR = FIRMWARE_ROOT / "node_configs"
 
@@ -44,6 +49,21 @@ class BuildResult(CommandResult):
     target: str
 
 
+@dataclass
+class ArtifactRecord:
+    """Paths and metadata produced when archiving a build."""
+
+    node_id: str
+    download_id: str
+    version: str
+    latest_binary: Path
+    archive_binary: Optional[Path]
+    manifest_path: Path
+    versioned_manifest_path: Optional[Path]
+    size: int
+    sha256_hex: str
+
+
 class NodeBuilderError(RuntimeError):
     """Raised when a firmware helper fails."""
 
@@ -58,6 +78,159 @@ SUPPORTED_TARGETS: Dict[str, str] = {
 def _sanitize_node_for_path(node_id: str) -> str:
     safe = [ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in node_id]
     return "".join(safe).strip() or "node"
+
+
+def clean_build_dir() -> None:
+    """Remove the ``build`` directory inside the firmware tree."""
+
+    build_dir = FIRMWARE_ROOT / "build"
+    if not build_dir.exists():
+        return
+    if not build_dir.is_dir():
+        raise NodeBuilderError("build path exists but is not a directory")
+    if build_dir.resolve().parent != FIRMWARE_ROOT.resolve():
+        raise NodeBuilderError("refusing to remove unexpected build directory")
+    shutil.rmtree(build_dir)
+
+
+def _sanitize_version(version: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]", "_", version.strip())
+
+
+def _sha256_file(path: Path) -> str:
+    h = sha256()
+    with path.open("rb") as fp:
+        for chunk in iter(lambda: fp.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _read_manifest_version(manifest_path: Path) -> Optional[str]:
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except json.JSONDecodeError:
+        return None
+    version = data.get("version")
+    if isinstance(version, str):
+        cleaned = version.strip()
+        return cleaned or None
+    return None
+
+
+def embed_firmware_version(sdkconfig_path: Path, version: str) -> None:
+    """Ensure ``sdkconfig`` records the supplied firmware version."""
+
+    cleaned = (version or "").strip()
+    if not cleaned:
+        return
+
+    escaped = cleaned.replace("\\", "\\\\").replace('"', '\\"')
+    lines = sdkconfig_path.read_text(encoding="utf-8").splitlines()
+    flag_written = False
+    version_written = False
+    output: List[str] = []
+
+    for line in lines:
+        if line.startswith("CONFIG_APP_PROJECT_VER_FROM_CONFIG"):
+            if not flag_written:
+                output.append("CONFIG_APP_PROJECT_VER_FROM_CONFIG=y")
+                flag_written = True
+            continue
+        if line.startswith("# CONFIG_APP_PROJECT_VER_FROM_CONFIG"):
+            if not flag_written:
+                output.append("CONFIG_APP_PROJECT_VER_FROM_CONFIG=y")
+                flag_written = True
+            continue
+        if line.startswith("CONFIG_APP_PROJECT_VER="):
+            if not version_written:
+                output.append(f'CONFIG_APP_PROJECT_VER="{escaped}"')
+                version_written = True
+            continue
+        output.append(line)
+
+    if not flag_written:
+        output.append("CONFIG_APP_PROJECT_VER_FROM_CONFIG=y")
+    if not version_written:
+        output.append(f'CONFIG_APP_PROJECT_VER="{escaped}"')
+
+    sdkconfig_path.write_text("\n".join(output) + "\n", encoding="utf-8")
+
+
+def store_build_artifacts(
+    *,
+    node_id: str,
+    download_id: str,
+    firmware_version: str,
+    binary_path: Optional[Path] = None,
+    firmware_dir: Optional[Path] = None,
+    archive_root: Optional[Path] = None,
+) -> ArtifactRecord:
+    """Copy build outputs into the public firmware tree and archive."""
+
+    binary_path = Path(binary_path or (FIRMWARE_ROOT / "build" / "ultralights.bin"))
+    if not binary_path.exists():
+        raise FileNotFoundError(f"build output not found: {binary_path}")
+
+    target_firmware_dir = Path(firmware_dir or settings.FIRMWARE_DIR)
+    target_firmware_dir.mkdir(parents=True, exist_ok=True)
+    download_dir = target_firmware_dir / download_id
+    download_dir.mkdir(parents=True, exist_ok=True)
+
+    archive_root = Path(archive_root or FIRMWARE_ARCHIVE_ROOT)
+    archive_root.mkdir(parents=True, exist_ok=True)
+    archive_dir = archive_root / _sanitize_node_for_path(node_id)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
+    latest_path = download_dir / "latest.bin"
+    previous_manifest = download_dir / "manifest.json"
+    previous_version = _read_manifest_version(previous_manifest)
+    if latest_path.exists() and previous_version:
+        safe_prev = _sanitize_version(previous_version)
+        if safe_prev:
+            shutil.copy2(latest_path, archive_dir / f"{safe_prev}.bin")
+
+    shutil.copy2(binary_path, latest_path)
+
+    safe_current = _sanitize_version(firmware_version)
+    archive_binary: Optional[Path] = None
+    if safe_current:
+        archive_binary = archive_dir / f"{safe_current}.bin"
+        shutil.copy2(binary_path, archive_binary)
+
+    size = binary_path.stat().st_size
+    checksum = _sha256_file(binary_path)
+    generated_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    manifest = {
+        "device_id": node_id,
+        "version": firmware_version,
+        "size": size,
+        "sha256_hex": checksum,
+        "binary_url": "latest.bin",
+        "generated_at": generated_at,
+    }
+
+    manifest_path = download_dir / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+    versioned_manifest_path: Optional[Path] = None
+    if safe_current:
+        versioned_manifest_path = download_dir / f"manifest_{safe_current}.json"
+        versioned_manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+    return ArtifactRecord(
+        node_id=node_id,
+        download_id=download_id,
+        version=firmware_version,
+        latest_binary=latest_path,
+        archive_binary=archive_binary,
+        manifest_path=manifest_path,
+        versioned_manifest_path=versioned_manifest_path,
+        size=size,
+        sha256_hex=checksum,
+    )
 
 
 def _config_value(value: Any, quoted: bool = False) -> Tuple[Any, bool]:
@@ -324,15 +497,6 @@ def _run_command(
     )
 
 
-def update_all_nodes(firmware_version: str, *, env: Optional[Dict[str, str]] = None) -> CommandResult:
-    """Invoke the bulk updater script."""
-
-    script = FIRMWARE_ROOT / "updateAllNodes.sh"
-    if not script.exists():
-        raise FileNotFoundError(f"updateAllNodes.sh not found at {script}")
-    command = [str(script), firmware_version]
-    return _run_command(command, env=_prepare_environment("esp32", env))
-
 
 def build_individual_node(
     session: Session,
@@ -343,6 +507,8 @@ def build_individual_node(
     regenerate_token: bool = False,
     run_build: bool = True,
     ota_token: Optional[str] = None,
+    firmware_version: Optional[str] = None,
+    clean_build: bool = True,
 ) -> BuildResult:
     """Generate an sdkconfig for ``node_id`` and optionally run ``idf.py build``."""
 
@@ -390,8 +556,14 @@ def build_individual_node(
         manifest_url=manifest_url,
     )
 
+    if firmware_version:
+        embed_firmware_version(sdkconfig_path, firmware_version)
+
     env = _prepare_environment(str(metadata_payload.get("board", "esp32")))
     env["SDKCONFIG"] = str(sdkconfig_path)
+
+    if clean_build:
+        clean_build_dir()
 
     if run_build:
         result = _run_command(["idf.py", "build"], env=env)
@@ -420,6 +592,8 @@ def first_time_flash(
     metadata: Optional[Dict[str, Any]] = None,
     board: Optional[str] = None,
     ota_token: Optional[str] = None,
+    firmware_version: Optional[str] = None,
+    clean_build: bool = True,
 ) -> BuildResult:
     """Perform ``idf.py -p <port> build flash`` for ``node_id``."""
 
@@ -431,10 +605,14 @@ def first_time_flash(
         regenerate_token=False,
         run_build=False,
         ota_token=ota_token,
+        firmware_version=firmware_version,
+        clean_build=clean_build,
     )
 
     env = _prepare_environment(str(metadata or {}).get("board", board or "esp32"))
     env["SDKCONFIG"] = str(build_result.sdkconfig_path)
+    if clean_build:
+        clean_build_dir()
     command = ["idf.py", "-p", port, "build", "flash"]
     result = _run_command(command, env=env)
 

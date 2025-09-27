@@ -103,12 +103,13 @@ payload, and download directory. If the tool encounters a legacy record that
 still contains a plaintext token it will consume and erase it, warning you to
 switch to the explicit `--ota-token` workflow.
 
-The Node factory also exposes the legacy `UltraNodeV5/updateAllNodes.sh` script
-as a single click: enter the firmware version string, press "Run updateAllNodes",
-and the server executes the helper, archiving the previous `latest.bin` files and
-rolling manifests just like the original shell script. Output and return codes
-are streamed to the browser for easy auditing, and an audit log entry records who
-triggered the rotation.
+For bulk operations and first-time flashing, use the dedicated
+`tools/firmware_cli/cli.py` helper. It understands the same registrations and can
+build (`python tools/firmware_cli/cli.py build <node-id> --firmware-version
+2024.09.0`), flash (`... flash <node-id> --port /dev/ttyUSB0 --firmware-version
+2024.09.0`), or iterate across the entire fleet (`... update-all --firmware-
+version 2024.09.0`). Each command emits the manifest path and checksum for audit
+purposes while reusing the stored hardware metadata.
 
 ## End-to-end workflow
 
@@ -126,14 +127,13 @@ this:
    leave the metadata blank and attach it later from the admin tools before
    building firmware.
 3. **Build the firmware image.** When you are ready to program a specific board,
-   choose one of the pre-generated registrations in the Node factory UI (or pass
-   its node ID to `provision_node_firmware.py`). The tooling patches
-   `sdkconfig` with the stored metadata, target chip, manifest URL, and bearer
-   token so the compiled binary already knows how to authenticate.
-4. **Flash the ESP32.** Use the "Build & flash" control from the Node factory or
-   run `idf.py -p <port> build flash` manually against the generated configuration.
-   For brand-new boards you can also invoke the `firstTimeFlash` helper exposed in
-   the admin tooling to automate the initial erase/build/flash sequence.
+   invoke `python tools/firmware_cli/cli.py build <node-id> --firmware-version
+   <version>` to patch `sdkconfig` with the stored metadata, target chip,
+   manifest URL, and bearer token before compiling the binary.
+4. **Flash the ESP32.** Run `python tools/firmware_cli/cli.py flash <node-id>
+   --port /dev/ttyUSB0 --firmware-version <version>` to perform the
+   `idf.py -p <port> build flash` sequence using the generated configuration and
+   automatically archive the resulting firmware.
 5. **Hand the device to the installer or customer.** On first boot the firmware
    opens the captive portal (SoftAP). The user connects to the UltraLights access
    point, submits their Wi-Fi SSID/password, and provides their UltraLights
@@ -147,10 +147,10 @@ this:
    user’s house. Future room-assignment tooling will then let house administrators
    place the node into a specific room menu.
 
-The `updateAllNodes.sh` wrapper remains available for fleet-wide OTA refreshes
-after the initial provisioning. Because the registrations already contain the
-download ID and metadata, the update script can build new images for every node
-without regenerating identifiers or touching customer associations.
+To refresh every registration in one shot, call `python tools/firmware_cli/cli.py
+update-all --firmware-version <version>`. The tool walks the registration table,
+builds each image, and archives the manifests and binaries without regenerating
+identifiers or touching customer associations.
 
 ## Assigning registrations
 

@@ -240,62 +240,12 @@
       </div>
       <div class="glass rounded-xl p-4 space-y-4">
         <div>
-          <h4 class="text-xl font-semibold">Build &amp; provisioning tools</h4>
-          <p class="text-xs opacity-70">Reuse the hardware configuration above when building or flashing firmware.</p>
+          <h4 class="text-xl font-semibold">Firmware tooling</h4>
+          <p class="text-xs opacity-70">Use the standalone command line utility to build or flash firmware with the saved hardware profiles.</p>
         </div>
-        <form class="space-y-3" data-node-build-form>
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="block text-sm font-semibold">
-              <span>Node ID</span>
-              <input type="text" name="nodeId" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" placeholder="auto if test node">
-            </label>
-            <label class="block text-sm font-semibold">
-              <span>Use hardware from form</span>
-              <input type="checkbox" name="useHardware" class="ml-2 align-middle">
-            </label>
-            <label class="block text-sm font-semibold md:col-span-2">
-              <span>OTA token (optional)</span>
-              <input type="text" name="otaToken" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" placeholder="Paste pre-generated token to reuse">
-            </label>
-          </div>
-          <div class="flex flex-wrap gap-4 text-xs font-semibold uppercase tracking-wide">
-            <label class="flex items-center gap-2"><input type="checkbox" name="useTestNode"> Test node</label>
-            <label class="flex items-center gap-2"><input type="checkbox" name="regenerateToken"> Rotate token</label>
-            <label class="flex items-center gap-2"><input type="checkbox" name="skipBuild"> Skip build (sdkconfig only)</label>
-          </div>
-          <button type="submit" class="px-3 py-2 pill bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold">Build firmware</button>
-        </form>
-        <pre class="bg-slate-900/80 border border-slate-800 rounded p-3 text-xs overflow-x-auto" data-node-build-output>Build output will appear here.</pre>
-        <form class="space-y-3" data-node-flash-form>
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="block text-sm font-semibold">
-              <span>Node ID</span>
-              <input type="text" name="nodeId" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" placeholder="auto if test node">
-            </label>
-            <label class="block text-sm font-semibold">
-              <span>USB port</span>
-              <input type="text" name="port" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" placeholder="/dev/ttyUSB0" required>
-            </label>
-            <label class="block text-sm font-semibold md:col-span-2">
-              <span>OTA token (optional)</span>
-              <input type="text" name="otaToken" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" placeholder="Reuse the batch-generated token if available">
-            </label>
-          </div>
-          <div class="flex flex-wrap gap-4 text-xs font-semibold uppercase tracking-wide">
-            <label class="flex items-center gap-2"><input type="checkbox" name="useTestNode"> Test node</label>
-            <label class="flex items-center gap-2"><input type="checkbox" name="useHardware"> Use hardware from form</label>
-          </div>
-          <button type="submit" class="px-3 py-2 pill bg-amber-600 hover:bg-amber-500 text-sm font-semibold">Build &amp; flash</button>
-        </form>
-        <pre class="bg-slate-900/80 border border-slate-800 rounded p-3 text-xs overflow-x-auto" data-node-flash-output>Flash output will appear here.</pre>
-        <form class="space-y-3" data-update-all-form>
-          <label class="block text-sm font-semibold">
-            <span>Firmware version</span>
-            <input type="text" name="firmwareVersion" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" placeholder="2024.07.0" required>
-          </label>
-          <button type="submit" class="px-3 py-2 pill bg-rose-600 hover:bg-rose-500 text-sm font-semibold">Run updateAllNodes</button>
-        </form>
-        <pre class="bg-slate-900/80 border border-slate-800 rounded p-3 text-xs overflow-x-auto" data-update-all-output>updateAllNodes output will appear here.</pre>
+        <p class="text-xs opacity-70">
+          Run <code>python tools/firmware_cli/cli.py --help</code> from the repository root for instructions on generating artifacts or flashing hardware using the stored registrations.
+        </p>
       </div>
     </div>
   </div>
@@ -684,30 +634,6 @@ function renderNodeList(container, available, assigned) {
   container.innerHTML = parts.join('');
 }
 
-function renderCommandOutput(target, data) {
-  if (!target) return;
-  const lines = [];
-  if (data.message) {
-    lines.push(`# ${data.message}`);
-  }
-  lines.push(`Return code: ${data.returncode}`);
-  if (data.command) {
-    lines.push(`Command: ${data.command.join(' ')}`);
-  }
-  if (data.cwd) {
-    lines.push(`CWD: ${data.cwd}`);
-  }
-  if (data.stdout) {
-    lines.push('\n# stdout');
-    lines.push(data.stdout.trim());
-  }
-  if (data.stderr) {
-    lines.push('\n# stderr');
-    lines.push(data.stderr.trim());
-  }
-  target.textContent = lines.join('\n');
-}
-
 const nodeListContainer = document.querySelector('[data-node-factory-list]');
 if (nodeListContainer) {
   renderNodeList(nodeListContainer, nodeFactoryData.available || [], nodeFactoryData.assigned || []);
@@ -761,122 +687,6 @@ if (nodeFactoryForm) {
       await refreshNodeFactory();
     } catch (err) {
       outputEl.textContent = `Error generating nodes: ${err}`;
-    }
-  });
-}
-
-function maybeHardwarePayload(formEl) {
-  if (!formEl.querySelector('input[name="useHardware"]')?.checked) {
-    return undefined;
-  }
-  const factoryRoot = document.querySelector('[data-node-factory]');
-  if (!factoryRoot) return undefined;
-  try {
-    return collectHardwarePayload(factoryRoot);
-  } catch (err) {
-    alert(err.message || 'Hardware configuration invalid');
-    throw err;
-  }
-}
-
-const buildForm = document.querySelector('[data-node-build-form]');
-if (buildForm) {
-  const outputEl = document.querySelector('[data-node-build-output]');
-  buildForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    try {
-      const payload = {
-        nodeId: buildForm.querySelector('input[name="nodeId"]').value || undefined,
-        useTestNode: buildForm.querySelector('input[name="useTestNode"]').checked,
-        regenerateToken: buildForm.querySelector('input[name="regenerateToken"]').checked,
-        skipBuild: buildForm.querySelector('input[name="skipBuild"]').checked,
-      };
-      const tokenField = buildForm.querySelector('input[name="otaToken"]');
-      if (tokenField && tokenField.value.trim()) {
-        payload.otaToken = tokenField.value.trim();
-      }
-      const hardware = maybeHardwarePayload(buildForm);
-      if (hardware) {
-        payload.hardware = hardware;
-      }
-      const res = await fetch('/api/server-admin/node-factory/build', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        credentials: 'same-origin',
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || `HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      renderCommandOutput(outputEl, data);
-      await refreshNodeFactory();
-    } catch (err) {
-      outputEl.textContent = `Build failed: ${err}`;
-    }
-  });
-}
-
-const flashForm = document.querySelector('[data-node-flash-form]');
-if (flashForm) {
-  const outputEl = document.querySelector('[data-node-flash-output]');
-  flashForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    try {
-      const payload = {
-        nodeId: flashForm.querySelector('input[name="nodeId"]').value || undefined,
-        port: flashForm.querySelector('input[name="port"]').value,
-        useTestNode: flashForm.querySelector('input[name="useTestNode"]').checked,
-      };
-      const tokenField = flashForm.querySelector('input[name="otaToken"]');
-      if (tokenField && tokenField.value.trim()) {
-        payload.otaToken = tokenField.value.trim();
-      }
-      const hardware = maybeHardwarePayload(flashForm);
-      if (hardware) {
-        payload.hardware = hardware;
-      }
-      const res = await fetch('/api/server-admin/node-factory/flash', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        credentials: 'same-origin',
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || `HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      renderCommandOutput(outputEl, data);
-      await refreshNodeFactory();
-    } catch (err) {
-      outputEl.textContent = `Flash failed: ${err}`;
-    }
-  });
-}
-
-const updateAllForm = document.querySelector('[data-update-all-form]');
-if (updateAllForm) {
-  const outputEl = document.querySelector('[data-update-all-output]');
-  updateAllForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const firmwareVersion = updateAllForm.querySelector('input[name="firmwareVersion"]').value;
-    try {
-      const res = await fetch('/api/server-admin/node-factory/update-all', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        credentials: 'same-origin',
-        body: JSON.stringify({firmwareVersion}),
-      });
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || `HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      renderCommandOutput(outputEl, data);
-    } catch (err) {
-      outputEl.textContent = `updateAllNodes failed: ${err}`;
     }
   });
 }
