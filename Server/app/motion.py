@@ -188,7 +188,14 @@ class MotionManager:
         self._mqtt_connected = True
         logger.info("MotionManager MQTT connected: %s", reason_code)
 
-    def _on_disconnect(self, client, userdata, reason_code, properties=None) -> None:
+    def _on_disconnect(
+        self,
+        client,
+        userdata,
+        disconnect_flags,
+        reason_code,
+        properties=None,
+    ) -> None:
         if reason_code is None or int(reason_code) == 0:
             logger.info("MotionManager MQTT disconnected")
         else:
