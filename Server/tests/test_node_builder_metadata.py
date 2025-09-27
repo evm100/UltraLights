@@ -54,7 +54,7 @@ def test_ws2812_channel_values_are_copied():
 
     overrides = node_builder.metadata_to_overrides(metadata)
 
-    assert overrides["CONFIG_UL_WS0_ENABLED"][0] == "y"
+    assert overrides["CONFIG_UL_WS0_ENABLED"][0] is True
     assert overrides["CONFIG_UL_WS0_GPIO"][0] == 5
     assert overrides["CONFIG_UL_WS0_PIXELS"][0] == 120
 
@@ -107,14 +107,14 @@ def test_project_sdkconfig_updates_include_metadata(tmp_path, monkeypatch: pytes
         )
 
     assert captured["CONFIG_UL_NODE_ID"][0] == node_id
-    assert captured["CONFIG_UL_WS0_ENABLED"][0] == "y"
+    assert captured["CONFIG_UL_WS0_ENABLED"][0] is True
     assert captured["CONFIG_UL_WS0_GPIO"][0] == 6
     assert captured["CONFIG_UL_WS0_PIXELS"][0] == 150
-    assert captured["CONFIG_UL_RGB0_ENABLED"][0] == "y"
+    assert captured["CONFIG_UL_RGB0_ENABLED"][0] is True
     assert captured["CONFIG_UL_RGB0_R_GPIO"][0] == 18
     assert captured["CONFIG_UL_RGB0_G_GPIO"][0] == 19
     assert captured["CONFIG_UL_RGB0_B_GPIO"][0] == 21
-    assert captured["CONFIG_UL_WHT0_ENABLED"][0] == "y"
+    assert captured["CONFIG_UL_WHT0_ENABLED"][0] is True
     assert captured["CONFIG_UL_WHT0_GPIO"][0] == 4
     assert captured["CONFIG_UL_WHT0_PWM_HZ"][0] == 3000
     assert captured["CONFIG_UL_WHT0_MIN"][0] == 0
