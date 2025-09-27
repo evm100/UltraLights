@@ -61,12 +61,12 @@ bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
     return false;
   }
 
-  size_t pass_len = sizeof(out->user_password);
-  err = nvs_get_str(handle, "user_password", out->user_password, &pass_len);
+  size_t user_pass_len = sizeof(out->user_password);
+  err = nvs_get_str(handle, "user_password", out->user_password, &user_pass_len);
   if (err == ESP_ERR_NVS_NOT_FOUND) {
     // Fall back to legacy key name "secret" for compatibility.
-    pass_len = sizeof(out->user_password);
-    err = nvs_get_str(handle, "secret", out->user_password, &pass_len);
+    user_pass_len = sizeof(out->user_password);
+    err = nvs_get_str(handle, "secret", out->user_password, &user_pass_len);
     if (err == ESP_ERR_NVS_NOT_FOUND) {
       out->user_password[0] = '\0';
       err = ESP_OK;
