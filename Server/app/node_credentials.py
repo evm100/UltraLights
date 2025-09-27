@@ -189,7 +189,6 @@ def create_batch(
             session.add(entry.registration)
 
     session.commit()
-
     return registrations
 
 
@@ -936,7 +935,6 @@ __all__ = [
     "NodeRegistrationWithToken",
     "any_tokens",
     "claim_registration",
-    "clear_stored_provisioning_token",
     "clear_provisioned",
     "create_batch",
     "delete_credentials",
@@ -949,7 +947,6 @@ __all__ = [
     "get_registration_by_node_id",
     "list_assigned_registrations",
     "list_available_registrations",
-    "list_pending_registrations_for_user",
     "list_unprovisioned",
     "list_unprovisioned_registrations",
     "mark_provisioned",
