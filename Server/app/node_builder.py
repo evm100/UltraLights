@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -326,6 +327,38 @@ def _merge_sdkconfig(base_lines: Iterable[str], overrides: Dict[str, Tuple[Any, 
     return merged
 
 
+def _int_or_none(value: Any) -> Optional[int]:
+    """Best-effort conversion of ``value`` to an integer."""
+
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        trimmed = value.strip()
+        if not trimmed:
+            return None
+        try:
+            return int(trimmed, 0)
+        except ValueError:
+            return None
+    return None
+
+
+def _next_ledc_channel(used: set[int]) -> int:
+    """Return the next unassigned LEDC channel index."""
+
+    candidate = 0
+    while candidate in used:
+        candidate += 1
+    used.add(candidate)
+    return candidate
+
+
 def _board_overrides(board: str) -> Dict[str, Tuple[Any, bool]]:
     board = board.lower()
     target = SUPPORTED_TARGETS.get(board, "esp32")
@@ -335,6 +368,102 @@ def _board_overrides(board: str) -> Dict[str, Tuple[Any, bool]]:
         "CONFIG_UL_IS_ESP32S3": _bool_flag(board == "esp32s3"),
     }
     return overrides
+
+
+def normalize_hardware_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply defaults for hardware metadata used by node registrations."""
+
+    if not isinstance(metadata, dict):
+        return {}
+
+    normalized = copy.deepcopy(metadata)
+    board = str(normalized.get("board", "esp32")).lower()
+    normalized["board"] = board
+
+    used_ledc: set[int] = set()
+
+    white_entries = []
+    for raw in normalized.get("white") or []:
+        if not isinstance(raw, dict):
+            continue
+        idx = _int_or_none(raw.get("index"))
+        if idx is None or idx < 0 or idx > 3:
+            continue
+        enabled = bool(raw.get("enabled"))
+        gpio = _int_or_none(raw.get("gpio"))
+        entry: Dict[str, Any] = {
+            "index": idx,
+            "enabled": enabled,
+        }
+        if gpio is not None:
+            entry["gpio"] = gpio
+
+        active = enabled or gpio is not None
+        pwm_hz = _int_or_none(raw.get("pwm_hz")) or 3000
+        minimum = _int_or_none(raw.get("minimum"))
+        maximum = _int_or_none(raw.get("maximum"))
+        entry["pwm_hz"] = pwm_hz
+        entry["minimum"] = 0 if minimum is None else minimum
+        entry["maximum"] = 255 if maximum is None else maximum
+
+        if active:
+            ledc = _int_or_none(raw.get("ledc_channel"))
+            if ledc is None or ledc in used_ledc:
+                ledc = _next_ledc_channel(used_ledc)
+            else:
+                used_ledc.add(ledc)
+            entry["ledc_channel"] = ledc
+
+        white_entries.append(entry)
+
+    white_entries.sort(key=lambda item: item["index"])
+    normalized["white"] = white_entries
+
+    rgb_mode_default = 0 if board == "esp32c3" else 1
+    rgb_entries = []
+    for raw in normalized.get("rgb") or []:
+        if not isinstance(raw, dict):
+            continue
+        idx = _int_or_none(raw.get("index"))
+        if idx is None or idx < 0 or idx > 3:
+            continue
+        enabled = bool(raw.get("enabled"))
+        entry: Dict[str, Any] = {
+            "index": idx,
+            "enabled": enabled,
+            "pwm_hz": _int_or_none(raw.get("pwm_hz")) or 3000,
+            "ledc_mode": rgb_mode_default,
+        }
+
+        colors_with_gpio: list[str] = []
+        for color in ("r", "g", "b"):
+            gpio_value = _int_or_none(raw.get(f"{color}_gpio"))
+            if gpio_value is not None:
+                entry[f"{color}_gpio"] = gpio_value
+                colors_with_gpio.append(color)
+
+        active = enabled or bool(colors_with_gpio)
+        if not active:
+            rgb_entries.append(entry)
+            continue
+
+        for color in ("r", "g", "b"):
+            ledc_field = f"{color}_ledc_ch"
+            if color not in colors_with_gpio and not enabled:
+                continue
+            ledc_value = _int_or_none(raw.get(ledc_field))
+            if ledc_value is None or ledc_value in used_ledc:
+                ledc_value = _next_ledc_channel(used_ledc)
+            else:
+                used_ledc.add(ledc_value)
+            entry[ledc_field] = ledc_value
+
+        rgb_entries.append(entry)
+
+    rgb_entries.sort(key=lambda item: item["index"])
+    normalized["rgb"] = rgb_entries
+
+    return normalized
 
 
 def _ws_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
@@ -418,7 +547,7 @@ def _override_entries(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
 
 
 def metadata_to_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
-    metadata = metadata or {}
+    metadata = normalize_hardware_metadata(metadata or {})
     overrides: Dict[str, Tuple[Any, bool]] = {}
     overrides.update(_board_overrides(str(metadata.get("board", "esp32"))))
     overrides.update(_ws_overrides(metadata))

@@ -137,8 +137,9 @@
         </div>
         <div class="grid gap-4" data-channel-group="white" data-channel-type="white">
           <div class="text-sm font-semibold">White channels</div>
+          <p class="text-xs opacity-60">PWM frequency, LEDC channels, and output range are assigned automatically.</p>
           {% for idx in range(4) %}
-          <div class="grid gap-3 md:grid-cols-6 items-end" data-channel-row data-index="{{ idx }}">
+          <div class="grid gap-3 md:grid-cols-3 items-end" data-channel-row data-index="{{ idx }}">
             <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
               <input type="checkbox" data-channel-enabled>
               Enable {{ idx }}
@@ -147,64 +148,29 @@
               <span>GPIO</span>
               <input type="number" data-channel-field="gpio" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
             </label>
-            <label class="block text-xs font-semibold">
-              <span>LEDC</span>
-              <input type="number" data-channel-field="ledc_channel" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
-            </label>
-            <label class="block text-xs font-semibold">
-              <span>PWM Hz</span>
-              <input type="number" data-channel-field="pwm_hz" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
-            </label>
-            <label class="block text-xs font-semibold">
-              <span>Min</span>
-              <input type="number" data-channel-field="minimum" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
-            </label>
-            <label class="block text-xs font-semibold">
-              <span>Max</span>
-              <input type="number" data-channel-field="maximum" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
-            </label>
           </div>
           {% endfor %}
         </div>
         <div class="grid gap-4" data-channel-group="rgb" data-channel-type="rgb">
           <div class="text-sm font-semibold">RGB channels</div>
+          <p class="text-xs opacity-60">PWM frequency, LEDC channels, and modes use board-specific defaults.</p>
           {% for idx in range(4) %}
-          <div class="grid gap-3 md:grid-cols-7 items-end" data-channel-row data-index="{{ idx }}">
+          <div class="grid gap-3 md:grid-cols-4 items-end" data-channel-row data-index="{{ idx }}">
             <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
               <input type="checkbox" data-channel-enabled>
               Enable {{ idx }}
-            </label>
-            <label class="block text-xs font-semibold">
-              <span>PWM Hz</span>
-              <input type="number" data-channel-field="pwm_hz" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
-            </label>
-            <label class="block text-xs font-semibold">
-              <span>Mode</span>
-              <input type="number" data-channel-field="ledc_mode" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
             </label>
             <label class="block text-xs font-semibold">
               <span>R GPIO</span>
               <input type="number" data-channel-field="r_gpio" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
             </label>
             <label class="block text-xs font-semibold">
-              <span>R LEDC</span>
-              <input type="number" data-channel-field="r_ledc_ch" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
-            </label>
-            <label class="block text-xs font-semibold">
               <span>G GPIO</span>
               <input type="number" data-channel-field="g_gpio" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
             </label>
             <label class="block text-xs font-semibold">
-              <span>G LEDC</span>
-              <input type="number" data-channel-field="g_ledc_ch" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
-            </label>
-            <label class="block text-xs font-semibold">
               <span>B GPIO</span>
               <input type="number" data-channel-field="b_gpio" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
-            </label>
-            <label class="block text-xs font-semibold">
-              <span>B LEDC</span>
-              <input type="number" data-channel-field="b_ledc_ch" class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-2 py-1">
             </label>
           </div>
           {% endfor %}

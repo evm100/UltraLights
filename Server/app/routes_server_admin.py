@@ -223,7 +223,8 @@ class NodeFactoryListResponse(BaseModel):
 
 
 def _hardware_to_metadata(config: NodeHardwareConfig) -> Dict[str, Any]:
-    return config.model_dump(mode="python", by_alias=False, exclude_none=True)
+    raw = config.model_dump(mode="python", by_alias=False, exclude_none=True)
+    return node_builder.normalize_hardware_metadata(raw)
 
 
 def _registration_summary(registration: NodeRegistration) -> NodeFactoryRegistrationInfo:
