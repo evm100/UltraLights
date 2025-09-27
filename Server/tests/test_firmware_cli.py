@@ -69,10 +69,17 @@ def _make_artifact(node_id: str, download_id: str) -> node_builder.ArtifactRecor
 def test_cli_build_invokes_builder_and_archiver(cli_environment, monkeypatch: pytest.MonkeyPatch):
     firmware_dir, archive_dir, db_url = cli_environment
 
+    metadata = {
+        "board": "esp32s3",
+        "ws2812": [{"index": 0, "enabled": True, "gpio": 6, "pixels": 60}],
+        "white": [{"index": 0, "enabled": True, "gpio": 21}],
+    }
+
     with database.SessionLocal() as session:
-        entry = node_credentials.create_batch(session, 1)[0]
+        entry = node_credentials.create_batch(session, 1, metadata=[metadata])[0]
         node_id = entry.registration.node_id
         download_id = entry.registration.download_id
+        stored_metadata = dict(entry.registration.hardware_metadata)
 
     calls = {}
 
@@ -108,6 +115,8 @@ def test_cli_build_invokes_builder_and_archiver(cli_environment, monkeypatch: py
     assert exit_code == 0
     assert calls["build"]["node"] == node_id
     assert calls["build"]["kwargs"]["firmware_version"] == "2024.09"
+    assert calls["build"]["kwargs"]["board"] == "esp32s3"
+    assert calls["build"]["kwargs"]["metadata"] == stored_metadata
     assert (
         calls["build"]["kwargs"]["sdkconfig_paths"]
         == firmware_cli.PROJECT_SDKCONFIG_PATHS

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Any, Dict, Iterable, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SERVER_ROOT = PROJECT_ROOT / "Server"
@@ -20,6 +20,20 @@ from sqlmodel import select  # noqa: E402
 PROJECT_SDKCONFIG_PATHS: tuple[Path, ...] = (
     node_builder.FIRMWARE_ROOT / "sdkconfig",
 )
+
+
+def _registration_metadata(session, node_id: str) -> tuple[Dict[str, Any], Optional[str]]:
+    """Return stored metadata and board for a given node id."""
+
+    node_credentials.sync_registry_nodes(session)
+    registration = node_credentials.get_registration_by_node_id(session, node_id)
+    if registration is None:
+        raise node_builder.NodeBuilderError(f"Unknown node id: {node_id}")
+
+    metadata = dict(registration.hardware_metadata or {})
+    board_value = metadata.get("board")
+    board = board_value if isinstance(board_value, str) else None
+    return metadata, board
 
 
 def _resolve_paths(firmware_dir_arg: Optional[str], archive_dir_arg: Optional[str]) -> tuple[Path, Path]:
@@ -147,11 +161,12 @@ def _restore_database(original_url: Optional[str]) -> None:
 def _handle_build(args, firmware_dir: Path, archive_dir: Path) -> int:
     with database.SessionLocal() as session:
         try:
+            metadata, board = _registration_metadata(session, args.node_id)
             result = node_builder.build_individual_node(
                 session,
                 args.node_id,
-                metadata=None,
-                board=None,
+                metadata=metadata,
+                board=board,
                 regenerate_token=False,
                 run_build=True,
                 firmware_version=args.firmware_version,
@@ -185,12 +200,13 @@ def _handle_build(args, firmware_dir: Path, archive_dir: Path) -> int:
 def _handle_flash(args, firmware_dir: Path, archive_dir: Path) -> int:
     with database.SessionLocal() as session:
         try:
+            metadata, board = _registration_metadata(session, args.node_id)
             result = node_builder.first_time_flash(
                 session,
                 args.node_id,
                 port=args.port,
-                metadata=None,
-                board=None,
+                metadata=metadata,
+                board=board,
                 ota_token=None,
                 firmware_version=args.firmware_version,
                 clean_build=not args.no_clean,
