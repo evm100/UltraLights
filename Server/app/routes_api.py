@@ -786,10 +786,77 @@ def api_add_node(
     policy = _build_policy(session, current_user)
     room_ctx = _require_room(policy, house_id, room_id)
     _ensure_can_manage_house(room_ctx.house, current_user)
-    raise HTTPException(
-        status.HTTP_501_NOT_IMPLEMENTED,
-        "Node creation now requires pre-registered identifiers. Use the offline provisioning workflow to claim nodes.",
+    raw_name = _payload.get("name")
+    if raw_name is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "missing name")
+    if not isinstance(raw_name, str):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid name")
+
+    clean_name = raw_name.strip()
+    if not clean_name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid name")
+    if len(clean_name) > MAX_NODE_NAME_LENGTH:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "name too long")
+
+    modules_value = _payload.get("modules")
+    modules: Optional[List[str]] = None
+    if modules_value is not None:
+        if not isinstance(modules_value, list):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid modules")
+        cleaned_modules: List[str] = []
+        for entry in modules_value:
+            text = str(entry).strip()
+            if text:
+                cleaned_modules.append(text)
+        modules = cleaned_modules or None
+
+    try:
+        node_entry = registry.add_node(
+            house_id,
+            room_id,
+            clean_name,
+            modules=modules,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    house_record = _house_record(session, room_ctx.house)
+    ensured = node_credentials.ensure_for_node(
+        session,
+        node_id=node_entry["id"],
+        house_slug=room_ctx.house.slug,
+        room_id=room_ctx.room["id"],
+        display_name=clean_name,
+        assigned_house_id=house_record.id if house_record else None,
     )
+
+    credential = ensured.credential
+    try:
+        node_entry = registry.set_node_download_id(
+            node_entry["id"],
+            credential.download_id,
+        )
+    except Exception:
+        # Best effort clean-up when persisting the download id fails.
+        try:
+            registry.remove_node(node_entry["id"])
+        except Exception:  # pragma: no cover - defensive cleanup
+            pass
+        raise
+
+    manifest_url = f"{settings.PUBLIC_BASE}/firmware/{credential.download_id}/manifest"
+    binary_url = f"{settings.PUBLIC_BASE}/firmware/{credential.download_id}/latest.bin"
+
+    credentials_payload: Dict[str, Any] = {
+        "nodeId": credential.node_id,
+        "downloadId": credential.download_id,
+        "manifestUrl": manifest_url,
+        "binaryUrl": binary_url,
+    }
+    if ensured.plaintext_token:
+        credentials_payload["otaToken"] = ensured.plaintext_token
+
+    return {"ok": True, "node": node_entry, "credentials": credentials_payload}
 
 
 @router.get("/api/house/{house_id}/room/{room_id}/presets")
