@@ -110,6 +110,48 @@ rolling manifests just like the original shell script. Output and return codes
 are streamed to the browser for easy auditing, and an audit log entry records who
 triggered the rotation.
 
+## End-to-end workflow
+
+Putting the pieces together, an end-to-end bring-up session typically looks like
+this:
+
+1. **Generate a batch of identifiers.** An operator calls
+   `Server/scripts/generate_node_ids.py <count>` (or uses the Node factory
+   "Generate IDs" dialog) to mint the desired number of opaque node IDs. The
+   command prints JSON/CSV that includes the plaintext bearer tokens—store that
+   output securely because it will not be shown again.
+2. **Stage hardware metadata.** If you already know which GPIO channels, enable
+   lines, or other hardware toggles belong to each physical device, embed that
+   information in the metadata column while generating the IDs. Otherwise you can
+   leave the metadata blank and attach it later from the admin tools before
+   building firmware.
+3. **Build the firmware image.** When you are ready to program a specific board,
+   choose one of the pre-generated registrations in the Node factory UI (or pass
+   its node ID to `provision_node_firmware.py`). The tooling patches
+   `sdkconfig` with the stored metadata, target chip, manifest URL, and bearer
+   token so the compiled binary already knows how to authenticate.
+4. **Flash the ESP32.** Use the "Build & flash" control from the Node factory or
+   run `idf.py -p <port> build flash` manually against the generated configuration.
+   For brand-new boards you can also invoke the `firstTimeFlash` helper exposed in
+   the admin tooling to automate the initial erase/build/flash sequence.
+5. **Hand the device to the installer or customer.** On first boot the firmware
+   opens the captive portal (SoftAP). The user connects to the UltraLights access
+   point, submits their Wi-Fi SSID/password, and provides their UltraLights
+   account credentials (or the mutually agreed token). These inputs are stored in
+   NVS alongside the node ID metadata.
+6. **Automatic account association.** After the portal closes the node connects
+   to the broker via MQTTS using the captured UltraLights credentials. It publishes
+   the `ul/<node_id>/evt/account` event, which the server validates against the
+   `node_registrations` table and the user directory. When the credentials match,
+   the node registration is marked as assigned to the authenticated user and the
+   user’s house. Future room-assignment tooling will then let house administrators
+   place the node into a specific room menu.
+
+The `updateAllNodes.sh` wrapper remains available for fleet-wide OTA refreshes
+after the initial provisioning. Because the registrations already contain the
+download ID and metadata, the update script can build new images for every node
+without regenerating identifiers or touching customer associations.
+
 ## Assigning registrations
 
 The UI no longer creates nodes directly. The "Add node" button is disabled and
