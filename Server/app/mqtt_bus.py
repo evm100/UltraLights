@@ -257,3 +257,13 @@ class MqttBus:
         """Trigger an OTA update check without retaining the command."""
         self.pub(topic_cmd(node_id, "ota/check"), {}, retain=False)
 
+    def wipe_nvs(self, node_id: str) -> None:
+        """Request that ``node_id`` erase its NVS flash storage."""
+
+        self.pub(
+            topic_cmd(node_id, "system/wipe-nvs"),
+            {},
+            retain=False,
+            rate_limited=False,
+        )
+

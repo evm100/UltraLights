@@ -5,6 +5,7 @@
 #include "cJSON.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #ifndef UL_MQTT_TESTING
@@ -20,6 +21,7 @@
 #include "ul_white_engine.h"
 #include "ul_ws_engine.h"
 #include "ul_rgb_engine.h"
+#include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -489,6 +491,34 @@ static void motion_fade_immediate_off(void) {
     if (s_motion_fade.white_active[i])
       ul_white_set_brightness(i, 0);
   }
+}
+
+static void handle_system_wipe_nvs(void) {
+  ESP_LOGW(TAG, "MQTT requested NVS wipe; erasing flash and restarting");
+  ul_mqtt_publish_status();
+  vTaskDelay(pdMS_TO_TICKS(200));
+
+  esp_err_t creds_err = ul_wifi_credentials_clear();
+  if (creds_err != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to clear stored Wi-Fi credentials: %s",
+             esp_err_to_name(creds_err));
+  }
+
+  esp_err_t deinit_err = nvs_flash_deinit();
+  if (deinit_err != ESP_OK && deinit_err != ESP_ERR_NVS_NOT_INITIALIZED) {
+    ESP_LOGW(TAG, "Failed to deinit NVS before erase: %s",
+             esp_err_to_name(deinit_err));
+  }
+
+  esp_err_t erase_err = nvs_flash_erase();
+  if (erase_err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to erase NVS flash: %s", esp_err_to_name(erase_err));
+  } else {
+    ESP_LOGI(TAG, "NVS flash erased; restarting");
+  }
+
+  vTaskDelay(pdMS_TO_TICKS(200));
+  esp_restart();
 }
 
 // JSON helpers (defined later)
@@ -1079,6 +1109,8 @@ static void on_message(esp_mqtt_event_handle_t event) {
       motion_fade_cancel();
     } else if (starts_with(sub, "motion/status")) {
       publish_motion_status();
+    } else if (starts_with(sub, "system/wipe-nvs")) {
+      handle_system_wipe_nvs();
     } else if (starts_with(sub, "status")) {
       ul_mqtt_publish_status_now();
     } else {

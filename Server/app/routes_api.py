@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -30,6 +31,7 @@ from .database import get_session
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 BUS: Optional[MqttBus] = None
 
 DEFAULT_SNAPSHOT_TIMEOUT = 3.0
@@ -387,6 +389,17 @@ def api_remove_node(
     except KeyError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
     node_credentials.delete_credentials(session, node_id)
+
+    try:
+        bus = get_bus()
+    except Exception:
+        logger.exception("Failed to acquire MQTT bus when removing node %s", node_id)
+    else:
+        try:
+            bus.wipe_nvs(node_id)
+        except Exception:
+            logger.exception("Failed to queue NVS wipe command for node %s", node_id)
+
     motion_manager.forget_node(node_id)
     status_monitor.forget(node_id)
     return {"ok": True, "node": removed}
@@ -640,6 +653,51 @@ def api_move_node(
             "roomId": updated.room_id,
             "roomName": room_name,
             "house": updated.house_slug,
+        },
+    }
+
+
+@router.post("/api/house/{house_id}/nodes/{node_id}/unassign")
+def api_unassign_node(
+    house_id: str,
+    node_id: str,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    house_ctx = _require_house(policy, house_id)
+    _ensure_can_manage_house(house_ctx, current_user)
+
+    registration = node_credentials.get_registration_by_node_id(session, node_id)
+    credential = node_credentials.get_by_node_id(session, node_id)
+    if registration is None and credential is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown node id")
+
+    try:
+        updated = node_credentials.unassign_node(
+            session,
+            node_id=node_id,
+            assigned_user_id=current_user.id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+
+    try:
+        registry.remove_node(node_id)
+    except KeyError:
+        pass
+
+    motion_manager.forget_node(node_id)
+    status_monitor.forget(node_id)
+
+    return {
+        "ok": True,
+        "node": {
+            "id": updated.node_id,
+            "name": updated.display_name,
+            "house": updated.house_slug,
+            "roomId": updated.room_id,
         },
     }
 
