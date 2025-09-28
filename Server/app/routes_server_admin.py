@@ -17,6 +17,7 @@ from .auth.models import (
     RoomAccess,
     User,
 )
+from .auth.security import normalize_username
 from .auth.service import create_user, record_audit_event
 from .config import settings
 from .database import get_session
@@ -50,7 +51,7 @@ class HouseAdminCreateRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def _clean_username(cls, value: str) -> str:
-        cleaned = value.strip()
+        cleaned = normalize_username(value)
         if not cleaned:
             raise ValueError("username cannot be empty")
         return cleaned
@@ -259,7 +260,10 @@ def _get_house_row(session: Session, external_id: str, *, display_name: str) -> 
 
 
 def _ensure_unique_username(session: Session, username: str) -> None:
-    existing = session.exec(select(User).where(User.username == username)).first()
+    normalized = normalize_username(username)
+    if not normalized:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Username cannot be empty")
+    existing = session.exec(select(User).where(User.username == normalized)).first()
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "Username already exists")
 
@@ -410,7 +414,7 @@ def create_house_admin(
     )
     house_row = _get_house_row(session, external_id, display_name=display_name)
 
-    username = payload.username.strip()
+    username = normalize_username(payload.username)
     _ensure_unique_username(session, username)
 
     user = create_user(session, username, payload.password, server_admin=False)

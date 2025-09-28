@@ -30,7 +30,7 @@ def test_init_auth_storage_seeds_admin(tmp_path, monkeypatch) -> None:
     db_path = Path(tmp_path) / "auth.sqlite3"
     db_url = f"sqlite:///{db_path}"
 
-    monkeypatch.setattr(settings, "INITIAL_ADMIN_USERNAME", "seed-admin")
+    monkeypatch.setattr(settings, "INITIAL_ADMIN_USERNAME", "Seed-Admin")
     monkeypatch.setattr(settings, "INITIAL_ADMIN_PASSWORD", "ultra-secret")
 
     database_module.reset_session_factory(db_url)
@@ -42,8 +42,9 @@ def test_init_auth_storage_seeds_admin(tmp_path, monkeypatch) -> None:
             assert admin.hashed_password != settings.INITIAL_ADMIN_PASSWORD
             assert verify_password("ultra-secret", admin.hashed_password)
 
-            guest = create_user(session, "guest-user", "guest-pass")
+            guest = create_user(session, "Guest-User", "guest-pass")
             assert guest.id is not None
+            assert guest.username == "guest-user"
             assert verify_password("guest-pass", guest.hashed_password)
     finally:
         database_module.reset_session_factory(original_url)
