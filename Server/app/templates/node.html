@@ -286,7 +286,22 @@ function setDot(online) {
   }
 }
 
-setDot({{ status_initial_online|tojson }});
+let lastKnownOnline = Boolean({{ status_initial_online|tojson }});
+let hasTriggeredOnlineRefresh = false;
+
+function handleOnlineStatusChange(isOnline) {
+  const online = Boolean(isOnline);
+  if (online && !lastKnownOnline && !hasTriggeredOnlineRefresh) {
+    hasTriggeredOnlineRefresh = true;
+    window.setTimeout(() => {
+      window.location.reload();
+    }, 250);
+  }
+  lastKnownOnline = online;
+}
+
+setDot(lastKnownOnline);
+handleOnlineStatusChange(lastKnownOnline);
 
 async function refreshStatus() {
   if (!statusDot) return;
@@ -294,10 +309,13 @@ async function refreshStatus() {
     const res = await fetch(STATUS_URL, { cache: 'no-store', credentials: 'same-origin' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    setDot(Boolean(data.online));
+    const isOnline = Boolean(data.online);
+    setDot(isOnline);
+    handleOnlineStatusChange(isOnline);
   } catch (err) {
     console.error('Failed to refresh node status', err);
     setDot(false);
+    handleOnlineStatusChange(false);
   }
 }
 
@@ -333,6 +351,7 @@ async function refreshState() {
     }
     // A successful state fetch indicates we received a snapshot message.
     setDot(true);
+    handleOnlineStatusChange(true);
     const limits = data.limits && typeof data.limits === 'object' ? data.limits : {};
     window.nodeBrightnessLimits = limits;
     const modules = data.modules && typeof data.modules === 'object' ? data.modules : {};
