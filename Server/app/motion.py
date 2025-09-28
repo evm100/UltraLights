@@ -196,7 +196,17 @@ class MotionManager:
         reason_code,
         properties=None,
     ) -> None:
-        if reason_code is None or int(reason_code) == 0:
+        clean_reason: Optional[int]
+        if reason_code is None:
+            clean_reason = None
+        else:
+            clean_reason = getattr(reason_code, "value", reason_code)
+            try:
+                clean_reason = int(clean_reason)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                clean_reason = None
+
+        if clean_reason in (None, 0):
             logger.info("MotionManager MQTT disconnected")
         else:
             logger.warning("MotionManager MQTT disconnected: %s", reason_code)
