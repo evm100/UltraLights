@@ -700,9 +700,30 @@ def record_account_credentials(
     if not username or not password:
         raise ValueError("username and password are required")
 
+    credential = _get_by_node_id(session, node_id)
     registration = _get_registration_by_node_id(session, node_id)
+
+    created_registration = False
     if registration is None:
-        raise KeyError("node registration not found")
+        if credential is None:
+            raise KeyError("node registration not found")
+
+        registration = NodeRegistration(
+            node_id=credential.node_id,
+            download_id=credential.download_id,
+            token_hash=credential.token_hash,
+            created_at=credential.created_at,
+            token_issued_at=credential.token_issued_at,
+            provisioned_at=credential.provisioned_at,
+            house_slug=credential.house_slug or None,
+            room_id=credential.room_id or None,
+            display_name=credential.display_name or credential.node_id,
+        )
+        registration.assigned_at = credential.created_at
+        session.add(registration)
+        session.commit()
+        session.refresh(registration)
+        created_registration = True
 
     user = _first_result(session.exec(select(User).where(User.username == username)))
     if user is None:
@@ -721,6 +742,97 @@ def record_account_credentials(
         )
         return None
 
+    membership_candidates = session.exec(
+        select(HouseMembership).where(HouseMembership.user_id == user.id)
+    ).all()
+
+    membership: Optional[HouseMembership] = None
+    if membership_candidates:
+        for candidate in membership_candidates:
+            if (
+                registration.assigned_house_id is not None
+                and candidate.house_id == registration.assigned_house_id
+            ):
+                membership = candidate
+                break
+        if membership is None:
+            membership = membership_candidates[0]
+
+    house_row: Optional[House] = None
+    if membership:
+        house_row = _first_result(
+            session.exec(select(House).where(House.id == membership.house_id))
+        )
+
+    previous_user_id = registration.assigned_user_id
+    previous_house_id = registration.assigned_house_id
+    previous_room_id = registration.room_id
+    previous_house_slug = (registration.house_slug or "").strip() or None
+
+    target_external_id: Optional[str] = None
+    target_slug: Optional[str] = None
+    if house_row and isinstance(house_row.external_id, str):
+        candidate_external = house_row.external_id.strip()
+        if candidate_external:
+            target_external_id = candidate_external
+            try:
+                _, candidate_slug = registry.require_house(candidate_external)
+            except KeyError:
+                target_slug = None
+            else:
+                target_slug = candidate_slug
+
+    existing_house, existing_room, existing_node = registry.find_node(node_id)
+    existing_external: Optional[str] = None
+    if existing_house is not None:
+        existing_external = registry.get_house_external_id(existing_house)
+
+    existing_modules: Optional[List[str]] = None
+    existing_name: Optional[str] = None
+    if isinstance(existing_node, dict):
+        raw_modules = existing_node.get("modules")
+        if isinstance(raw_modules, list):
+            cleaned_modules = [
+                str(entry).strip()
+                for entry in raw_modules
+                if isinstance(entry, str) and entry.strip()
+            ]
+            existing_modules = cleaned_modules or None
+        raw_name = existing_node.get("name")
+        if isinstance(raw_name, str) and raw_name.strip():
+            existing_name = raw_name.strip()
+
+    metadata = (
+        registration.hardware_metadata
+        if isinstance(registration.hardware_metadata, dict)
+        else {}
+    )
+    metadata_modules: Optional[List[str]] = None
+    modules_value = metadata.get("modules") if isinstance(metadata, dict) else None
+    if isinstance(modules_value, list):
+        cleaned_meta = [
+            str(entry).strip()
+            for entry in modules_value
+            if str(entry).strip()
+        ]
+        metadata_modules = cleaned_meta or None
+
+    should_clear_assignment = created_registration
+    if previous_user_id is not None and previous_user_id != user.id:
+        should_clear_assignment = True
+    if previous_room_id and previous_user_id != user.id:
+        should_clear_assignment = True
+    if membership and previous_house_id not in (None, membership.house_id):
+        should_clear_assignment = True
+    if target_slug and previous_house_slug and previous_house_slug != target_slug:
+        should_clear_assignment = True
+    if (
+        target_external_id
+        and existing_external
+        and existing_external != target_external_id
+    ):
+        should_clear_assignment = True
+
     hashed = hash_password(password)
     now = _now()
     changed = False
@@ -738,99 +850,72 @@ def record_account_credentials(
         registration.assigned_user_id = user.id
         changed = True
 
-    membership = _first_result(
-        session.exec(
-            select(HouseMembership).where(HouseMembership.user_id == user.id)
-        )
-    )
-    house_row: Optional[House] = None
-    if membership:
-        house_row = _first_result(
-            session.exec(select(House).where(House.id == membership.house_id))
-        )
     if membership and registration.assigned_house_id != membership.house_id:
         registration.assigned_house_id = membership.house_id
         changed = True
 
     credential_removed = False
 
-    if house_row and isinstance(house_row.external_id, str) and house_row.external_id:
+    if should_clear_assignment and credential is not None:
+        session.delete(credential)
+        credential_removed = True
+
+    display_name = registration.display_name or existing_name or registration.node_id
+    if not registration.display_name and display_name:
+        registration.display_name = display_name
+        changed = True
+
+    if target_slug and registration.house_slug != target_slug:
+        registration.house_slug = target_slug
+        changed = True
+
+    if should_clear_assignment and registration.room_id is not None:
+        registration.room_id = None
+        changed = True
+
+    if (
+        target_external_id
+        and (should_clear_assignment or registration.room_id is None or previous_room_id is None)
+    ):
+        if existing_external and existing_external != target_external_id:
+            try:
+                registry.remove_node(node_id)
+            except KeyError:
+                pass
+        modules = existing_modules or metadata_modules
         try:
-            _, house_slug = registry.require_house(house_row.external_id)
+            registry.move_node_to_unassigned(
+                node_id,
+                target_external_id,
+                name=display_name,
+                modules=modules,
+            )
         except KeyError:
-            house_slug = None
+            logging.warning(
+                "Unable to place node '%s' in house '%s'", node_id, target_external_id
+            )
+
+    if (
+        should_clear_assignment
+        or (target_external_id and existing_external and existing_external != target_external_id)
+    ):
+        try:
+            from .motion import motion_manager  # type: ignore
+        except Exception:  # pragma: no cover - defensive
+            motion_manager = None  # type: ignore[assignment]
         else:
-            existing_house, existing_room, existing_node = registry.find_node(node_id)
-            existing_modules: Optional[List[str]] = None
-            existing_name: Optional[str] = None
-            if isinstance(existing_node, dict):
-                raw_modules = existing_node.get("modules")
-                if isinstance(raw_modules, list):
-                    cleaned_modules = [
-                        str(entry).strip()
-                        for entry in raw_modules
-                        if isinstance(entry, str) and entry.strip()
-                    ]
-                    existing_modules = cleaned_modules or None
-                raw_name = existing_node.get("name")
-                if isinstance(raw_name, str) and raw_name.strip():
-                    existing_name = raw_name.strip()
+            motion_manager.forget_node(node_id)
 
-            relocate = False
-            if existing_house is None:
-                relocate = True
-            else:
-                existing_external = registry.get_house_external_id(existing_house)
-                if existing_external != house_row.external_id:
-                    relocate = True
-                    try:
-                        registry.remove_node(node_id)
-                    except KeyError:
-                        pass
+        try:
+            from .status_monitor import status_monitor  # type: ignore
+        except Exception:  # pragma: no cover - defensive
+            status_monitor = None  # type: ignore[assignment]
+        else:
+            status_monitor.forget(node_id)
 
-            metadata = (
-                registration.hardware_metadata
-                if isinstance(registration.hardware_metadata, dict)
-                else {}
-            )
-            metadata_modules: Optional[List[str]] = None
-            modules_value = metadata.get("modules") if isinstance(metadata, dict) else None
-            if isinstance(modules_value, list):
-                cleaned_meta = [
-                    str(entry).strip()
-                    for entry in modules_value
-                    if str(entry).strip()
-                ]
-                metadata_modules = cleaned_meta or None
-
-            modules = existing_modules or metadata_modules
-            display_name = (
-                registration.display_name
-                or existing_name
-                or registration.node_id
-            )
-
-            if relocate:
-                registry.move_node_to_unassigned(
-                    node_id,
-                    house_row.external_id,
-                    name=display_name,
-                    modules=modules,
-                )
-                if registration.room_id is not None:
-                    registration.room_id = None
-                    changed = True
-                credential = _get_by_node_id(session, node_id)
-                if credential is not None:
-                    session.delete(credential)
-                    credential_removed = True
-
-            if house_slug and registration.house_slug != house_slug:
-                registration.house_slug = house_slug
-                changed = True
-            if registration.assigned_at is None:
-                registration.assigned_at = now
-                changed = True
+    if registration.assigned_at is None or should_clear_assignment:
+        registration.assigned_at = now
+        changed = True
 
     if changed:
         session.add(registration)
