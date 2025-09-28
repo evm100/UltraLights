@@ -1068,12 +1068,47 @@ def delete_credentials(session: Session, node_id: str) -> None:
     if credential is None and registration is None:
         return
 
+    credential_removed = False
+    registration_changed = False
+
     if credential is not None:
         session.delete(credential)
-    if registration is not None:
-        session.delete(registration)
+        credential_removed = True
 
-    session.commit()
+    if registration is not None:
+        cleared = False
+
+        if registration.assigned_user_id is not None:
+            registration.assigned_user_id = None
+            cleared = True
+        if registration.assigned_house_id is not None:
+            registration.assigned_house_id = None
+            cleared = True
+        if registration.house_slug is not None:
+            registration.house_slug = None
+            cleared = True
+        if registration.room_id is not None:
+            registration.room_id = None
+            cleared = True
+        if registration.assigned_at is not None:
+            registration.assigned_at = None
+            cleared = True
+        if registration.account_username is not None:
+            registration.account_username = None
+            cleared = True
+        if registration.account_password_hash is not None:
+            registration.account_password_hash = None
+            cleared = True
+        if registration.account_credentials_received_at is not None:
+            registration.account_credentials_received_at = None
+            cleared = True
+
+        if cleared:
+            session.add(registration)
+            registration_changed = True
+
+    if credential_removed or registration_changed:
+        session.commit()
 
 
 def list_unprovisioned(session: Session) -> List[NodeCredential]:

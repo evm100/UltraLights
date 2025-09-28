@@ -260,3 +260,81 @@ def test_handle_credentials_recreates_missing_registration(account_env):
     assert room_entry is None
     assert isinstance(node_entry, dict)
     assert node_entry.get("id") == node_id
+
+def test_handle_credentials_after_deletion(account_env):
+    linker = AccountLinker()
+    with database.SessionLocal() as session:
+        legacy_owner = create_user(session, "legacy", "oldpass", server_admin=False)
+        new_owner = create_user(session, "return", "newpass", server_admin=False)
+        new_owner_id = new_owner.id
+
+        legacy_house = House(display_name="Legacy House", external_id="legacy-house")
+        session.add(legacy_house)
+        session.commit()
+        session.refresh(legacy_house)
+
+        membership_legacy = HouseMembership(
+            user_id=legacy_owner.id,
+            house_id=legacy_house.id,
+            role=HouseRole.ADMIN,
+        )
+        session.add(membership_legacy)
+        session.commit()
+
+        new_house_id = _create_membership(session, new_owner.id)
+
+        registration = _create_registration(session)
+        node_id = registration.node_id
+        registration.assigned_user_id = legacy_owner.id
+        registration.assigned_house_id = legacy_house.id
+        registration.house_slug = legacy_house.external_id
+        registration.room_id = "office"
+        registration.display_name = "Returning Node"
+        registration.assigned_at = registration.created_at
+        session.add(registration)
+        session.commit()
+        session.refresh(registration)
+
+        credential_row = NodeCredentialModel(
+            node_id=node_id,
+            house_slug=legacy_house.external_id,
+            room_id="office",
+            display_name="Returning Node",
+            download_id=registration.download_id,
+            token_hash=registration.token_hash,
+        )
+        session.add(credential_row)
+        session.commit()
+
+        node_credentials.delete_credentials(session, node_id)
+
+        refreshed = node_credentials.get_registration_by_node_id(session, node_id)
+        assert refreshed is not None
+        assert refreshed.assigned_user_id is None
+        assert refreshed.assigned_house_id is None
+        assert refreshed.house_slug is None
+        assert refreshed.room_id is None
+        assert refreshed.account_username is None
+        assert refreshed.account_password_hash is None
+        assert refreshed.account_credentials_received_at is None
+        assert refreshed.assigned_at is None
+        assert node_credentials.get_by_node_id(session, node_id) is None
+
+    result = linker.handle_credentials(node_id, "return", "newpass")
+    assert result is not None
+
+    with database.SessionLocal() as session:
+        reassigned = node_credentials.get_registration_by_node_id(session, node_id)
+        assert reassigned is not None
+        assert reassigned.assigned_user_id == new_owner_id
+        assert reassigned.assigned_house_id == new_house_id
+        assert reassigned.room_id is None
+        assert reassigned.house_slug == "test-house"
+        assert node_credentials.get_by_node_id(session, node_id) is None
+
+    house_entry, room_entry, node_entry = registry.find_node(node_id)
+    assert house_entry is not None
+    assert registry.get_house_external_id(house_entry) == "test-house"
+    assert room_entry is None
+    assert isinstance(node_entry, dict)
+    assert node_entry.get("id") == node_id
