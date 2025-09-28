@@ -99,20 +99,20 @@
         "name": "Example Room",
         "nodes": [
           {
-            "id": "2f3szzg1wvymixbdsn7kqq22fodfv4h",
-            "name": "Example Node",
-            "kind": "ultranode",
+            "id": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "name": "Demo Board",
             "modules": [
               "ws",
               "rgb",
               "white",
               "ota"
             ],
-            "download_id": "10441MBE4qzr8GJv4JZuOi4Hp1kGGVIRQiHPXYpv2GNByxPX"
+            "kind": "ultranode"
           }
         ]
       }
     ],
-    "external_id": "Nbsw0Ag8pZhZeKv6S3x8vYogkFp12ZGlgBulNEa3NeNEBTuwGzfhV87pXSApI7nI"
+    "external_id": "Nbsw0Ag8pZhZeKv6S3x8vYogkFp12ZGlgBulNEa3NeNEBTuwGzfhV87pXSApI7nI",
+    "nodes": []
   }
 ]

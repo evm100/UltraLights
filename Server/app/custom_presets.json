@@ -520,5 +520,220 @@
         ]
       }
     ]
+  },
+  "exampleHouse": {
+    "example-room": [
+      {
+        "source": "custom",
+        "id": "full-white",
+        "name": "Full White",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [],
+            "channel": 0,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [],
+            "channel": 1,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "ws"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "off",
+        "name": "Off",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "ws"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "rainbow",
+        "name": "Rainbow",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "modern_rainbow",
+            "brightness": 255,
+            "params": [],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "ws"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "uv",
+        "name": "UV",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "color_swell",
+            "brightness": 255,
+            "params": [
+              132.0,
+              0.0,
+              255.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "ws"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "half-bright",
+        "name": "Half Bright",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 100,
+            "params": [],
+            "channel": 0,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 100,
+            "params": [],
+            "channel": 1,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "ws"
+          }
+        ]
+      }
+    ]
   }
 }
