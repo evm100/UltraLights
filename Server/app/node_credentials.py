@@ -17,7 +17,7 @@ from .auth.models import (
     NodeRegistration,
     User,
 )
-from .auth.security import hash_password, verify_password
+from .auth.security import hash_password, normalize_username, verify_password
 
 
 @dataclass
@@ -695,7 +695,7 @@ def record_account_credentials(
 ) -> Optional[NodeRegistration]:
     """Persist account credentials observed from firmware."""
 
-    username = (username or "").strip()
+    username = normalize_username(username)
     password = password or ""
     if not username or not password:
         raise ValueError("username and password are required")

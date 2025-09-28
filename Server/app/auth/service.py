@@ -10,7 +10,7 @@ from .. import node_credentials, registry
 from ..config import settings
 from .. import database
 from .models import AuditLog, House, User
-from .security import hash_password
+from .security import hash_password, normalize_username
 
 
 def init_auth_storage() -> None:
@@ -34,7 +34,7 @@ def _seed_initial_admin(session: Session) -> None:
     if existing_admin:
         return
 
-    username = settings.INITIAL_ADMIN_USERNAME
+    username = normalize_username(settings.INITIAL_ADMIN_USERNAME)
     password = settings.INITIAL_ADMIN_PASSWORD
 
     if not username or not password:
@@ -113,8 +113,12 @@ def create_user(
 ) -> User:
     """Create a new ``User`` and return it."""
 
+    normalized_username = normalize_username(username)
+    if not normalized_username:
+        raise ValueError("username cannot be empty")
+
     user = User(
-        username=username,
+        username=normalized_username,
         hashed_password=hash_password(password),
         server_admin=server_admin,
     )

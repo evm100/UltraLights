@@ -10,7 +10,7 @@ from sqlmodel import Session, delete, select
 from .auth.access import AccessPolicy, HouseContext
 from .auth.dependencies import get_current_user
 from .auth.models import House, HouseMembership, HouseRole, RoomAccess, User
-from .auth.security import hash_password
+from .auth.security import hash_password, normalize_username
 from .auth.service import create_user
 from .database import get_session
 
@@ -96,7 +96,7 @@ class MembershipCreate(BaseModel):
     @field_validator("username")
     @classmethod
     def _clean_username(cls, value: str) -> str:
-        cleaned = value.strip()
+        cleaned = normalize_username(value)
         if not cleaned:
             raise ValueError("username cannot be empty")
         return cleaned
@@ -198,7 +198,10 @@ def _serialize_member(
 
 
 def _ensure_unique_username(session: Session, username: str) -> None:
-    existing = session.exec(select(User).where(User.username == username)).first()
+    normalized = normalize_username(username)
+    if not normalized:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Username cannot be empty")
+    existing = session.exec(select(User).where(User.username == normalized)).first()
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "Username already exists")
 
@@ -287,7 +290,7 @@ def create_member(
 ) -> HouseMember:
     house = _get_house(session, house_ctx.external_id)
     room_map = _room_lookup(house_ctx)
-    username = payload.username.strip()
+    username = normalize_username(payload.username)
     _ensure_unique_username(session, username)
 
     user = create_user(session, username, payload.password, server_admin=False)

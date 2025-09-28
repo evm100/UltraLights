@@ -68,12 +68,21 @@ def needs_rehash(hashed_password: str) -> bool:
     return _pwd_context.needs_update(hashed_password)
 
 
+def normalize_username(value: object) -> str:
+    """Normalize ``value`` into a lowercase username string."""
+
+    if value is None:
+        return ""
+    return str(value).strip().lower()
+
+
 def authenticate_user(session: Session, username: str, password: str) -> Optional[User]:
     """Return the ``User`` that matches ``username``/``password`` or ``None``."""
 
-    if not username or not password:
+    normalized = normalize_username(username)
+    if not normalized or not password:
         return None
-    statement = select(User).where(User.username == username)
+    statement = select(User).where(User.username == normalized)
     user = session.exec(statement).first()
     if not user:
         return None

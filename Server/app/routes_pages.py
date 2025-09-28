@@ -25,6 +25,7 @@ from .auth.security import (
     authenticate_user,
     clear_session_cookie,
     create_session_token,
+    normalize_username,
     set_session_cookie,
     verify_session_token,
 )
@@ -231,6 +232,7 @@ def login_submit(
     password: str = Form(...),
     session: Session = Depends(get_session),
 ):
+    normalized_username = normalize_username(username)
     limiter = get_login_rate_limiter()
     client_host = request.client.host if request.client else "unknown"
     state = limiter.status(client_host)
@@ -239,8 +241,12 @@ def login_submit(
             session,
             actor=None,
             action="login_rate_limited",
-            summary=f"Rate limit hit for {username}",
-            data={"username": username, "ip": client_host, "retry_after": state.retry_after},
+            summary=f"Rate limit hit for {normalized_username}",
+            data={
+                "username": normalized_username,
+                "ip": client_host,
+                "retry_after": state.retry_after,
+            },
             commit=True,
         )
         response = templates.TemplateResponse(
@@ -256,16 +262,16 @@ def login_submit(
         clear_session_cookie(response)
         return response
 
-    user = authenticate_user(session, username, password)
+    user = authenticate_user(session, normalized_username, password)
     if not user:
         failure_state = limiter.register_failure(client_host)
         record_audit_event(
             session,
             actor=None,
             action="login_failed",
-            summary=f"Failed login for {username}",
+            summary=f"Failed login for {normalized_username}",
             data={
-                "username": username,
+                "username": normalized_username,
                 "ip": client_host,
                 "rate_limited": failure_state.blocked,
                 "retry_after": failure_state.retry_after,
