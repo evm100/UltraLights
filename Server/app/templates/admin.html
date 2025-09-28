@@ -719,6 +719,7 @@ document.querySelectorAll('[data-node-unassign]').forEach((btn) => {
         btn.disabled = false;
       }, 1500);
       refreshStatuses();
+      location.reload();
     } catch (err) {
       console.error('Failed to unassign node', err);
       btn.disabled = false;
