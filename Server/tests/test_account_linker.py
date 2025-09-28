@@ -261,7 +261,6 @@ def test_handle_credentials_recreates_missing_registration(account_env):
     assert isinstance(node_entry, dict)
     assert node_entry.get("id") == node_id
 
-
 def test_handle_credentials_after_deletion(account_env):
     linker = AccountLinker()
     with database.SessionLocal() as session:
