@@ -11,3 +11,4 @@ SQLAlchemy>=1.4
 itsdangerous>=2.1.2,<3
 python-multipart
 httpx
+pyserial

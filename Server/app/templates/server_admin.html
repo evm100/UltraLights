@@ -202,7 +202,7 @@
           <h4 class="text-xl font-semibold">Available registrations</h4>
           <p class="text-xs opacity-70">New nodes appear here after generation.</p>
         </div>
-        <div class="space-y-2 text-xs" data-node-factory-list></div>
+        <div class="space-y-2 text-xs max-h-72 overflow-y-auto pr-1" data-node-factory-list></div>
       </div>
       <div class="glass rounded-xl p-4 space-y-4">
         <div>
@@ -580,29 +580,112 @@ function collectHardwarePayload(root) {
 
 function renderNodeList(container, available, assigned) {
   if (!container) return;
-  const parts = [];
+  container.innerHTML = '';
+
+  const addSectionHeader = (title) => {
+    const header = document.createElement('div');
+    header.className = 'font-semibold text-xs uppercase opacity-70';
+    header.textContent = title;
+    container.appendChild(header);
+  };
+
+  const renderEntry = (entry, isAssigned) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'border border-slate-800/60 rounded px-3 py-2 space-y-1';
+    wrapper.dataset.nodeEntry = entry.nodeId;
+
+    const title = document.createElement('div');
+    title.className = 'font-semibold';
+    title.textContent = entry.displayName || entry.nodeId;
+    wrapper.appendChild(title);
+
+    const idLine = document.createElement('div');
+    idLine.className = 'font-mono text-[11px] break-words opacity-70';
+    idLine.textContent = entry.nodeId;
+    wrapper.appendChild(idLine);
+
+    const metaParts = [];
+    if (entry.board) {
+      metaParts.push(entry.board.toUpperCase());
+    }
+    if (isAssigned) {
+      const location = [entry.houseSlug, entry.roomId].filter(Boolean).join(' / ') || 'Assigned';
+      metaParts.push(location);
+    } else {
+      metaParts.push('Unassigned');
+    }
+    const meta = document.createElement('div');
+    meta.className = 'text-[11px] opacity-70';
+    meta.textContent = metaParts.join(' • ');
+    wrapper.appendChild(meta);
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'mt-2 px-3 py-1 pill text-[11px] font-semibold bg-rose-600 hover:bg-rose-500 transition';
+    deleteButton.setAttribute('data-node-delete', entry.nodeId);
+    deleteButton.textContent = 'Delete';
+    wrapper.appendChild(deleteButton);
+
+    container.appendChild(wrapper);
+  };
+
   if (available.length) {
-    parts.push('<div class="font-semibold text-xs uppercase opacity-70">Available</div>');
-    available.forEach((entry) => {
-      parts.push(`<div class="border border-slate-800/60 rounded px-3 py-2"><div class="font-semibold">${entry.nodeId}</div><div class="opacity-70">${entry.board || 'board?'}</div></div>`);
-    });
+    addSectionHeader('Available');
+    available.forEach((entry) => renderEntry(entry, false));
   }
+
   if (assigned.length) {
-    parts.push('<div class="font-semibold text-xs uppercase opacity-70 mt-2">Assigned</div>');
-    assigned.forEach((entry) => {
-      const location = entry.house && entry.room ? `${entry.house} / ${entry.room}` : (entry.house || entry.room || '—');
-      parts.push(`<div class="border border-slate-800/60 rounded px-3 py-2"><div class="font-semibold">${entry.nodeId}</div><div class="opacity-70">${location}</div></div>`);
-    });
+    if (available.length) {
+      const spacer = document.createElement('div');
+      spacer.className = 'pt-1';
+      container.appendChild(spacer);
+    }
+    addSectionHeader('Assigned');
+    assigned.forEach((entry) => renderEntry(entry, true));
   }
-  if (!parts.length) {
-    parts.push('<div class="opacity-60">No registrations yet.</div>');
+
+  if (!available.length && !assigned.length) {
+    const empty = document.createElement('div');
+    empty.className = 'opacity-60';
+    empty.textContent = 'No registrations yet.';
+    container.appendChild(empty);
   }
-  container.innerHTML = parts.join('');
 }
 
 const nodeListContainer = document.querySelector('[data-node-factory-list]');
 if (nodeListContainer) {
   renderNodeList(nodeListContainer, nodeFactoryData.available || [], nodeFactoryData.assigned || []);
+}
+
+if (nodeListContainer) {
+  nodeListContainer.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-node-delete]');
+    if (!button) return;
+    const nodeId = button.getAttribute('data-node-delete');
+    if (!nodeId) return;
+    const confirmed = window.confirm(`Delete node registration "${nodeId}"? This cannot be undone.`);
+    if (!confirmed) return;
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Deleting…';
+    try {
+      const res = await fetch(`/api/server-admin/node-factory/registrations/${encodeURIComponent(nodeId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || `HTTP ${res.status}`);
+      }
+      await refreshNodeFactory();
+    } catch (err) {
+      console.error('Failed to delete node registration', err);
+      window.alert('Unable to delete node registration. Please try again.');
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  });
 }
 
 async function refreshNodeFactory() {
