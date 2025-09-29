@@ -525,49 +525,6 @@
     "example-room": [
       {
         "source": "custom",
-        "id": "full-white",
-        "name": "Full White",
-        "actions": [
-          {
-            "enabled": true,
-            "effect": "solid",
-            "brightness": 255,
-            "params": [],
-            "channel": 0,
-            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
-            "module": "white"
-          },
-          {
-            "enabled": true,
-            "effect": "solid",
-            "brightness": 255,
-            "params": [],
-            "channel": 1,
-            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
-            "module": "white"
-          },
-          {
-            "enabled": true,
-            "effect": "solid",
-            "brightness": 255,
-            "params": [
-              0.0,
-              0.0,
-              0.0
-            ],
-            "color": [
-              0,
-              0,
-              0
-            ],
-            "strip": 0,
-            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
-            "module": "ws"
-          }
-        ]
-      },
-      {
-        "source": "custom",
         "id": "off",
         "name": "Off",
         "actions": [
@@ -693,12 +650,55 @@
       },
       {
         "source": "custom",
-        "id": "half-bright",
-        "name": "Half Bright",
+        "id": "full",
+        "name": "Full",
         "actions": [
           {
             "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "channel": 0,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "channel": 1,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "white"
+          },
+          {
+            "enabled": true,
             "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "ws"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "1-2",
+        "name": "1/2",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "swell",
             "brightness": 100,
             "params": [],
             "channel": 0,
@@ -707,7 +707,7 @@
           },
           {
             "enabled": true,
-            "effect": "solid",
+            "effect": "swell",
             "brightness": 100,
             "params": [],
             "channel": 1,
