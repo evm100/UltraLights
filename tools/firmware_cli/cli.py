@@ -69,6 +69,44 @@ def _load_registrations(session) -> list[NodeRegistration]:
     return rows
 
 
+def _auto_detect_serial_port() -> str:
+    """Attempt to locate a single connected serial device."""
+
+    try:
+        from serial.tools import list_ports
+    except ImportError as exc:  # pragma: no cover - import guard
+        raise RuntimeError(
+            "pyserial is required for port auto-detection; install it or pass --port"
+        ) from exc
+
+    ports = [port for port in list_ports.comports() if port.device]
+    if not ports:
+        raise RuntimeError("No serial ports detected. Connect a device or pass --port.")
+
+    if len(ports) == 1:
+        return ports[0].device
+
+    usb_like = [p for p in ports if "usb" in p.device.lower() or "ttyacm" in p.device.lower()]
+    if len(usb_like) == 1:
+        return usb_like[0].device
+
+    lines = ["Multiple serial ports detected:"]
+    for entry in ports:
+        description = f" ({entry.description})" if entry.description else ""
+        lines.append(f"  - {entry.device}{description}")
+    lines.append("Specify the desired port with --port.")
+    raise RuntimeError("\n".join(lines))
+
+
+def _resolve_serial_port(port_arg: Optional[str]) -> str:
+    if port_arg:
+        return port_arg
+
+    port = _auto_detect_serial_port()
+    print(f"Auto-detected serial port: {port}")
+    return port
+
+
 def _common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--database-url",
@@ -112,7 +150,10 @@ def _add_flash_parser(subparsers) -> argparse.ArgumentParser:
         help="Build, flash, and archive firmware for a node",
     )
     flash.add_argument("node_id", help="Node identifier to flash")
-    flash.add_argument("--port", required=True, help="Serial port passed to idf.py")
+    flash.add_argument(
+        "--port",
+        help="Serial port passed to idf.py (auto-detected when omitted)",
+    )
     flash.add_argument(
         "--firmware-version",
         required=True,
@@ -200,11 +241,17 @@ def _handle_build(args, firmware_dir: Path, archive_dir: Path) -> int:
 def _handle_flash(args, firmware_dir: Path, archive_dir: Path) -> int:
     with database.SessionLocal() as session:
         try:
+            try:
+                port = _resolve_serial_port(args.port)
+            except RuntimeError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+
             metadata, board = _registration_metadata(session, args.node_id)
             result = node_builder.first_time_flash(
                 session,
                 args.node_id,
-                port=args.port,
+                port=port,
                 metadata=metadata,
                 board=board,
                 ota_token=None,
@@ -227,7 +274,7 @@ def _handle_flash(args, firmware_dir: Path, archive_dir: Path) -> int:
             firmware_dir=firmware_dir,
             archive_root=archive_dir,
         )
-        print(f"Flashed {result.node_id} ({args.port}) -> {artifact.manifest_path}")
+        print(f"Flashed {result.node_id} ({port}) -> {artifact.manifest_path}")
         print(f"Binary SHA256: {artifact.sha256_hex}")
         if result.project_configs:
             print("Updated configuration files:")

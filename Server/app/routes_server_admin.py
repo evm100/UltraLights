@@ -615,3 +615,37 @@ def create_node_factory_registrations(
     return NodeFactoryCreateResponse(nodes=created_nodes)
 
 
+@router.delete(
+    "/node-factory/registrations/{node_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_node_factory_registration(
+    node_id: str,
+    current_user: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> Response:
+    registration = node_credentials.get_registration_by_node_id(session, node_id)
+    if registration is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registration not found")
+
+    download_id = registration.download_id
+    house_slug = registration.house_slug
+    room_id = registration.room_id
+
+    session.delete(registration)
+    record_audit_event(
+        session,
+        actor=current_user,
+        action="node_registration_deleted",
+        summary=f"Deleted node registration {node_id}",
+        data={
+            "node_id": node_id,
+            "download_id": download_id,
+            "house_slug": house_slug,
+            "room_id": room_id,
+        },
+    )
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
