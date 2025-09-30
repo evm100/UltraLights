@@ -18,12 +18,27 @@ server documentation whenever you onboard a new controller.
    `UltraNodeV5/sdkconfig.defaults` and your OTA artifact paths.
 3. Build and flash `UltraNodeV5`, then upload the binary to the OTA location
    referenced in the config.
-4. Reload the server to pick up registry changes and confirm the node reports in
+4. After the installer completes captive portal provisioning, confirm the admin
+   UI shows an issued MQTT client certificate for the node. The server mints it
+   from the UltraLights CA and the broker maps the certificate subject back to
+   the node ID.
+5. Reload the server to pick up registry changes and confirm the node reports in
    under the expected `ul/<node-id>/...` topics.
 
 Following the checklist keeps the registry, firmware and OTA distribution in
 sync so devices can report status and accept updates immediately after they boot
 on the network.
+
+### Certificate lifecycle
+
+Node certificates now follow the same lifecycle as OTA bearer tokens. When you
+generate IDs in the Node factory or CLI nothing is issued yet; the certificate is
+created the first time the captive portal exchanges credentials. The server
+stores the bundle metadata and exposes the fingerprint in the admin UI so you can
+audit who last rotated the identity. If a certificate is lost or compromised,
+use the admin tooling to revoke it (updating the Mosquitto CRL) and trigger the
+provisioning portal again so the node receives a fresh key pair—no firmware
+rebuild is required.
 
 ## Firmware build prerequisites
 
