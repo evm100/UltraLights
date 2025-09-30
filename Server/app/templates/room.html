@@ -43,7 +43,7 @@
   <div class="glass rounded-xl p-4">
     <div class="motion-schedule-grid" id="motionScheduleGrid"></div>
   </div>
-  <div class="glass rounded-xl p-4 mt-4">
+  <div class="glass rounded-xl p-4 mt-4 motion-schedule-controls" id="motionScheduleControls">
     <div class="flex flex-wrap gap-4 items-end">
       <label class="motion-field">
         <span class="motion-field-label">From</span>
@@ -191,6 +191,7 @@ if (addNodeButton) {
     const presetSelect = document.getElementById('motionSchedulePreset');
     const applyButton = document.getElementById('motionScheduleApply');
     const saveButton = document.getElementById('motionScheduleSave');
+    const controlsSection = document.getElementById('motionScheduleControls');
     const statusEl = document.getElementById('motionScheduleStatus');
     const saveUrl = scheduleContainer.dataset.saveUrl;
     let legendContainer = scheduleContainer.querySelector('#motionLegendList');
@@ -211,6 +212,27 @@ if (addNodeButton) {
     let statusTimeout = null;
     let dirty = false;
     let selectedSlot = 0;
+    let controlsHighlightTimeout = null;
+    const focusControls = () => {
+      if (controlsSection) {
+        controlsSection.scrollIntoView({behavior: 'smooth', block: 'center'});
+        controlsSection.classList.add('motion-schedule-controls--active');
+        if (controlsHighlightTimeout) {
+          clearTimeout(controlsHighlightTimeout);
+        }
+        controlsHighlightTimeout = setTimeout(() => {
+          controlsSection.classList.remove('motion-schedule-controls--active');
+          controlsHighlightTimeout = null;
+        }, 1600);
+      }
+      if (startSelect) {
+        try {
+          startSelect.focus({preventScroll: true});
+        } catch (err) {
+          startSelect.focus();
+        }
+      }
+    };
     const beforeUnloadHandler = (event) => {
       event.preventDefault();
       event.returnValue = '';
@@ -744,6 +766,7 @@ if (addNodeButton) {
         const idx = parseInt(slot.dataset.slot || '', 10);
         if (Number.isInteger(idx)) {
           updateSelection(idx);
+          focusControls();
         }
       });
     });
