@@ -117,6 +117,8 @@ typedef struct {
   char password[65];
   char user[65];
   char user_password[129];
+  char wifi_username[65];
+  char wifi_user_password[129];
 } ul_wifi_credentials_t;
 
 static inline bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
@@ -126,6 +128,8 @@ static inline bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
   out->password[0] = '\0';
   out->user[0] = '\0';
   out->user_password[0] = '\0';
+  out->wifi_username[0] = '\0';
+  out->wifi_user_password[0] = '\0';
   return false;
 }
 

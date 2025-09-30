@@ -70,6 +70,12 @@ input[type="range"]::-webkit-slider-thumb {
 }
 label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .25rem; }
 
+@property --glow-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .button {
   border: 1px solid var(--card-border);
   background: linear-gradient(180deg, rgba(124,58,237,.7), rgba(124,58,237,.5));

@@ -109,6 +109,18 @@
             ],
             "kind": "ultranode",
             "download_id": "HArhhbWUZd7TvSNlqp9Idete7GebLbJpGiD1g8M9TFM0FtTF"
+          },
+          {
+            "id": "bamy85btphl8at81kcveeq7d4wgkc5r",
+            "name": "Demo Board Online",
+            "modules": [
+              "ws",
+              "rgb",
+              "white",
+              "ota"
+            ],
+            "kind": "ultranode",
+            "download_id": "vUY3oTKpGPuXyVDpk56Esf4uzvDi2Cm0G5voI5G2lx18lEUW"
           }
         ]
       }
