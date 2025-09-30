@@ -88,6 +88,13 @@ The broker is configured with Let's Encrypt certificates at
 connections. Clients rely on the system CA bundle, so additional certificate
 paths are unnecessary unless a custom trust store is desired.
 
+When migrating to mutual TLS, populate `BROKER_TLS_CA_FILE` with the
+UltraLights root CA and provide `BROKER_TLS_CERTFILE`/`BROKER_TLS_KEYFILE` so the
+server authenticates with its own client certificate. This identity is separate
+from the per-node certificates issued through the provisioning portal.
+Coordinate CA enrolment with the Mosquitto runbook in `docs/mqtt-broker-tls.md`
+so the broker trusts the same CA hierarchy used by the firmware.
+
 ## Operational notes
 
 - Authentication and administrative actions are persisted to the `audit_logs`
@@ -101,3 +108,7 @@ paths are unnecessary unless a custom trust store is desired.
   environment so it connects over MQTTs when enabled. If no terminal emulator is
   available, the script falls back to a background `mosquitto_sub` subscriber so
   message logging continues without blocking the server startup.
+- Track per-node certificate rotations in the operations log. Revoke the old
+  certificate in Mosquitto, update any ACL entries that reference the certificate
+  subject, and re-run the provisioning portal to deliver the new bundle to the
+  node.

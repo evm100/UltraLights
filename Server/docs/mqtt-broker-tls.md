@@ -70,3 +70,65 @@ complete.  With this configuration the broker presents the same certificate the
 application expects, negotiates TLS 1.2 (matching the default client pinning),
 and still allows an unencrypted listener on port 1883 for a short-term
 compatibility window.
+
+## Mutual TLS rollout
+
+Once every device runs firmware that supports client certificates you can lock
+Mosquitto down to mutual TLS. The high-level steps are:
+
+1. Issue a private certificate authority (CA) dedicated to UltraLights. Store
+   the CA key offline and publish the root certificate to the provisioning
+   service.
+2. Replace the broker listener stanza with one that enforces client
+   certificates and references the CA bundle:
+
+   ```conf
+   listener 8883 0.0.0.0
+   protocol mqtt
+
+   cafile /etc/mosquitto/certs/ultralights-ca.pem
+   certfile /etc/mosquitto/certs/broker-fullchain.pem
+   keyfile  /etc/mosquitto/certs/broker-key.pem
+
+   require_certificate true
+   use_identity_as_username true
+   tls_version tlsv1.2
+   ```
+
+   With `use_identity_as_username` Mosquitto maps the client certificate's
+   Common Name to the MQTT username, allowing the server ACLs to target nodes by
+   CN without maintaining a password file.
+
+3. Update the server deployment (`Server/.env`) to point
+   `BROKER_TLS_CA_FILE` at the new CA and provide the UltraLights CA to the
+   provisioning portal so it can sign per-node certificates.
+
+### Issuing node certificates
+
+When a node authenticates during captive portal provisioning the server should
+return a JSON payload containing base64-encoded fields `mqtt_client_certificate`
+and `mqtt_client_key`. The firmware decodes and persists those blobs in NVS,
+injecting them into the MQTT client on startup. Keep the private key encrypted
+at rest on the server and only deliver the encrypted blob to the node.
+
+Recommended issuance procedure:
+
+1. Generate a new key pair per node (for example using `openssl ecparam -genkey`)
+   and encrypt the private key with an installation-specific wrapping key.
+2. Issue a client certificate signed by the UltraLights CA with the node ID as
+   the certificate subject/Common Name.
+3. Base64-encode both blobs before returning them through the provisioning API.
+
+### Rotating per-node identities
+
+To rotate a compromised or expiring identity:
+
+1. Revoke the old certificate by adding it to Mosquitto's CRL (`crlfile` in the
+   listener configuration) and reloading the broker.
+2. Trigger the provisioning portal for the affected node. Once the owner
+   re-authenticates, issue a fresh key pair and certificate bundle.
+3. The firmware overwrites the stored blobs and will present the new identity on
+   the next MQTT reconnect.
+
+Document rotations in the operations log so downstream services know when a
+node identity changed and can audit retained messages or ACLs accordingly.

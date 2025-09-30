@@ -50,6 +50,10 @@ static bool s_account_credentials_sent = false;
 
 #if CONFIG_UL_MQTT_USE_TLS
 static const time_t kUlMqttMinValidTime = 1700000000;
+static uint8_t s_client_cert[CONFIG_UL_MQTT_CLIENT_CERT_MAX_LEN];
+static size_t s_client_cert_len = 0;
+static uint8_t s_client_key[CONFIG_UL_MQTT_CLIENT_KEY_MAX_LEN];
+static size_t s_client_key_len = 0;
 #endif
 
 static esp_mqtt_transport_t transport_from_uri(const char *uri, bool tls_enabled) {
@@ -1326,16 +1330,64 @@ void ul_mqtt_start(void) {
 
   // MQTT runs at modest priority. On the ESP32-C3 all tasks share the
   // single core, so no explicit core assignment is needed.
-  const char *mqtt_username = CONFIG_UL_MQTT_USER;
-  const char *mqtt_secret = CONFIG_UL_MQTT_PASS;
+  const char *mqtt_username = NULL;
+  const char *mqtt_secret = NULL;
+
+#if CONFIG_UL_MQTT_LEGACY_USERPASS_COMPAT
+  mqtt_username = CONFIG_UL_MQTT_USER;
+  mqtt_secret = CONFIG_UL_MQTT_PASS;
+#endif
+
+#if CONFIG_UL_MQTT_USE_TLS
+  ul_wifi_credentials_t stored = {0};
+  bool creds_loaded = ul_wifi_credentials_load(&stored);
+  (void)creds_loaded;
+  s_client_cert_len = 0;
+  s_client_key_len = 0;
+  if (stored.mqtt_client_cert_len > 0) {
+    size_t copy_len = stored.mqtt_client_cert_len;
+    if (copy_len > sizeof(s_client_cert))
+      copy_len = sizeof(s_client_cert);
+    memcpy(s_client_cert, stored.mqtt_client_cert, copy_len);
+    s_client_cert_len = copy_len;
+  }
+  if (stored.mqtt_client_key_len > 0) {
+    size_t copy_len = stored.mqtt_client_key_len;
+    if (copy_len > sizeof(s_client_key))
+      copy_len = sizeof(s_client_key);
+    memcpy(s_client_key, stored.mqtt_client_key, copy_len);
+    s_client_key_len = copy_len;
+  }
+
+#if CONFIG_UL_MQTT_REQUIRE_CLIENT_CERT
+  if (s_client_cert_len == 0 || s_client_key_len == 0) {
+    ESP_LOGE(TAG, "MQTT client certificate/key not provisioned; deferring start");
+    ul_health_notify_mqtt(false);
+    schedule_mqtt_retry();
+    return;
+  }
+#endif
+#endif
 
   esp_mqtt_client_config_t cfg = {
       .broker.address.uri = CONFIG_UL_MQTT_URI,
-      .credentials.username = mqtt_username,
-      .credentials.authentication.password = mqtt_secret,
       .task.priority = 5,
       .task.stack_size = 6144,
   };
+
+  cfg.credentials.username = mqtt_username;
+  cfg.credentials.authentication.password = mqtt_secret;
+
+#if CONFIG_UL_MQTT_USE_TLS
+  if (s_client_cert_len > 0) {
+    cfg.credentials.authentication.certificate = (const char *)s_client_cert;
+    cfg.credentials.authentication.certificate_len = s_client_cert_len;
+  }
+  if (s_client_key_len > 0) {
+    cfg.credentials.authentication.key = (const char *)s_client_key;
+    cfg.credentials.authentication.key_len = s_client_key_len;
+  }
+#endif
 
   if (CONFIG_UL_MQTT_CONNECT_TIMEOUT_MS > 0)
     cfg.network.timeout_ms = CONFIG_UL_MQTT_CONNECT_TIMEOUT_MS;
