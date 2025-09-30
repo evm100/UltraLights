@@ -404,7 +404,7 @@ static esp_err_t provision_handler(httpd_req_t *req) {
           : "";
   wifi_auth_mode_t authmode = WIFI_AUTH_OPEN;
   bool authmode_found = lookup_authmode_for_ssid(ssid->valuestring, &authmode);
-  bool network_requires_username =
+  bool scan_indicated_enterprise =
       authmode_found && authmode_requires_username(authmode);
   if (!username || !cJSON_IsString(username) || username->valuestring[0] == '\0') {
     cJSON_Delete(root);
@@ -425,16 +425,23 @@ static esp_err_t provision_handler(httpd_req_t *req) {
       (wifi_user_password_json && cJSON_IsString(wifi_user_password_json))
           ? wifi_user_password_json->valuestring
           : "";
+
+  bool client_requested_enterprise =
+      wifi_user_str[0] != '\0' || wifi_user_pass_str[0] != '\0';
+  bool network_requires_username = scan_indicated_enterprise || client_requested_enterprise;
+
   if (network_requires_username) {
-    if (wifi_user_str[0] == '\0') {
-      cJSON_Delete(root);
-      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                                 "missing wifi username");
-    }
-    if (wifi_user_pass_str[0] == '\0') {
-      cJSON_Delete(root);
-      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                                 "missing wifi user password");
+    if (wifi_user_str[0] == '\0' || wifi_user_pass_str[0] == '\0') {
+      if (client_requested_enterprise) {
+        cJSON_Delete(root);
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                   wifi_user_str[0] == '\0' ? "missing wifi username"
+                                                            : "missing wifi user password");
+      }
+      ESP_LOGW(TAG,
+               "Enterprise network '%s' missing Wi-Fi user credentials; treating as PSK",
+               ssid->valuestring);
+      network_requires_username = false;
     }
   }
 
