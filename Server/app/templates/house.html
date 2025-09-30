@@ -60,7 +60,7 @@
 {% if house.rooms %}
 <div class="grid md:grid-cols-3 gap-4" data-room-grid data-can-manage="{{ 'true' if can_manage_house else 'false' }}">
   {% for r in house.rooms %}
-  <a href="/house/{{ house_public_id }}/room/{{ r.id }}" data-room-card data-room-id="{{ r.id }}" class="glass rounded-xl p-4 block hover:ring-2 hover:ring-indigo-400{% if can_manage_house %} cursor-move{% endif %}">
+  <a href="/house/{{ house_public_id }}/room/{{ r.id }}" data-room-card data-room-id="{{ r.id }}" class="glass rounded-xl p-4 block hover:ring-2 hover:ring-indigo-400 animated-border{% if can_manage_house %} cursor-move{% endif %}">
     <div class="text-xl font-semibold">{{ r.name }}</div>
     <div class="opacity-60 text-xs mt-2">ID: {{ r.id }}</div>
     <div class="text-sm mt-2">{{ r.nodes|length }} node{% if r.nodes|length != 1 %}s{% endif %}</div>
