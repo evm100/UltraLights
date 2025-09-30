@@ -232,7 +232,7 @@ if (container) {
       wrapper.dataset.custom = isCustomPreset(preset) ? 'true' : 'false';
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'preset preset-button glow-button rounded-lg';
+      button.className = 'preset preset-button glass px-4 py-2 rounded-lg hover:ring-2 hover:ring-indigo-400';
       button.dataset.presetId = id;
       button.dataset.custom = wrapper.dataset.custom;
       button.textContent = name;
