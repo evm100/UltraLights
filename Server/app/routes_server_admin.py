@@ -198,6 +198,15 @@ class NodeFactoryCreatedNode(BaseModel):
     ota_token: str = Field(..., alias="otaToken")
     manifest_url: str = Field(..., alias="manifestUrl")
     metadata: Dict[str, Any]
+    certificate_fingerprint: Optional[str] = Field(
+        default=None, alias="certificateFingerprint"
+    )
+    certificate_path: Optional[str] = Field(
+        default=None, alias="certificatePath"
+    )
+    private_key_available: bool = Field(
+        default=False, alias="privateKeyAvailable"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -214,6 +223,15 @@ class NodeFactoryRegistrationInfo(BaseModel):
     assigned: bool
     house_slug: Optional[str] = Field(default=None, alias="houseSlug")
     room_id: Optional[str] = Field(default=None, alias="roomId")
+    certificate_fingerprint: Optional[str] = Field(
+        default=None, alias="certificateFingerprint"
+    )
+    certificate_path: Optional[str] = Field(
+        default=None, alias="certificatePath"
+    )
+    private_key_available: bool = Field(
+        default=False, alias="privateKeyAvailable"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -236,6 +254,9 @@ def _registration_summary(registration: NodeRegistration) -> NodeFactoryRegistra
         if isinstance(raw_board, str):
             board = raw_board
     assigned = bool(registration.room_id)
+    certificate_fingerprint = registration.certificate_fingerprint
+    certificate_path = registration.certificate_pem_path
+    private_key_available = bool(registration.private_key_pem_path)
     return NodeFactoryRegistrationInfo(
         node_id=registration.node_id,
         download_id=registration.download_id,
@@ -244,6 +265,9 @@ def _registration_summary(registration: NodeRegistration) -> NodeFactoryRegistra
         assigned=assigned,
         house_slug=registration.house_slug,
         room_id=registration.room_id,
+        certificate_fingerprint=certificate_fingerprint,
+        certificate_path=certificate_path,
+        private_key_available=private_key_available,
     )
 
 
@@ -586,6 +610,9 @@ def create_node_factory_registrations(
             session.add(registration)
 
         manifest_url = f"{settings.PUBLIC_BASE}/firmware/{registration.download_id}/manifest.json"
+        certificate_fingerprint = registration.certificate_fingerprint
+        certificate_path = registration.certificate_pem_path
+        private_key_available = bool(registration.private_key_pem_path)
         created_nodes.append(
             NodeFactoryCreatedNode(
                 nodeId=registration.node_id,
@@ -593,6 +620,9 @@ def create_node_factory_registrations(
                 otaToken=entry.plaintext_token,
                 manifestUrl=manifest_url,
                 metadata=metadata.copy(),
+                certificateFingerprint=certificate_fingerprint,
+                certificatePath=certificate_path,
+                privateKeyAvailable=private_key_available,
             )
         )
         node_ids.append(registration.node_id)

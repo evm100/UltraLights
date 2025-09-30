@@ -1,7 +1,7 @@
 """Service helpers for authentication storage."""
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import inspect, text
 from sqlmodel import SQLModel, Session, select
@@ -22,6 +22,7 @@ def init_auth_storage() -> None:
     with database.SessionLocal() as session:
         _seed_initial_admin(session)
         _sync_registry_houses(session)
+        node_credentials.migrate_credentials_to_registrations(session)
         _sync_registry_nodes(session)
 
 
@@ -75,26 +76,34 @@ def _ensure_node_registration_columns() -> None:
     """Backfill newly added ``node_registrations`` columns if missing."""
 
     inspector = inspect(database.engine)
-    try:
-        columns = {
-            column_info["name"] for column_info in inspector.get_columns("node_registrations")
-        }
-    except Exception:  # pragma: no cover - table may not exist yet
-        return
+    required: Dict[str, Dict[str, str]] = {
+        "node_registrations": {
+            "account_username": "ALTER TABLE node_registrations ADD COLUMN account_username VARCHAR(64)",
+            "account_password_hash": "ALTER TABLE node_registrations ADD COLUMN account_password_hash VARCHAR(255)",
+            "account_credentials_received_at": "ALTER TABLE node_registrations ADD COLUMN account_credentials_received_at TIMESTAMP",
+            "certificate_fingerprint": "ALTER TABLE node_registrations ADD COLUMN certificate_fingerprint VARCHAR(128)",
+            "certificate_pem_path": "ALTER TABLE node_registrations ADD COLUMN certificate_pem_path VARCHAR(255)",
+            "private_key_pem_path": "ALTER TABLE node_registrations ADD COLUMN private_key_pem_path VARCHAR(255)",
+        },
+        "node_credentials": {
+            "certificate_fingerprint": "ALTER TABLE node_credentials ADD COLUMN certificate_fingerprint VARCHAR(128)",
+            "certificate_pem_path": "ALTER TABLE node_credentials ADD COLUMN certificate_pem_path VARCHAR(255)",
+            "private_key_pem_path": "ALTER TABLE node_credentials ADD COLUMN private_key_pem_path VARCHAR(255)",
+        },
+    }
 
-    statements = []
-    if "account_username" not in columns:
-        statements.append(
-            "ALTER TABLE node_registrations ADD COLUMN account_username VARCHAR(64)"
-        )
-    if "account_password_hash" not in columns:
-        statements.append(
-            "ALTER TABLE node_registrations ADD COLUMN account_password_hash VARCHAR(255)"
-        )
-    if "account_credentials_received_at" not in columns:
-        statements.append(
-            "ALTER TABLE node_registrations ADD COLUMN account_credentials_received_at TIMESTAMP"
-        )
+    statements: List[str] = []
+    for table_name, column_statements in required.items():
+        try:
+            existing = {
+                column_info["name"]
+                for column_info in inspector.get_columns(table_name)
+            }
+        except Exception:  # pragma: no cover - table may not exist yet
+            continue
+        for column_name, statement in column_statements.items():
+            if column_name not in existing:
+                statements.append(statement)
 
     if not statements:
         return

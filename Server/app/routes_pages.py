@@ -741,6 +741,9 @@ def server_admin_panel(
             "assigned": registration.assigned_at is not None,
             "house": registration.house_slug,
             "room": registration.room_id,
+            "certificateFingerprint": registration.certificate_fingerprint,
+            "certificatePath": registration.certificate_pem_path,
+            "privateKeyAvailable": bool(registration.private_key_pem_path),
         }
 
     node_factory_context = {

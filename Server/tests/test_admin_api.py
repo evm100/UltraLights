@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -266,36 +266,17 @@ def test_api_add_node_generates_opaque_id(monkeypatch, tmp_path, admin_user_sess
     monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
     monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
 
-    user, session = admin_user_session
-    result = routes_api.api_add_node(
-        "del-sur",
-        "kitchen",
-        {"name": "Kitchen Node"},
-        current_user=user,
-        session=session,
-    )
+    with pytest.raises(HTTPException) as excinfo:
+        routes_api.api_add_node(
+            "del-sur",
+            "kitchen",
+            {"name": "Kitchen Node"},
+            current_user=admin_user_session[0],
+            session=admin_user_session[1],
+        )
 
-    assert result["ok"] is True
-    node_id = result["node"]["id"]
-    assert len(node_id) == registry.MAX_NODE_ID_LENGTH
-    assert all(ch in registry.NODE_ID_ALPHABET for ch in node_id)
-    assert node_id != "del-sur-kitchen-node"
-
-    stored_nodes = settings.DEVICE_REGISTRY[0]["rooms"][0]["nodes"]
-    assert stored_nodes[0]["id"] == node_id
-
-    credentials = result["credentials"]
-    download_id = credentials["downloadId"]
-    assert download_id
-    assert len(download_id) == registry.DEFAULT_DOWNLOAD_ID_LENGTH
-    assert all(ch in registry.DOWNLOAD_ID_ALPHABET for ch in download_id)
-    assert credentials["manifestUrl"].endswith(
-        f"/firmware/{download_id}/manifest"
-    )
-    assert credentials["binaryUrl"].endswith(
-        f"/firmware/{download_id}/latest.bin"
-    )
-    assert stored_nodes[0][registry.NODE_DOWNLOAD_ID_KEY] == download_id
+    assert excinfo.value.status_code == status.HTTP_501_NOT_IMPLEMENTED
+    assert "pre-registered" in str(excinfo.value.detail)
 
 
 def test_api_add_node_duplicate_name(monkeypatch, tmp_path, admin_user_session):
@@ -331,8 +312,8 @@ def test_api_add_node_duplicate_name(monkeypatch, tmp_path, admin_user_session):
             session=admin_user_session[1],
         )
 
-    assert excinfo.value.status_code == 400
-    assert "already exists" in str(excinfo.value.detail)
+    assert excinfo.value.status_code == status.HTTP_501_NOT_IMPLEMENTED
+    assert "pre-registered" in str(excinfo.value.detail)
 
 
 def test_api_add_node_allows_long_display_name(monkeypatch, tmp_path, admin_user_session):
@@ -352,18 +333,17 @@ def test_api_add_node_allows_long_display_name(monkeypatch, tmp_path, admin_user
     monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
     monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
 
-    result = routes_api.api_add_node(
-        "del-sur",
-        "kitchen",
-        {"name": "x" * 50},
-        current_user=admin_user_session[0],
-        session=admin_user_session[1],
-    )
+    with pytest.raises(HTTPException) as excinfo:
+        routes_api.api_add_node(
+            "del-sur",
+            "kitchen",
+            {"name": "x" * 50},
+            current_user=admin_user_session[0],
+            session=admin_user_session[1],
+        )
 
-    assert result["ok"] is True
-    node_id = result["node"]["id"]
-    assert len(node_id) == registry.MAX_NODE_ID_LENGTH
-    assert all(ch in registry.NODE_ID_ALPHABET for ch in node_id)
+    assert excinfo.value.status_code == status.HTTP_501_NOT_IMPLEMENTED
+    assert "pre-registered" in str(excinfo.value.detail)
 
 
 def test_api_set_node_name(monkeypatch, tmp_path, admin_user_session):
