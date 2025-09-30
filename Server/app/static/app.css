@@ -97,93 +97,67 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
 .glow-button {
   --glow-button-border: 3px;
   --glow-button-speed: 6s;
-  --glow-button-radius: 9999px;
+  --glow-button-radius: 18px;
   --glow-button-hue-a: 280;
   --glow-button-hue-b: 200;
   --glow-button-hue-c: 140;
-  --glow-button-fill: linear-gradient(180deg, rgba(17, 23, 40, 0.95), rgba(11, 15, 28, 0.92));
+  --glow-button-fill: #101827;
   --glow-button-text: #e8ecff;
+  --glow-angle: 0deg;
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: .45rem;
-  padding: var(--glow-button-padding-y, 0.6rem) var(--glow-button-padding-x, 1.35rem);
-  border: none;
+  gap: .4rem;
+  padding: var(--glow-button-padding-y, 0.55rem) var(--glow-button-padding-x, 1.1rem);
+  border: var(--glow-button-border) solid transparent;
   border-radius: var(--glow-button-radius);
-  background: var(--glow-button-fill);
-  color: var(--glow-button-text);
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-  isolation: isolate;
-  overflow: hidden;
-  min-height: 2.5rem;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 30px rgba(15, 23, 42, 0.35);
-  transition: filter .18s ease, transform .12s ease, box-shadow .18s ease;
-}
-
-.glow-button::before,
-.glow-button::after {
-  content: "";
-  position: absolute;
-  border-radius: inherit;
-  pointer-events: none;
-}
-
-.glow-button::before {
-  inset: 0;
   background:
+    linear-gradient(var(--glow-button-fill), var(--glow-button-fill)) padding-box,
     conic-gradient(
-      from 0turn,
+      from var(--glow-angle),
       hsl(var(--glow-button-hue-a) 90% 60%),
       hsl(var(--glow-button-hue-b) 90% 60%),
       hsl(var(--glow-button-hue-c) 90% 60%),
       hsl(var(--glow-button-hue-a) 90% 60%)
-    );
-  padding: var(--glow-button-border);
-  -webkit-mask:
-    radial-gradient(closest-side, transparent calc(100% - (var(--glow-button-border) + 1px)), #000 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-          mask:
-    radial-gradient(closest-side, transparent calc(100% - (var(--glow-button-border) + 1px)), #000 0) content-box,
-    linear-gradient(#000 0 0);
-          mask-composite: exclude;
-  animation: glow-spin var(--glow-button-speed) linear infinite;
-  z-index: -1;
+    ) border-box;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  color: var(--glow-button-text);
+  text-decoration: none;
+  cursor: pointer;
+  isolation: isolate;
+  transition: filter .18s ease, transform .1s ease;
+  animation: glow-rotate var(--glow-button-speed) linear infinite;
 }
 
 .glow-button::after {
-  inset: -28%;
+  content: "";
+  position: absolute;
+  inset: calc(var(--glow-button-border) * -2.5);
+  border-radius: inherit;
+  pointer-events: none;
   background:
     conic-gradient(
-      from 0turn,
-      hsl(var(--glow-button-hue-a) 90% 60% / .52),
-      hsl(var(--glow-button-hue-b) 90% 60% / .52),
-      hsl(var(--glow-button-hue-c) 90% 60% / .52),
-      hsl(var(--glow-button-hue-a) 90% 60% / .52)
+      from calc(var(--glow-angle) * -1),
+      hsl(var(--glow-button-hue-a) 90% 60% / .55),
+      hsl(var(--glow-button-hue-b) 90% 60% / .55),
+      hsl(var(--glow-button-hue-c) 90% 60% / .55),
+      hsl(var(--glow-button-hue-a) 90% 60% / .55)
     );
-  filter: blur(32px) saturate(120%);
-  opacity: .9;
-  animation: glow-spin var(--glow-button-speed) linear infinite reverse;
-  z-index: -2;
+  filter: blur(28px) saturate(120%);
+  opacity: .85;
+  z-index: -1;
 }
 
-.glow-button > span,
-.glow-button > svg {
+.glow-button span,
+.glow-button svg {
   position: relative;
   z-index: 1;
 }
 
 .glow-button:hover {
   filter: brightness(1.05);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 16px 36px rgba(56, 189, 248, 0.22),
-    0 0 24px rgba(129, 140, 248, 0.35);
 }
 
 .glow-button:active {
@@ -192,10 +166,7 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
 
 .glow-button:focus-visible {
   outline: none;
-  box-shadow:
-    0 0 0 3px rgba(99, 102, 241, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 30px rgba(15, 23, 42, 0.35);
+  box-shadow: 0 0 0 3px rgba(129,140,248,.45);
 }
 
 .glow-button[disabled] {
@@ -203,9 +174,6 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
   cursor: not-allowed;
   filter: none;
   transform: none;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 8px 20px rgba(15, 23, 42, 0.2);
 }
 
 .preset-button {
@@ -214,18 +182,14 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
   text-transform: uppercase;
 }
 
-@keyframes glow-spin {
+@keyframes glow-rotate {
   to {
-    transform: rotate(1turn);
+    --glow-angle: 1turn;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .glow-button {
-    animation: none;
-  }
-  .glow-button::before,
-  .glow-button::after {
     animation: none;
   }
 }
