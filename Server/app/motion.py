@@ -45,6 +45,7 @@ class MotionManager:
         self._status_request_lock = threading.Lock()
         self._status_request_times: Dict[str, float] = {}
         self.motion_preferences = motion_preferences
+        self._load_config_from_schedule()
         self._mqtt_connected = False
         self._loop_thread: Optional[threading.Thread] = None
 
@@ -102,6 +103,18 @@ class MotionManager:
         config = {"enabled": bool(enabled), "duration": clean_duration}
         self.config[node_id] = config
         self._ensure_room_sensor_entry(node_id, config=config)
+        house, room, _ = registry.find_node(node_id)
+        if house and room:
+            house_id = house.get("id")
+            room_id = room.get("id")
+            if house_id and room_id:
+                motion_schedule.set_room_sensor_config(
+                    str(house_id),
+                    str(room_id),
+                    node_id,
+                    enabled=config["enabled"],
+                    duration=config["duration"],
+                )
         self._request_motion_status(node_id, force=True)
 
     def update_node_name(self, node_id: str, name: str) -> None:
@@ -126,6 +139,7 @@ class MotionManager:
         with self._status_request_lock:
             self._status_request_times.pop(node_id, None)
         self.motion_preferences.remove_node(node_id)
+        motion_schedule.remove_sensor_config_for_node(node_id)
 
     def forget_room(self, house_id: str, room_id: str) -> None:
         """Drop any cached state associated with ``house_id``/``room_id``."""
@@ -767,5 +781,30 @@ class MotionManager:
         if request_status and created:
             self._request_motion_status(node_id)
         return node_entry
+
+    def _load_config_from_schedule(self) -> None:
+        try:
+            stored = motion_schedule.get_all_sensor_config()
+        except Exception:
+            stored = {}
+        for rooms in stored.values():
+            if not isinstance(rooms, dict):
+                continue
+            for nodes in rooms.values():
+                if not isinstance(nodes, dict):
+                    continue
+                for node_id, raw_config in nodes.items():
+                    if not isinstance(raw_config, dict):
+                        continue
+                    try:
+                        duration = int(raw_config.get("duration", 30))
+                    except Exception:
+                        duration = 30
+                    if duration < 1:
+                        duration = 1
+                    config = {"enabled": bool(raw_config.get("enabled", True)), "duration": duration}
+                    if "pir_enabled" in raw_config:
+                        config["pir_enabled"] = bool(raw_config.get("pir_enabled"))
+                    self.config[str(node_id)] = config
 
 motion_manager = MotionManager()
