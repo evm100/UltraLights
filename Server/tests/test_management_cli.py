@@ -10,6 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app import database
 from app.auth.models import AuditLog, House, HouseMembership, HouseRole, User
+from app.auth.security import normalize_username
 from app.config import settings
 
 
@@ -97,7 +98,7 @@ def test_seed_sample_data_creates_demo_users(cli_db):
         houses = session.exec(select(House).order_by(House.id)).all()
         assert houses
         for house in houses:
-            username = f"sample-{house.external_id}"
+            username = normalize_username(f"sample-{house.external_id}")
             user = session.exec(select(User).where(User.username == username)).first()
             assert user is not None
             membership = session.exec(

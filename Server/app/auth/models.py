@@ -196,6 +196,18 @@ class NodeRegistration(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
+    certificate_fingerprint: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(128), nullable=True),
+    )
+    certificate_pem_path: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+    )
+    private_key_pem_path: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+    )
 
 
 class NodeCredential(SQLModel, table=True):
@@ -222,6 +234,18 @@ class NodeCredential(SQLModel, table=True):
     provisioned_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    certificate_fingerprint: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(128), nullable=True),
+    )
+    certificate_pem_path: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+    )
+    private_key_pem_path: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
     )
 
 

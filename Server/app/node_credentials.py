@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from sqlmodel import Session, select
 
@@ -21,11 +21,34 @@ from .auth.security import hash_password, normalize_username, verify_password
 
 
 @dataclass
+class NodeCertificateMetadata:
+    """Snapshot of the certificate artifacts stored for a node."""
+
+    fingerprint: Optional[str] = None
+    certificate_pem_path: Optional[str] = None
+    private_key_pem_path: Optional[str] = None
+
+    @classmethod
+    def from_model(cls, model: Any) -> Optional["NodeCertificateMetadata"]:
+        fingerprint = getattr(model, "certificate_fingerprint", None)
+        certificate_path = getattr(model, "certificate_pem_path", None)
+        private_key_path = getattr(model, "private_key_pem_path", None)
+        if not any([fingerprint, certificate_path, private_key_path]):
+            return None
+        return cls(
+            fingerprint=fingerprint,
+            certificate_pem_path=certificate_path,
+            private_key_pem_path=private_key_path,
+        )
+
+
+@dataclass
 class NodeCredentialWithToken:
     """Return value that optionally includes a freshly issued token."""
 
     credential: NodeCredential
     plaintext_token: Optional[str]
+    certificate: Optional[NodeCertificateMetadata] = None
 
 
 @dataclass
@@ -34,6 +57,83 @@ class NodeRegistrationWithToken:
 
     registration: NodeRegistration
     plaintext_token: str
+    certificate: Optional[NodeCertificateMetadata] = None
+
+
+_CERTIFICATE_ATTRS: Tuple[str, ...] = (
+    "certificate_fingerprint",
+    "certificate_pem_path",
+    "private_key_pem_path",
+)
+
+_CERTIFICATE_FIELD_ALIASES: Dict[str, str] = {
+    "fingerprint": "certificate_fingerprint",
+    "certificate_fingerprint": "certificate_fingerprint",
+    "certificateFingerprint": "certificate_fingerprint",
+    "certificate_pem_path": "certificate_pem_path",
+    "certificatePemPath": "certificate_pem_path",
+    "certificate_path": "certificate_pem_path",
+    "certificatePath": "certificate_pem_path",
+    "private_key_pem_path": "private_key_pem_path",
+    "privateKeyPemPath": "private_key_pem_path",
+    "private_key_path": "private_key_pem_path",
+    "privateKeyPath": "private_key_pem_path",
+}
+
+
+def _sanitize_certificate_update(
+    raw: Optional[Union[NodeCertificateMetadata, Dict[str, Any]]]
+) -> Dict[str, Optional[str]]:
+    """Normalize raw certificate input into model attribute names."""
+
+    if raw is None:
+        return {}
+    if isinstance(raw, NodeCertificateMetadata):
+        return {
+            "certificate_fingerprint": raw.fingerprint,
+            "certificate_pem_path": raw.certificate_pem_path,
+            "private_key_pem_path": raw.private_key_pem_path,
+        }
+    if not isinstance(raw, dict):
+        return {}
+
+    cleaned: Dict[str, Optional[str]] = {}
+    for key, value in raw.items():
+        mapped = _CERTIFICATE_FIELD_ALIASES.get(key)
+        if not mapped:
+            continue
+        if value is None:
+            cleaned[mapped] = None
+            continue
+        if isinstance(value, str):
+            cleaned[mapped] = value.strip() or None
+        else:
+            cleaned[mapped] = str(value)
+    return cleaned
+
+
+def _apply_certificate_update(target: Any, update: Dict[str, Optional[str]]) -> bool:
+    """Apply certificate attributes to ``target`` if changed."""
+
+    if not update:
+        return False
+
+    changed = False
+    for attr in _CERTIFICATE_ATTRS:
+        if attr not in update:
+            continue
+        value = update[attr]
+        if getattr(target, attr, None) != value:
+            setattr(target, attr, value)
+            changed = True
+    return changed
+
+
+def _copy_certificate_fields(source: Any, target: Any) -> bool:
+    """Copy certificate fields from ``source`` onto ``target``."""
+
+    update = {attr: getattr(source, attr, None) for attr in _CERTIFICATE_ATTRS}
+    return _apply_certificate_update(target, update)
 
 
 def _now() -> datetime:
@@ -124,6 +224,9 @@ def create_batch(
     count: int,
     *,
     metadata: Optional[Iterable[Dict[str, Any]]] = None,
+    certificates: Optional[
+        Iterable[Union[NodeCertificateMetadata, Dict[str, Any]]]
+    ] = None,
 ) -> List[NodeRegistrationWithToken]:
     """Generate ``count`` opaque registrations and persist them."""
 
@@ -150,6 +253,11 @@ def create_batch(
         for entry in metadata:
             metadata_list.append(dict(entry))
 
+    certificate_updates: List[Dict[str, Optional[str]]] = []
+    if certificates is not None:
+        for entry in certificates:
+            certificate_updates.append(_sanitize_certificate_update(entry))
+
     for index in range(count):
         node_id = registry.generate_node_id()
         while node_id in existing_node_ids:
@@ -174,16 +282,24 @@ def create_batch(
             token_hash=token_hash,
             hardware_metadata=metadata_entry,
         )
+        certificate_update: Dict[str, Optional[str]] = {}
+        if index < len(certificate_updates):
+            certificate_update = certificate_updates[index]
+            if certificate_update:
+                _apply_certificate_update(registration, certificate_update)
         session.add(registration)
         registrations.append(
             NodeRegistrationWithToken(
-                registration=registration, plaintext_token=plaintext_token
+                registration=registration,
+                plaintext_token=plaintext_token,
+                certificate=NodeCertificateMetadata.from_model(registration),
             )
         )
 
     session.commit()
     for entry in registrations:
         session.refresh(entry.registration)
+        entry.certificate = NodeCertificateMetadata.from_model(entry.registration)
 
         if entry.registration.provisioning_token:
             entry.registration.provisioning_token = None
@@ -342,12 +458,14 @@ def ensure_for_node(
     assigned_house_id: Optional[int] = None,
     assigned_user_id: Optional[int] = None,
     hardware_metadata: Optional[Dict[str, Any]] = None,
+    certificate: Optional[Union[NodeCertificateMetadata, Dict[str, Any]]] = None,
 ) -> NodeCredentialWithToken:
     """Ensure a credential row exists for ``node_id`` and return it."""
 
     plaintext: Optional[str] = None
     registration = _get_registration_by_node_id(session, node_id)
     registration_changed = False
+    certificate_update = _sanitize_certificate_update(certificate)
 
     if registration is None:
         if download_id is None:
@@ -370,6 +488,8 @@ def ensure_for_node(
             hardware_metadata=hardware_metadata or {},
         )
         registration_changed = True
+        if certificate_update and _apply_certificate_update(registration, certificate_update):
+            registration_changed = True
     else:
         registration, updated = _sync_registration_assignment(
             registration,
@@ -398,6 +518,9 @@ def ensure_for_node(
         elif token_hash and registration.token_hash != token_hash:
             registration.token_hash = token_hash
             registration.token_issued_at = _now()
+            registration_changed = True
+
+        if certificate_update and _apply_certificate_update(registration, certificate_update):
             registration_changed = True
 
     credential = _get_by_node_id(session, node_id)
@@ -429,6 +552,9 @@ def ensure_for_node(
             credential.token_hash = registration.token_hash
             credential.token_issued_at = registration.token_issued_at
             credential_changed = True
+
+        if certificate_update and _apply_certificate_update(credential, certificate_update):
+            credential_changed = True
     else:
         if plaintext:
             token_hash = registry.hash_node_token(plaintext)
@@ -445,8 +571,15 @@ def ensure_for_node(
             token_hash=registration.token_hash,
             created_at=_now(),
             token_issued_at=registration.token_issued_at,
+            certificate_fingerprint=registration.certificate_fingerprint,
+            certificate_pem_path=registration.certificate_pem_path,
+            private_key_pem_path=registration.private_key_pem_path,
         )
         credential_changed = True
+
+    if credential and registration_changed:
+        if _copy_certificate_fields(registration, credential):
+            credential_changed = True
 
     if registration_changed:
         session.add(registration)
@@ -459,7 +592,12 @@ def ensure_for_node(
         if credential_changed:
             session.refresh(credential)
 
-    return NodeCredentialWithToken(credential=credential, plaintext_token=plaintext)
+    certificate_snapshot = NodeCertificateMetadata.from_model(credential)
+    return NodeCredentialWithToken(
+        credential=credential,
+        plaintext_token=plaintext,
+        certificate=certificate_snapshot,
+    )
 
 
 def assign_registration_to_room(
@@ -686,6 +824,9 @@ def rotate_token(
         token_hash=registration.token_hash,
         created_at=registration.created_at,
         token_issued_at=registration.token_issued_at,
+        certificate_fingerprint=registration.certificate_fingerprint,
+        certificate_pem_path=registration.certificate_pem_path,
+        private_key_pem_path=registration.private_key_pem_path,
     )
     return legacy, plaintext
 
@@ -718,6 +859,9 @@ def record_account_credentials(
             house_slug=credential.house_slug or None,
             room_id=credential.room_id or None,
             display_name=credential.display_name or credential.node_id,
+            certificate_fingerprint=credential.certificate_fingerprint,
+            certificate_pem_path=credential.certificate_pem_path,
+            private_key_pem_path=credential.private_key_pem_path,
         )
         registration.assigned_at = credential.created_at
         session.add(registration)
@@ -970,6 +1114,9 @@ def update_download_id(
         token_hash=registration.token_hash,
         created_at=registration.created_at,
         token_issued_at=registration.token_issued_at,
+        certificate_fingerprint=registration.certificate_fingerprint,
+        certificate_pem_path=registration.certificate_pem_path,
+        private_key_pem_path=registration.private_key_pem_path,
     )
     return legacy
 
@@ -1010,6 +1157,9 @@ def mark_provisioned(
         created_at=registration.created_at,
         token_issued_at=registration.token_issued_at,
         provisioned_at=registration.provisioned_at,
+        certificate_fingerprint=registration.certificate_fingerprint,
+        certificate_pem_path=registration.certificate_pem_path,
+        private_key_pem_path=registration.private_key_pem_path,
     )
     return legacy
 
@@ -1057,6 +1207,9 @@ def clear_provisioned(session: Session, node_id: str) -> NodeCredential:
         token_hash=registration.token_hash,
         created_at=registration.created_at,
         token_issued_at=registration.token_issued_at,
+        certificate_fingerprint=registration.certificate_fingerprint,
+        certificate_pem_path=registration.certificate_pem_path,
+        private_key_pem_path=registration.private_key_pem_path,
     )
     return legacy
 
@@ -1186,7 +1339,101 @@ def sync_registry_nodes(session: Session) -> None:
         registry.save_registry()
 
 
+def migrate_credentials_to_registrations(session: Session) -> int:
+    """Ensure every legacy credential has a backing registration."""
+
+    created = 0
+    updated = 0
+
+    credentials = session.exec(select(NodeCredential)).all()
+
+    for credential in credentials:
+        registration = _get_registration_by_node_id(session, credential.node_id)
+
+        house_slug = credential.house_slug.strip() if credential.house_slug else None
+        room_id = credential.room_id.strip() if credential.room_id else None
+        display_name = (
+            credential.display_name.strip()
+            if credential.display_name and credential.display_name.strip()
+            else credential.node_id
+        )
+        token_issued_at = credential.token_issued_at or credential.created_at or _now()
+        assigned_at = credential.created_at or token_issued_at
+
+        if registration is None:
+            registration = NodeRegistration(
+                node_id=credential.node_id,
+                download_id=credential.download_id,
+                token_hash=credential.token_hash,
+                created_at=credential.created_at or _now(),
+                token_issued_at=token_issued_at,
+                provisioned_at=credential.provisioned_at,
+                assigned_at=assigned_at,
+                house_slug=house_slug,
+                room_id=room_id,
+                display_name=display_name,
+                hardware_metadata={},
+                certificate_fingerprint=credential.certificate_fingerprint,
+                certificate_pem_path=credential.certificate_pem_path,
+                private_key_pem_path=credential.private_key_pem_path,
+            )
+            session.add(registration)
+            created += 1
+        else:
+            changed = False
+
+            if registration.download_id != credential.download_id:
+                registration.download_id = credential.download_id
+                changed = True
+
+            if registration.token_hash != credential.token_hash or (
+                registration.token_issued_at is None
+                and token_issued_at is not None
+            ):
+                registration.token_hash = credential.token_hash
+                registration.token_issued_at = token_issued_at
+                changed = True
+
+            if registration.provisioned_at != credential.provisioned_at:
+                registration.provisioned_at = credential.provisioned_at
+                changed = True
+
+            if registration.assigned_at is None and assigned_at is not None:
+                registration.assigned_at = assigned_at
+                changed = True
+
+            if registration.house_slug != house_slug:
+                registration.house_slug = house_slug
+                changed = True
+
+            if registration.room_id != room_id:
+                registration.room_id = room_id
+                changed = True
+
+            if registration.display_name != display_name:
+                registration.display_name = display_name
+                changed = True
+
+            if not isinstance(registration.hardware_metadata, dict):
+                registration.hardware_metadata = {}
+                changed = True
+
+            if any(getattr(credential, attr, None) for attr in _CERTIFICATE_ATTRS):
+                if _copy_certificate_fields(credential, registration):
+                    changed = True
+
+            if changed:
+                session.add(registration)
+                updated += 1
+
+    if created or updated:
+        session.commit()
+
+    return created
+
+
 __all__ = [
+    "NodeCertificateMetadata",
     "NodeCredentialWithToken",
     "NodeRegistrationWithToken",
     "any_tokens",
@@ -1207,6 +1454,7 @@ __all__ = [
     "list_pending_registrations_for_user",
     "list_unprovisioned",
     "list_unprovisioned_registrations",
+    "migrate_credentials_to_registrations",
     "mark_provisioned",
     "record_account_credentials",
     "rotate_token",
