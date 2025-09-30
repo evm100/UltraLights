@@ -70,6 +70,12 @@ input[type="range"]::-webkit-slider-thumb {
 }
 label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .25rem; }
 
+@property --glow-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .button {
   border: 1px solid var(--card-border);
   background: linear-gradient(180deg, rgba(124,58,237,.7), rgba(124,58,237,.5));
@@ -86,6 +92,106 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
 }
 .button--amber {
   background: linear-gradient(180deg, rgba(245,158,11,.75), rgba(245,158,11,.55));
+}
+
+.glow-button {
+  --glow-button-border: 3px;
+  --glow-button-speed: 6s;
+  --glow-button-radius: 18px;
+  --glow-button-hue-a: 280;
+  --glow-button-hue-b: 200;
+  --glow-button-hue-c: 140;
+  --glow-button-fill: #101827;
+  --glow-button-text: #e8ecff;
+  --glow-angle: 0deg;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  padding: var(--glow-button-padding-y, 0.55rem) var(--glow-button-padding-x, 1.1rem);
+  border: var(--glow-button-border) solid transparent;
+  border-radius: var(--glow-button-radius);
+  background:
+    linear-gradient(var(--glow-button-fill), var(--glow-button-fill)) padding-box,
+    conic-gradient(
+      from var(--glow-angle),
+      hsl(var(--glow-button-hue-a) 90% 60%),
+      hsl(var(--glow-button-hue-b) 90% 60%),
+      hsl(var(--glow-button-hue-c) 90% 60%),
+      hsl(var(--glow-button-hue-a) 90% 60%)
+    ) border-box;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  color: var(--glow-button-text);
+  text-decoration: none;
+  cursor: pointer;
+  isolation: isolate;
+  transition: filter .18s ease, transform .1s ease;
+  animation: glow-rotate var(--glow-button-speed) linear infinite;
+}
+
+.glow-button::after {
+  content: "";
+  position: absolute;
+  inset: calc(var(--glow-button-border) * -2.5);
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    conic-gradient(
+      from calc(var(--glow-angle) * -1),
+      hsl(var(--glow-button-hue-a) 90% 60% / .55),
+      hsl(var(--glow-button-hue-b) 90% 60% / .55),
+      hsl(var(--glow-button-hue-c) 90% 60% / .55),
+      hsl(var(--glow-button-hue-a) 90% 60% / .55)
+    );
+  filter: blur(28px) saturate(120%);
+  opacity: .85;
+  z-index: -1;
+}
+
+.glow-button span,
+.glow-button svg {
+  position: relative;
+  z-index: 1;
+}
+
+.glow-button:hover {
+  filter: brightness(1.05);
+}
+
+.glow-button:active {
+  transform: translateY(1px);
+}
+
+.glow-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(129,140,248,.45);
+}
+
+.glow-button[disabled] {
+  opacity: .6;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+
+.preset-button {
+  font-size: .75rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+@keyframes glow-rotate {
+  to {
+    --glow-angle: 1turn;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-button {
+    animation: none;
+  }
 }
 
 .grid-nodes {
