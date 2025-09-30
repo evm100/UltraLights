@@ -88,6 +88,117 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
   background: linear-gradient(180deg, rgba(245,158,11,.75), rgba(245,158,11,.55));
 }
 
+.glow-button {
+  --glow-button-border: 3px;
+  --glow-button-speed: 6s;
+  --glow-button-hue-a: 280;
+  --glow-button-hue-b: 200;
+  --glow-button-hue-c: 140;
+  --glow-button-fill: rgba(15,23,42,.88);
+  --glow-button-text: #e8ecff;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  padding: var(--glow-button-padding-y, 0.55rem) var(--glow-button-padding-x, 1.1rem);
+  border: none;
+  background: var(--glow-button-fill);
+  color: var(--glow-button-text);
+  font-weight: 600;
+  text-decoration: none;
+  isolation: isolate;
+  overflow: hidden;
+  cursor: pointer;
+  transition: filter .18s ease, transform .1s ease;
+  z-index: 0;
+}
+
+.glow-button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    conic-gradient(
+      from 0turn,
+      hsl(var(--glow-button-hue-a) 90% 60%),
+      hsl(var(--glow-button-hue-b) 90% 60%),
+      hsl(var(--glow-button-hue-c) 90% 60%),
+      hsl(var(--glow-button-hue-a) 90% 60%)
+    );
+  -webkit-mask:
+    radial-gradient(closest-side, transparent calc(100% - (var(--glow-button-border) + 1px)), #000 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask:
+    radial-gradient(closest-side, transparent calc(100% - (var(--glow-button-border) + 1px)), #000 0) content-box,
+    linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  padding: var(--glow-button-border);
+  animation: glow-rotate var(--glow-button-speed) linear infinite;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.glow-button::after {
+  content: "";
+  position: absolute;
+  inset: -35%;
+  border-radius: inherit;
+  background:
+    conic-gradient(
+      from 0turn,
+      hsl(var(--glow-button-hue-a) 90% 60% / .5),
+      hsl(var(--glow-button-hue-b) 90% 60% / .5),
+      hsl(var(--glow-button-hue-c) 90% 60% / .5),
+      hsl(var(--glow-button-hue-a) 90% 60% / .5)
+    );
+  filter: blur(28px) saturate(120%);
+  animation: glow-rotate var(--glow-button-speed) linear infinite reverse;
+  z-index: -2;
+  pointer-events: none;
+}
+
+.glow-button:hover {
+  filter: brightness(1.05);
+}
+
+.glow-button:active {
+  transform: translateY(1px);
+}
+
+.glow-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(129,140,248,.45);
+}
+
+.glow-button[disabled] {
+  opacity: .6;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+
+.preset-button {
+  font-size: .75rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+@keyframes glow-rotate {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-button::before,
+  .glow-button::after {
+    animation: none;
+  }
+}
+
 .grid-nodes {
   display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
 }
