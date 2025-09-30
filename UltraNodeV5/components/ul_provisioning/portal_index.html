@@ -89,6 +89,17 @@ function updateNetworkFields() {
   }
 }
 
+async function isProvisionInProgress() {
+  try {
+    const resp = await fetch('/api/status');
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    return data.state === 'connecting' || data.state === 'success';
+  } catch (err) {
+    return false;
+  }
+}
+
 async function scan() {
   try {
     setLog('Scanning for networks...');
@@ -161,11 +172,15 @@ async function provision() {
       setLog('Provision request failed.');
       return;
     }
-    setLog('Connecting...');
-    await pollStatus();
   } catch (err) {
-    setLog('Provision request failed.');
+    const inProgress = await isProvisionInProgress();
+    if (!inProgress) {
+      setLog('Provision request failed.');
+      return;
+    }
   }
+  setLog('Connecting...');
+  await pollStatus();
 }
 
 async function pollStatus() {

@@ -460,10 +460,11 @@ static esp_err_t provision_handler(httpd_req_t *req) {
     cJSON_Delete(root);
     return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "persist failed");
   }
-  begin_connect(creds.ssid, creds.password, network_requires_username);
   cJSON_Delete(root);
   httpd_resp_set_type(req, "application/json");
-  return httpd_resp_sendstr(req, "{\"ok\":true}");
+  esp_err_t send_err = httpd_resp_sendstr(req, "{\"ok\":true}");
+  begin_connect(creds.ssid, creds.password, network_requires_username);
+  return send_err;
 }
 
 static void idle_timer_cb(void *arg) {
