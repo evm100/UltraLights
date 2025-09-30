@@ -427,8 +427,18 @@
             "effect": "swell",
             "brightness": 255,
             "params": [],
+            "name": "\ud83c\udfa8\ud83c\udf3f",
             "channel": 0,
-            "node": "8ez5evvir1dy86twmeglmyg9r2gzp19",
+            "node": "44r9iy1w0ufe8v5zi0f6w3jwiv7v044",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "channel": 0,
+            "node": "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k",
             "module": "white"
           },
           {
@@ -437,16 +447,7 @@
             "brightness": 255,
             "params": [],
             "channel": 1,
-            "node": "8ez5evvir1dy86twmeglmyg9r2gzp19",
-            "module": "white"
-          },
-          {
-            "enabled": true,
-            "effect": "swell",
-            "brightness": 255,
-            "params": [],
-            "channel": 0,
-            "node": "44r9iy1w0ufe8v5zi0f6w3jwiv7v044",
+            "node": "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k",
             "module": "white"
           }
         ]
@@ -461,8 +462,18 @@
             "effect": "solid",
             "brightness": 0,
             "params": [],
+            "name": "\ud83c\udfa8\ud83c\udf3f",
             "channel": 0,
-            "node": "8ez5evvir1dy86twmeglmyg9r2gzp19",
+            "node": "44r9iy1w0ufe8v5zi0f6w3jwiv7v044",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k",
             "module": "white"
           },
           {
@@ -471,16 +482,7 @@
             "brightness": 0,
             "params": [],
             "channel": 1,
-            "node": "8ez5evvir1dy86twmeglmyg9r2gzp19",
-            "module": "white"
-          },
-          {
-            "enabled": true,
-            "effect": "solid",
-            "brightness": 0,
-            "params": [],
-            "channel": 0,
-            "node": "44r9iy1w0ufe8v5zi0f6w3jwiv7v044",
+            "node": "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k",
             "module": "white"
           }
         ]
@@ -493,19 +495,11 @@
           {
             "enabled": true,
             "effect": "swell",
-            "brightness": 0,
+            "brightness": 42,
             "params": [],
+            "name": "\ud83c\udfa8\ud83c\udf3f",
             "channel": 0,
-            "node": "8ez5evvir1dy86twmeglmyg9r2gzp19",
-            "module": "white"
-          },
-          {
-            "enabled": true,
-            "effect": "swell",
-            "brightness": 36,
-            "params": [],
-            "channel": 1,
-            "node": "8ez5evvir1dy86twmeglmyg9r2gzp19",
+            "node": "44r9iy1w0ufe8v5zi0f6w3jwiv7v044",
             "module": "white"
           },
           {
@@ -514,7 +508,51 @@
             "brightness": 0,
             "params": [],
             "channel": 0,
+            "node": "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 36,
+            "params": [],
+            "channel": 1,
+            "node": "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k",
+            "module": "white"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "1-2",
+        "name": "1/2 \ud83d\udfe1",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 96,
+            "params": [],
+            "name": "\ud83c\udfa8\ud83c\udf3f",
+            "channel": 0,
             "node": "44r9iy1w0ufe8v5zi0f6w3jwiv7v044",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 134,
+            "params": [],
+            "channel": 0,
+            "node": "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 135,
+            "params": [],
+            "channel": 1,
+            "node": "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k",
             "module": "white"
           }
         ]

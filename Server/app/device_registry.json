@@ -8,18 +8,6 @@
         "name": "Cocina",
         "nodes": [
           {
-            "id": "8ez5evvir1dy86twmeglmyg9r2gzp19",
-            "name": "Cocina",
-            "kind": "ultranode",
-            "modules": [
-              "ws",
-              "rgb",
-              "white",
-              "ota"
-            ],
-            "download_id": "5x7q0UdJFecYDXEMmniRAZxJ78RwUsuGVTIwGnnzv8GroMtp"
-          },
-          {
             "id": "44r9iy1w0ufe8v5zi0f6w3jwiv7v044",
             "name": "Sala",
             "kind": "ultranode",
@@ -30,6 +18,18 @@
               "ota"
             ],
             "download_id": "OPwzctxAFz0klb0ONLYae6O6GWrLEuNNSZSY3Pkt0DOOe1Ft"
+          },
+          {
+            "id": "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k",
+            "name": "Cocina",
+            "modules": [
+              "ws",
+              "rgb",
+              "white",
+              "ota"
+            ],
+            "kind": "ultranode",
+            "download_id": "IIkNlrKAZ3WF8HrYs6Aw7G7Jp8XtlgTcuklr2UY2m4I3uwpg"
           }
         ]
       },
@@ -82,7 +82,8 @@
         ]
       }
     ],
-    "external_id": "Fl4irKowjzFloZiX4eBgCWVmzTDZyguzOcirJXZxNrkDEeGaP8j6LvhE9kx7Wroe"
+    "external_id": "Fl4irKowjzFloZiX4eBgCWVmzTDZyguzOcirJXZxNrkDEeGaP8j6LvhE9kx7Wroe",
+    "nodes": []
   },
   {
     "id": "sdsu",
