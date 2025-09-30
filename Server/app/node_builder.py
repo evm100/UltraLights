@@ -8,16 +8,20 @@ import os
 import re
 import shutil
 import subprocess
+import tarfile
+import textwrap
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from urllib.parse import quote
 
 from sqlmodel import Session, select
 
 from . import node_credentials, registry
 from .auth.models import NodeRegistration
+from .auth.service import record_audit_event
 from .config import settings
 
 
@@ -26,6 +30,9 @@ FIRMWARE_ROOT = PROJECT_ROOT / "UltraNodeV5"
 FIRMWARE_ARCHIVE_ROOT = PROJECT_ROOT / "firmware_artifacts"
 SDKCONFIG_TEMPLATE = FIRMWARE_ROOT / "sdkconfig.defaults"
 SDKCONFIG_WORK_DIR = FIRMWARE_ROOT / "node_configs"
+CERTIFICATE_ROOT = settings.NODE_CERT_ROOT
+CERTIFICATE_SERIAL_PATH = CERTIFICATE_ROOT / "ca.serial"
+CERTIFICATE_BUNDLE_NAME = settings.NODE_CERT_BUNDLE_NAME or "credentials.tar.gz"
 
 
 @dataclass
@@ -52,6 +59,8 @@ class BuildResult(CommandResult):
     ota_token: str
     sdkconfig_values: Dict[str, str]
     project_configs: Tuple[Path, ...] = field(default_factory=tuple)
+    certificate: Optional[node_credentials.NodeCertificateMetadata] = None
+    certificate_bundle_path: Optional[Path] = None
 
 
 @dataclass
@@ -67,6 +76,7 @@ class ArtifactRecord:
     versioned_manifest_path: Optional[Path]
     size: int
     sha256_hex: str
+    certificate_bundle_path: Optional[Path] = None
 
 
 class NodeBuilderError(RuntimeError):
@@ -108,6 +118,241 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: fp.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _escape_subject_value(value: str) -> str:
+    escaped = value.replace("\\", "\\\\")
+    for ch in ("/", ",", "+", "="):
+        escaped = escaped.replace(ch, f"\\{ch}")
+    return escaped
+
+
+def _certificate_dir(node_id: str) -> Path:
+    safe = _sanitize_node_for_path(node_id)
+    target = CERTIFICATE_ROOT / safe
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def _certificate_artifact_paths(node_id: str) -> Dict[str, Path]:
+    base_dir = _certificate_dir(node_id)
+    safe = _sanitize_node_for_path(node_id)
+    return {
+        "base": base_dir,
+        "key": base_dir / f"{safe}.key.pem",
+        "cert": base_dir / f"{safe}.crt.pem",
+        "csr": base_dir / f"{safe}.csr.pem",
+        "ext": base_dir / f"{safe}.ext.ini",
+        "bundle": base_dir / CERTIFICATE_BUNDLE_NAME,
+    }
+
+
+def _require_ca_material() -> Tuple[Path, Path]:
+    ca_cert = str(settings.NODE_CERT_CA_CERT or "").strip()
+    ca_key = str(settings.NODE_CERT_CA_KEY or "").strip()
+    if not ca_cert or not ca_key:
+        raise NodeBuilderError(
+            "NODE_CERT_CA_CERT and NODE_CERT_CA_KEY must be configured to issue certificates"
+        )
+    ca_cert_path = Path(ca_cert).expanduser().resolve()
+    ca_key_path = Path(ca_key).expanduser().resolve()
+    if not ca_cert_path.exists():
+        raise NodeBuilderError(f"CA certificate not found: {ca_cert_path}")
+    if not ca_key_path.exists():
+        raise NodeBuilderError(f"CA private key not found: {ca_key_path}")
+    return ca_cert_path, ca_key_path
+
+
+def _openssl_checked(args: List[str], *, cwd: Path) -> CommandResult:
+    result = _run_command(args, cwd=cwd)
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        raise NodeBuilderError(
+            f"Command failed ({result.returncode}): {' '.join(args)}" + (f"\n{stderr}" if stderr else "")
+        )
+    return result
+
+
+def _fingerprint_certificate(cert_path: Path) -> str:
+    result = _openssl_checked(
+        ["openssl", "x509", "-in", str(cert_path), "-noout", "-fingerprint", "-sha256"],
+        cwd=cert_path.parent,
+    )
+    stdout = result.stdout.strip()
+    if "=" in stdout:
+        return stdout.split("=", 1)[1].strip()
+    return stdout
+
+
+def _subject_for_node(node_id: str) -> str:
+    template = settings.NODE_CERT_SUBJECT_TEMPLATE or "/CN={node_id}"
+    value = template.format(
+        node_id=_escape_subject_value(node_id),
+        node_id_raw=node_id,
+        node_id_sanitized=_sanitize_node_for_path(node_id),
+    )
+    return value.strip() or f"/CN={_escape_subject_value(node_id)}"
+
+
+def _san_for_node(node_id: str) -> str:
+    encoded = quote(node_id, safe="-._~")
+    safe = _sanitize_node_for_path(node_id)
+    entries = [f"DNS:{safe}", f"URI:urn:ultralights:node:{encoded}"]
+    template = settings.NODE_CERT_SAN_TEMPLATE or ""
+    if template:
+        custom = template.format(
+            node_id=node_id,
+            node_id_raw=node_id,
+            node_id_sanitized=safe,
+            node_id_encoded=encoded,
+        ).strip()
+        if custom:
+            entries.append(custom)
+    return ", ".join(dict.fromkeys(entries))
+
+
+def _generate_node_certificate(
+    session: Session,
+    registration: NodeRegistration,
+) -> Tuple[node_credentials.NodeCertificateMetadata, Path]:
+    ca_cert_path, ca_key_path = _require_ca_material()
+    paths = _certificate_artifact_paths(registration.node_id)
+    base_dir = paths["base"]
+    key_path = paths["key"]
+    cert_path = paths["cert"]
+    csr_path = paths["csr"]
+    ext_path = paths["ext"]
+    bundle_path = paths["bundle"]
+
+    for path in (key_path, cert_path, csr_path, ext_path, bundle_path):
+        if path.exists():
+            path.unlink()
+
+    key_bits = max(2048, int(settings.NODE_CERT_KEY_BITS or 0))
+    _openssl_checked(
+        [
+            "openssl",
+            "genpkey",
+            "-algorithm",
+            "RSA",
+            "-pkeyopt",
+            f"rsa_keygen_bits:{key_bits}",
+            "-out",
+            str(key_path),
+        ],
+        cwd=base_dir,
+    )
+    os.chmod(key_path, 0o600)
+
+    subject = _subject_for_node(registration.node_id)
+    san_value = _san_for_node(registration.node_id)
+    csr_args = [
+        "openssl",
+        "req",
+        "-new",
+        "-utf8",
+        "-key",
+        str(key_path),
+        "-out",
+        str(csr_path),
+        "-subj",
+        subject,
+        "-addext",
+        f"subjectAltName={san_value}",
+        "-addext",
+        "extendedKeyUsage=clientAuth",
+        "-addext",
+        "keyUsage=digitalSignature",
+    ]
+    _openssl_checked(csr_args, cwd=base_dir)
+
+    ext_body = textwrap.dedent(
+        f"""
+        subjectAltName = {san_value}
+        extendedKeyUsage = clientAuth
+        keyUsage = digitalSignature
+        basicConstraints = CA:FALSE
+        """
+    ).strip() + "\n"
+    ext_path.write_text(ext_body, encoding="utf-8")
+
+    sign_args = [
+        "openssl",
+        "x509",
+        "-req",
+        "-in",
+        str(csr_path),
+        "-CA",
+        str(ca_cert_path),
+        "-CAkey",
+        str(ca_key_path),
+        "-CAserial",
+        str(CERTIFICATE_SERIAL_PATH),
+        "-CAcreateserial",
+        "-out",
+        str(cert_path),
+        "-days",
+        str(max(1, int(settings.NODE_CERT_VALID_DAYS or 0))),
+        "-sha256",
+        "-extfile",
+        str(ext_path),
+    ]
+    passphrase = str(settings.NODE_CERT_CA_KEY_PASSPHRASE or "").strip()
+    if passphrase:
+        sign_args.extend(["-passin", f"pass:{passphrase}"])
+    _openssl_checked(sign_args, cwd=base_dir)
+
+    fingerprint = _fingerprint_certificate(cert_path)
+
+    with tarfile.open(bundle_path, "w:gz") as bundle:
+        bundle.add(cert_path, arcname="client.crt.pem")
+        bundle.add(key_path, arcname="client.key.pem")
+        bundle.add(ca_cert_path, arcname="ca.crt.pem")
+    os.chmod(bundle_path, 0o600)
+
+    metadata = node_credentials.store_certificate_artifacts(
+        session,
+        registration.node_id,
+        fingerprint=fingerprint,
+        certificate_path=cert_path,
+        private_key_path=key_path,
+        bundle_path=bundle_path,
+    )
+    record_audit_event(
+        session,
+        actor=None,
+        action="node_certificate_rotated",
+        summary=f"Issued client certificate for {registration.node_id}",
+        data={
+            "node_id": registration.node_id,
+            "download_id": registration.download_id,
+            "fingerprint": fingerprint,
+        },
+    )
+    session.commit()
+    session.refresh(registration)
+
+    for path in (csr_path, ext_path):
+        if path.exists():
+            path.unlink()
+
+    return metadata, bundle_path
+
+
+def ensure_node_certificate(
+    session: Session,
+    registration: NodeRegistration,
+    *,
+    rotate: bool = False,
+) -> Tuple[node_credentials.NodeCertificateMetadata, Path]:
+    existing = node_credentials.NodeCertificateMetadata.from_model(registration)
+    if existing and not rotate:
+        bundle_path = None
+        if existing.bundle_path:
+            bundle_path = Path(existing.bundle_path)
+        if bundle_path and bundle_path.exists():
+            return existing, bundle_path
+    return _generate_node_certificate(session, registration)
 
 
 def _read_manifest_version(manifest_path: Path) -> Optional[str]:
@@ -171,6 +416,7 @@ def store_build_artifacts(
     binary_path: Optional[Path] = None,
     firmware_dir: Optional[Path] = None,
     archive_root: Optional[Path] = None,
+    certificate_bundle: Optional[Path] = None,
 ) -> ArtifactRecord:
     """Copy build outputs into the public firmware tree and archive."""
 
@@ -225,6 +471,14 @@ def store_build_artifacts(
         versioned_manifest_path = download_dir / f"manifest_{safe_current}.json"
         versioned_manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
+    bundle_target: Optional[Path] = None
+    if certificate_bundle:
+        bundle_source = Path(certificate_bundle)
+        if not bundle_source.exists():
+            raise FileNotFoundError(f"certificate bundle not found: {bundle_source}")
+        bundle_target = download_dir / CERTIFICATE_BUNDLE_NAME
+        shutil.copy2(bundle_source, bundle_target)
+
     return ArtifactRecord(
         node_id=node_id,
         download_id=download_id,
@@ -235,6 +489,7 @@ def store_build_artifacts(
         versioned_manifest_path=versioned_manifest_path,
         size=size,
         sha256_hex=checksum,
+        certificate_bundle_path=bundle_target,
     )
 
 
@@ -734,6 +989,10 @@ def build_individual_node(
     download_id = registration.download_id
     manifest_url = f"{settings.PUBLIC_BASE}/firmware/{download_id}/manifest.json"
 
+    certificate_metadata, certificate_bundle_path = ensure_node_certificate(
+        session, registration, rotate=True
+    )
+
     metadata_payload = metadata or dict(registration.hardware_metadata or {})
     if board:
         metadata_payload["board"] = board
@@ -807,6 +1066,8 @@ def build_individual_node(
         ota_token=token_value,
         sdkconfig_values=config_values,
         project_configs=updated_configs,
+        certificate=certificate_metadata,
+        certificate_bundle_path=certificate_bundle_path,
     )
 
 
@@ -863,6 +1124,8 @@ def first_time_flash(
         ota_token=build_result.ota_token,
         sdkconfig_values=build_result.sdkconfig_values,
         project_configs=build_result.project_configs,
+        certificate=build_result.certificate,
+        certificate_bundle_path=build_result.certificate_bundle_path,
     )
 
 

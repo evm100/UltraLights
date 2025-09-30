@@ -35,6 +35,30 @@ class Settings:
     )
     FIRMWARE_DIR.mkdir(parents=True, exist_ok=True)
 
+    _cert_root_env = os.getenv("NODE_CERT_ROOT", "")
+    if _cert_root_env:
+        _cert_root = Path(_cert_root_env)
+        if not _cert_root.is_absolute():
+            _cert_root = DATA_DIR / _cert_root
+    else:
+        _cert_root = DATA_DIR / "node_certs"
+    NODE_CERT_ROOT = _cert_root.expanduser().resolve()
+    NODE_CERT_ROOT.mkdir(parents=True, exist_ok=True)
+    NODE_CERT_CA_CERT = os.getenv("NODE_CERT_CA_CERT", "")
+    NODE_CERT_CA_KEY = os.getenv("NODE_CERT_CA_KEY", "")
+    NODE_CERT_CA_KEY_PASSPHRASE = os.getenv("NODE_CERT_CA_KEY_PASSPHRASE", "")
+    NODE_CERT_VALID_DAYS = int(os.getenv("NODE_CERT_VALID_DAYS", "365"))
+    NODE_CERT_KEY_BITS = int(os.getenv("NODE_CERT_KEY_BITS", "3072"))
+    NODE_CERT_SUBJECT_TEMPLATE = os.getenv(
+        "NODE_CERT_SUBJECT_TEMPLATE", "/CN={node_id}"
+    )
+    NODE_CERT_SAN_TEMPLATE = os.getenv(
+        "NODE_CERT_SAN_TEMPLATE", "DNS:{node_id}"
+    )
+    NODE_CERT_BUNDLE_NAME = os.getenv(
+        "NODE_CERT_BUNDLE_NAME", "credentials.tar.gz"
+    )
+
     API_BEARER = os.getenv("API_BEARER", "")
     MANIFEST_HMAC_SECRET = os.getenv("MANIFEST_HMAC_SECRET", "")
 

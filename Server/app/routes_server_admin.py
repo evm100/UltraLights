@@ -207,6 +207,9 @@ class NodeFactoryCreatedNode(BaseModel):
     private_key_available: bool = Field(
         default=False, alias="privateKeyAvailable"
     )
+    certificate_bundle_path: Optional[str] = Field(
+        default=None, alias="certificateBundlePath"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -231,6 +234,9 @@ class NodeFactoryRegistrationInfo(BaseModel):
     )
     private_key_available: bool = Field(
         default=False, alias="privateKeyAvailable"
+    )
+    certificate_bundle_path: Optional[str] = Field(
+        default=None, alias="certificateBundlePath"
     )
 
     model_config = ConfigDict(populate_by_name=True)
@@ -257,6 +263,7 @@ def _registration_summary(registration: NodeRegistration) -> NodeFactoryRegistra
     certificate_fingerprint = registration.certificate_fingerprint
     certificate_path = registration.certificate_pem_path
     private_key_available = bool(registration.private_key_pem_path)
+    certificate_bundle_path = registration.certificate_bundle_path
     return NodeFactoryRegistrationInfo(
         node_id=registration.node_id,
         download_id=registration.download_id,
@@ -268,6 +275,7 @@ def _registration_summary(registration: NodeRegistration) -> NodeFactoryRegistra
         certificate_fingerprint=certificate_fingerprint,
         certificate_path=certificate_path,
         private_key_available=private_key_available,
+        certificate_bundle_path=certificate_bundle_path,
     )
 
 
@@ -610,9 +618,23 @@ def create_node_factory_registrations(
             session.add(registration)
 
         manifest_url = f"{settings.PUBLIC_BASE}/firmware/{registration.download_id}/manifest.json"
-        certificate_fingerprint = registration.certificate_fingerprint
-        certificate_path = registration.certificate_pem_path
-        private_key_available = bool(registration.private_key_pem_path)
+        certificate_metadata, _ = node_builder.ensure_node_certificate(
+            session, registration, rotate=True
+        )
+        certificate_fingerprint = (
+            certificate_metadata.fingerprint if certificate_metadata else registration.certificate_fingerprint
+        )
+        certificate_path = (
+            certificate_metadata.certificate_pem_path
+            if certificate_metadata
+            else registration.certificate_pem_path
+        )
+        certificate_bundle_path = (
+            certificate_metadata.bundle_path if certificate_metadata else registration.certificate_bundle_path
+        )
+        private_key_available = bool(
+            certificate_metadata.private_key_pem_path if certificate_metadata else registration.private_key_pem_path
+        )
         created_nodes.append(
             NodeFactoryCreatedNode(
                 nodeId=registration.node_id,
@@ -623,6 +645,7 @@ def create_node_factory_registrations(
                 certificateFingerprint=certificate_fingerprint,
                 certificatePath=certificate_path,
                 privateKeyAvailable=private_key_available,
+                certificateBundlePath=certificate_bundle_path,
             )
         )
         node_ids.append(registration.node_id)

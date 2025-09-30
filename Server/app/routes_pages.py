@@ -744,6 +744,7 @@ def server_admin_panel(
             "certificateFingerprint": registration.certificate_fingerprint,
             "certificatePath": registration.certificate_pem_path,
             "privateKeyAvailable": bool(registration.private_key_pem_path),
+            "certificateBundlePath": registration.certificate_bundle_path,
         }
 
     node_factory_context = {
