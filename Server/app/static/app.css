@@ -70,12 +70,6 @@ input[type="range"]::-webkit-slider-thumb {
 }
 label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .25rem; }
 
-@property --glow-angle {
-  syntax: '<angle>';
-  inherits: false;
-  initial-value: 0deg;
-}
-
 .button {
   border: 1px solid var(--card-border);
   background: linear-gradient(180deg, rgba(124,58,237,.7), rgba(124,58,237,.5));
@@ -97,63 +91,73 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
 .glow-button {
   --glow-button-border: 3px;
   --glow-button-speed: 6s;
-  --glow-button-radius: 18px;
   --glow-button-hue-a: 280;
   --glow-button-hue-b: 200;
   --glow-button-hue-c: 140;
-  --glow-button-fill: #101827;
+  --glow-button-fill: rgba(15,23,42,.88);
   --glow-button-text: #e8ecff;
-  --glow-angle: 0deg;
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: .4rem;
   padding: var(--glow-button-padding-y, 0.55rem) var(--glow-button-padding-x, 1.1rem);
-  border: var(--glow-button-border) solid transparent;
-  border-radius: var(--glow-button-radius);
+  border: none;
+  background: var(--glow-button-fill);
+  color: var(--glow-button-text);
+  font-weight: 600;
+  text-decoration: none;
+  isolation: isolate;
+  overflow: hidden;
+  cursor: pointer;
+  transition: filter .18s ease, transform .1s ease;
+  z-index: 0;
+}
+
+.glow-button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   background:
-    linear-gradient(var(--glow-button-fill), var(--glow-button-fill)) padding-box,
     conic-gradient(
-      from var(--glow-angle),
+      from 0turn,
       hsl(var(--glow-button-hue-a) 90% 60%),
       hsl(var(--glow-button-hue-b) 90% 60%),
       hsl(var(--glow-button-hue-c) 90% 60%),
       hsl(var(--glow-button-hue-a) 90% 60%)
-    ) border-box;
-  background-origin: border-box;
-  background-clip: padding-box, border-box;
-  color: var(--glow-button-text);
-  text-decoration: none;
-  cursor: pointer;
-  isolation: isolate;
-  transition: filter .18s ease, transform .1s ease;
+    );
+  -webkit-mask:
+    radial-gradient(closest-side, transparent calc(100% - (var(--glow-button-border) + 1px)), #000 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask:
+    radial-gradient(closest-side, transparent calc(100% - (var(--glow-button-border) + 1px)), #000 0) content-box,
+    linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  padding: var(--glow-button-border);
   animation: glow-rotate var(--glow-button-speed) linear infinite;
+  z-index: -1;
+  pointer-events: none;
 }
 
 .glow-button::after {
   content: "";
   position: absolute;
-  inset: calc(var(--glow-button-border) * -2.5);
+  inset: -35%;
   border-radius: inherit;
-  pointer-events: none;
   background:
     conic-gradient(
-      from calc(var(--glow-angle) * -1),
-      hsl(var(--glow-button-hue-a) 90% 60% / .55),
-      hsl(var(--glow-button-hue-b) 90% 60% / .55),
-      hsl(var(--glow-button-hue-c) 90% 60% / .55),
-      hsl(var(--glow-button-hue-a) 90% 60% / .55)
+      from 0turn,
+      hsl(var(--glow-button-hue-a) 90% 60% / .5),
+      hsl(var(--glow-button-hue-b) 90% 60% / .5),
+      hsl(var(--glow-button-hue-c) 90% 60% / .5),
+      hsl(var(--glow-button-hue-a) 90% 60% / .5)
     );
   filter: blur(28px) saturate(120%);
-  opacity: .85;
-  z-index: -1;
-}
-
-.glow-button span,
-.glow-button svg {
-  position: relative;
-  z-index: 1;
+  animation: glow-rotate var(--glow-button-speed) linear infinite reverse;
+  z-index: -2;
+  pointer-events: none;
 }
 
 .glow-button:hover {
@@ -184,12 +188,13 @@ label { font-size: .7rem; color: var(--muted); display: block; margin-bottom: .2
 
 @keyframes glow-rotate {
   to {
-    --glow-angle: 1turn;
+    transform: rotate(1turn);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .glow-button {
+  .glow-button::before,
+  .glow-button::after {
     animation: none;
   }
 }
