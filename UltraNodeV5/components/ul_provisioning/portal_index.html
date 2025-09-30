@@ -26,6 +26,10 @@
       <input id="showWifi" type="checkbox" /> Show Wi-Fi password
     </label>
   </div>
+  <div class="row" id="wifiUserRow" style="display: none;">
+    <label for="wifiUser">Wi-Fi Username</label>
+    <input id="wifiUser" type="text" autocomplete="off" />
+  </div>
   <h2 style="font-size: 1.2rem; margin-top: 32px;">UltraLights Account</h2>
   <p>These credentials are sent securely to UltraLights to associate this device with your account.</p>
   <div class="row">
@@ -47,9 +51,12 @@
 <script>
 const ssidSel = document.getElementById('ssid');
 const pwd = document.getElementById('pwd');
+const wifiUserRow = document.getElementById('wifiUserRow');
+const wifiUser = document.getElementById('wifiUser');
 const user = document.getElementById('user');
 const accountPassword = document.getElementById('accountPassword');
 const log = document.getElementById('log');
+let scannedAps = [];
 
 function setLog(message) {
   log.textContent = message;
@@ -65,6 +72,22 @@ document.getElementById('showAccountPassword').addEventListener('change', (ev) =
 
 document.getElementById('rescan').addEventListener('click', () => scan());
 document.getElementById('provision').addEventListener('click', () => provision());
+ssidSel.addEventListener('change', () => updateNetworkFields());
+
+function getSelectedNetwork() {
+  const selectedSsid = ssidSel.value;
+  if (!selectedSsid) return null;
+  return scannedAps.find((ap) => ap.ssid === selectedSsid) || null;
+}
+
+function updateNetworkFields() {
+  const selected = getSelectedNetwork();
+  const needsUsername = !!(selected && selected.requires_username);
+  wifiUserRow.style.display = needsUsername ? 'block' : 'none';
+  if (!needsUsername) {
+    wifiUser.value = '';
+  }
+}
 
 async function scan() {
   try {
@@ -72,16 +95,21 @@ async function scan() {
     const response = await fetch('/api/scan');
     if (!response.ok) throw new Error('scan failed');
     const data = await response.json();
+    scannedAps = Array.isArray(data.aps) ? data.aps : [];
     ssidSel.innerHTML = '';
-    (data.aps || []).sort((a, b) => b.rssi - a.rssi).forEach(ap => {
+    scannedAps.sort((a, b) => b.rssi - a.rssi).forEach(ap => {
       const opt = document.createElement('option');
       opt.value = ap.ssid;
       opt.textContent = `${ap.ssid} (${ap.rssi} dBm)`;
+      if (ap.requires_username) {
+        opt.dataset.requiresUsername = '1';
+      }
       ssidSel.appendChild(opt);
     });
-    if (!ssidSel.value && data.aps && data.aps.length) {
-      ssidSel.value = data.aps[0].ssid;
+    if (!ssidSel.value && scannedAps.length) {
+      ssidSel.value = scannedAps[0].ssid;
     }
+    updateNetworkFields();
     setLog('Ready.');
   } catch (err) {
     setLog('Scan failed. Retry.');
@@ -93,6 +121,19 @@ async function provision() {
   if (!ssid) {
     setLog('Select a network first.');
     return;
+  }
+  const selectedNetwork = getSelectedNetwork();
+  const requiresUsername = !!(selectedNetwork && selectedNetwork.requires_username);
+  if (requiresUsername) {
+    const wifiUsername = wifiUser.value.trim();
+    if (!wifiUsername) {
+      setLog('Enter your Wi-Fi username.');
+      return;
+    }
+    if (!pwd.value) {
+      setLog('Enter your Wi-Fi password.');
+      return;
+    }
   }
   const username = user.value.trim();
   const passwordValue = accountPassword.value;
@@ -106,6 +147,10 @@ async function provision() {
   }
   setLog('Sending credentials...');
   const body = { ssid, password: pwd.value, username, account_password: passwordValue };
+  if (requiresUsername) {
+    body.wifi_username = wifiUser.value.trim();
+    body.wifi_user_password = pwd.value;
+  }
   try {
     const resp = await fetch('/api/provision', {
       method: 'POST',
