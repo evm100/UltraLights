@@ -10,6 +10,66 @@
   --glow: 0 0 30px rgba(120, 70, 255, .35);
 }
 
+@property --border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.animated-border {
+  position: relative;
+  border-radius: inherit;
+  z-index: 0;
+  --border-angle: 0deg;
+}
+
+.animated-border::before,
+.animated-border::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--border-angle),
+    #0ea5e9,
+    #8b5cf6,
+    #ec4899,
+    #f97316,
+    #0ea5e9
+  );
+  animation: animated-border-rotate 8s linear infinite;
+}
+
+.animated-border::before {
+  padding: 2px;
+  z-index: -1;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+}
+
+.animated-border::after {
+  inset: -8px;
+  filter: blur(20px);
+  opacity: .45;
+  z-index: -2;
+}
+
+@keyframes animated-border-rotate {
+  from {
+    --border-angle: 0deg;
+  }
+  to {
+    --border-angle: 360deg;
+  }
+}
+
 * { box-sizing: border-box; }
 
 html, body {
