@@ -13,6 +13,8 @@ typedef struct {
   char password[65];
   char user[65];
   char user_password[129];
+  char wifi_username[65];
+  char wifi_user_password[129];
 } ul_wifi_credentials_t;
 
 bool ul_wifi_credentials_load(ul_wifi_credentials_t *out);
