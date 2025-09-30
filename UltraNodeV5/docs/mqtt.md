@@ -44,7 +44,11 @@ MQTT configuration menu exposes two new toggles:
   named `mqtt_client_certificate` and `mqtt_client_key` in the provisioning POST
   body after the user authenticates with their UltraLights account.
 
-The decoded blobs are stored in NVS and injected into
+Provisioning services now mint certificates using the server-side UltraLights CA
+whenever a node claims its credentials. Each bundle contains a single-node key
+pair and X.509 certificate whose Common Name equals the opaque node ID so the
+Mosquitto broker can map the TLS identity straight to an ACL entry. The decoded
+blobs are stored in NVS and injected into
 `esp_mqtt_client_config_t.credentials.authentication.certificate` / `key`
 before the MQTT client starts. When `CONFIG_UL_MQTT_REQUIRE_CLIENT_CERT` is
 enabled the node refuses to connect until both blobs are present, preventing
@@ -52,7 +56,25 @@ plaintext or anonymous fallbacks.
 
 Set `CONFIG_UL_MQTT_CLIENT_CERT_MAX_LEN` /
 `CONFIG_UL_MQTT_CLIENT_KEY_MAX_LEN` if your certificate chain or encrypted key
-material exceeds the defaults (3 KiB and 2 KiB respectively).
+material exceeds the defaults (3 KiB and 2 KiB respectively). Certificates are
+stored alongside Wi-Fi credentials, so keep the size under the configured limit
+to avoid exhausting the NVS partition. If a larger chain is required, increase
+the limits and regenerate the provisioning bundle so the firmware reserves
+enough space.
+
+### Certificate rotation
+
+When the server revokes a node certificate (for example via the admin portal or
+`manage_node_credentials.py`) it issues a fresh key pair and delivers the new
+bundle through the captive portal. Triggering the portal for an already deployed
+node replaces the stored certificate and key, and the MQTT client presents the
+new identity on the next reconnect without requiring a firmware rebuild.
+
+Legacy hardware that has not yet been re-provisioned may continue to use the
+username/password path while `CONFIG_UL_MQTT_LEGACY_USERPASS_COMPAT=y` and the
+broker still advertises credentials-based listeners. Once every node stores a
+certificate, disable the compatibility flag and remove the plaintext listener so
+all traffic relies on mutual TLS.
 
 ## Topic scheme
 

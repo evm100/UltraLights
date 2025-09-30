@@ -42,7 +42,11 @@ server name, keeping hostname verification enabled without relying on
 ## Mosquitto broker configuration
 
 Starting from the existing `/etc/mosquitto/conf.d/ultralights.conf`, apply the
-following adjustments and reload Mosquitto:
+following adjustments and reload Mosquitto. The first stanza keeps username /
+password authentication available while you test TLS connectivity; the second
+stanza shows the final mutual-TLS configuration that production deployments
+should converge on once every node has a certificate issued by the UltraLights
+CA:
 
 ```conf
 # Require authentication once testing finishes.
@@ -80,7 +84,9 @@ Mosquitto down to mutual TLS. The high-level steps are:
    the CA key offline and publish the root certificate to the provisioning
    service.
 2. Replace the broker listener stanza with one that enforces client
-   certificates and references the CA bundle:
+   certificates and references the CA bundle. The configuration below expects
+   each certificate's Common Name to equal the UltraLights node ID so Mosquitto
+   can map the TLS identity straight to your existing ACL model:
 
    ```conf
    listener 8883 0.0.0.0
@@ -92,12 +98,25 @@ Mosquitto down to mutual TLS. The high-level steps are:
 
    require_certificate true
    use_identity_as_username true
+   crlfile /etc/mosquitto/certs/ultralights.crl
+   capath /etc/mosquitto/issuers.d
    tls_version tlsv1.2
    ```
 
-   With `use_identity_as_username` Mosquitto maps the client certificate's
-   Common Name to the MQTT username, allowing the server ACLs to target nodes by
-   CN without maintaining a password file.
+   * `require_certificate true` forces every client to present a valid
+     certificate before the TLS handshake completes.
+  * `cafile` / `capath` point at the private CA chain that signs node
+    certificates. Populate `issuers.d` with any intermediate certificates so
+    Mosquitto can build the full chain. Intermediates are issuing certificates
+    that sit between your offline root CA and the leaf device certificates—for
+    example a short-lived "UltraLights Device Issuing CA" that signs every node
+    identity while the root stays offline.
+   * `use_identity_as_username true` maps the certificate subject (typically the
+     Common Name) to the MQTT username. Set the CN equal to the UltraLights node
+     ID so existing ACL rules continue to reference the familiar identifier.
+   * `crlfile` lets you drop revoked identities without replacing the broker
+     certificate; regenerate the CRL whenever you rotate or retire a node and
+     reload Mosquitto so the revocation takes effect immediately.
 
 3. Update the server deployment (`Server/.env`) to point
    `BROKER_TLS_CA_FILE` at the new CA and provide the UltraLights CA to the
@@ -116,7 +135,8 @@ Recommended issuance procedure:
 1. Generate a new key pair per node (for example using `openssl ecparam -genkey`)
    and encrypt the private key with an installation-specific wrapping key.
 2. Issue a client certificate signed by the UltraLights CA with the node ID as
-   the certificate subject/Common Name.
+   the certificate subject/Common Name so the Mosquitto `use_identity_as_username`
+   mapping resolves to the node ID automatically.
 3. Base64-encode both blobs before returning them through the provisioning API.
 
 ### Rotating per-node identities
