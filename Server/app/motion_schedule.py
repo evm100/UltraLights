@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import threading
 from datetime import datetime
@@ -16,7 +17,7 @@ class MotionScheduleStore:
         self.path = path
         self.slot_minutes = max(1, int(slot_minutes))
         self._lock = threading.RLock()
-        self._data, self._colors = self._load()
+        self._data, self._colors, self._sensor_config = self._load()
 
     @property
     def slot_count(self) -> int:
@@ -28,13 +29,14 @@ class MotionScheduleStore:
     ) -> Tuple[
         Dict[str, Dict[str, List[Optional[str]]]],
         Dict[str, Dict[str, Dict[str, str]]],
+        Dict[str, Dict[str, Dict[str, Dict[str, Any]]]],
     ]:
         if not self.path.exists():
-            return {}, {}
+            return {}, {}, {}
         try:
             payload = json.loads(self.path.read_text())
         except Exception:
-            return {}, {}
+            return {}, {}, {}
 
         if isinstance(payload, dict):
             slot_minutes = payload.get("slot_minutes")
@@ -42,9 +44,11 @@ class MotionScheduleStore:
                 self.slot_minutes = slot_minutes
             schedules = payload.get("schedules", {})
             raw_colors = payload.get("preset_colors", {})
+            raw_sensor_config = payload.get("sensor_config", {})
         else:
             schedules = payload
             raw_colors = {}
+            raw_sensor_config = {}
 
         data: Dict[str, Dict[str, List[Optional[str]]]] = {}
         if isinstance(schedules, dict):
@@ -60,7 +64,8 @@ class MotionScheduleStore:
                     data[str(house_id)] = clean_rooms
 
         colors = self._normalize_colors(raw_colors)
-        return data, colors
+        sensor_config = self._normalize_sensor_config(raw_sensor_config)
+        return data, colors, sensor_config
 
     def _normalize(self, schedule: Any) -> Optional[List[Optional[str]]]:
         if not isinstance(schedule, list):
@@ -120,6 +125,45 @@ class MotionScheduleStore:
                 cleaned[house_key] = house_entry
         return cleaned
 
+    def _normalize_sensor_config(
+        self, raw_config: Any
+    ) -> Dict[str, Dict[str, Dict[str, Dict[str, Any]]]]:
+        cleaned: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {}
+        if not isinstance(raw_config, dict):
+            return cleaned
+        for house_id, rooms in raw_config.items():
+            if not isinstance(rooms, dict):
+                continue
+            house_key = str(house_id)
+            house_entry: Dict[str, Dict[str, Dict[str, Any]]] = {}
+            for room_id, nodes in rooms.items():
+                if not isinstance(nodes, dict):
+                    continue
+                room_key = str(room_id)
+                node_entry: Dict[str, Dict[str, Any]] = {}
+                for node_id, config in nodes.items():
+                    if not isinstance(config, dict):
+                        continue
+                    node_key = str(node_id)
+                    try:
+                        duration = int(config.get("duration", 30))
+                    except Exception:
+                        duration = 30
+                    if duration < 1:
+                        duration = 1
+                    cleaned_config: Dict[str, Any] = {
+                        "enabled": bool(config.get("enabled", True)),
+                        "duration": duration,
+                    }
+                    if "pir_enabled" in config:
+                        cleaned_config["pir_enabled"] = bool(config.get("pir_enabled"))
+                    node_entry[node_key] = cleaned_config
+                if node_entry:
+                    house_entry[room_key] = node_entry
+            if house_entry:
+                cleaned[house_key] = house_entry
+        return cleaned
+
     def _serialize_colors(self) -> Dict[str, Dict[str, Dict[str, str]]]:
         serialized: Dict[str, Dict[str, Dict[str, str]]] = {}
         for house_id, rooms in self._colors.items():
@@ -137,6 +181,7 @@ class MotionScheduleStore:
             "slot_minutes": self.slot_minutes,
             "schedules": self._data,
             "preset_colors": self._serialize_colors(),
+            "sensor_config": self._serialize_sensor_config(),
         }
         serialized = json.dumps(payload, indent=2)
         tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
@@ -144,6 +189,30 @@ class MotionScheduleStore:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             tmp_path.write_text(serialized)
             tmp_path.replace(self.path)
+
+    def _serialize_sensor_config(self) -> Dict[str, Dict[str, Dict[str, Dict[str, Any]]]]:
+        serialized: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {}
+        for house_id, rooms in self._sensor_config.items():
+            house_entry: Dict[str, Dict[str, Dict[str, Any]]] = {}
+            for room_id, nodes in rooms.items():
+                if not nodes:
+                    continue
+                node_entry: Dict[str, Dict[str, Any]] = {}
+                for node_id, config in nodes.items():
+                    if not isinstance(config, dict):
+                        continue
+                    clean_config = {
+                        "enabled": bool(config.get("enabled", True)),
+                        "duration": int(config.get("duration", 30)),
+                    }
+                    if "pir_enabled" in config:
+                        clean_config["pir_enabled"] = bool(config.get("pir_enabled"))
+                    node_entry[node_id] = clean_config
+                if node_entry:
+                    house_entry[room_id] = node_entry
+            if house_entry:
+                serialized[house_id] = house_entry
+        return serialized
 
     def get_schedule(
         self, house_id: str, room_id: str
@@ -188,6 +257,68 @@ class MotionScheduleStore:
             house[str(room_id)] = clean
             self.save()
             return list(clean)
+
+    def get_all_sensor_config(self) -> Dict[str, Dict[str, Dict[str, Dict[str, Any]]]]:
+        with self._lock:
+            return copy.deepcopy(self._sensor_config)
+
+    def get_room_sensor_config(
+        self, house_id: str, room_id: str
+    ) -> Dict[str, Dict[str, Any]]:
+        with self._lock:
+            house = self._sensor_config.get(str(house_id))
+            if not house:
+                return {}
+            nodes = house.get(str(room_id))
+            if not nodes:
+                return {}
+            return {node_id: dict(config) for node_id, config in nodes.items()}
+
+    def set_room_sensor_config(
+        self,
+        house_id: str,
+        room_id: str,
+        node_id: str,
+        *,
+        enabled: bool,
+        duration: int,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        node_key = str(node_id)
+        house_key = str(house_id)
+        room_key = str(room_id)
+        clean_duration = max(1, int(duration))
+        payload: Dict[str, Any] = {"enabled": bool(enabled), "duration": clean_duration}
+        if extra:
+            payload.update(extra)
+        with self._lock:
+            rooms = self._sensor_config.setdefault(house_key, {})
+            nodes = rooms.setdefault(room_key, {})
+            nodes[node_key] = payload
+            self.save()
+            return dict(payload)
+
+    def remove_sensor_config_for_node(self, node_id: str) -> None:
+        node_key = str(node_id)
+        if not node_key:
+            return
+        changed = False
+        with self._lock:
+            for house_id in list(self._sensor_config.keys()):
+                rooms = self._sensor_config[house_id]
+                for room_id in list(rooms.keys()):
+                    nodes = rooms[room_id]
+                    if node_key in nodes:
+                        nodes.pop(node_key, None)
+                        changed = True
+                    if not nodes:
+                        rooms.pop(room_id, None)
+                        changed = True
+                if not rooms:
+                    self._sensor_config.pop(house_id, None)
+                    changed = True
+            if changed:
+                self.save()
 
     def set_preset_color(
         self,
