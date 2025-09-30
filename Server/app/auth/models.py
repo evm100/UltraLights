@@ -208,6 +208,10 @@ class NodeRegistration(SQLModel, table=True):
         default=None,
         sa_column=Column(String(255), nullable=True),
     )
+    certificate_bundle_path: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+    )
 
 
 class NodeCredential(SQLModel, table=True):
@@ -244,6 +248,10 @@ class NodeCredential(SQLModel, table=True):
         sa_column=Column(String(255), nullable=True),
     )
     private_key_pem_path: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(255), nullable=True),
+    )
+    certificate_bundle_path: Optional[str] = Field(
         default=None,
         sa_column=Column(String(255), nullable=True),
     )

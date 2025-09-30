@@ -84,11 +84,13 @@ def _ensure_node_registration_columns() -> None:
             "certificate_fingerprint": "ALTER TABLE node_registrations ADD COLUMN certificate_fingerprint VARCHAR(128)",
             "certificate_pem_path": "ALTER TABLE node_registrations ADD COLUMN certificate_pem_path VARCHAR(255)",
             "private_key_pem_path": "ALTER TABLE node_registrations ADD COLUMN private_key_pem_path VARCHAR(255)",
+            "certificate_bundle_path": "ALTER TABLE node_registrations ADD COLUMN certificate_bundle_path VARCHAR(255)",
         },
         "node_credentials": {
             "certificate_fingerprint": "ALTER TABLE node_credentials ADD COLUMN certificate_fingerprint VARCHAR(128)",
             "certificate_pem_path": "ALTER TABLE node_credentials ADD COLUMN certificate_pem_path VARCHAR(255)",
             "private_key_pem_path": "ALTER TABLE node_credentials ADD COLUMN private_key_pem_path VARCHAR(255)",
+            "certificate_bundle_path": "ALTER TABLE node_credentials ADD COLUMN certificate_bundle_path VARCHAR(255)",
         },
     }
 

@@ -228,9 +228,14 @@ def _handle_build(args, firmware_dir: Path, archive_dir: Path) -> int:
             firmware_version=args.firmware_version,
             firmware_dir=firmware_dir,
             archive_root=archive_dir,
+            certificate_bundle=result.certificate_bundle_path,
         )
         print(f"Built {result.node_id} -> {artifact.manifest_path}")
         print(f"Binary SHA256: {artifact.sha256_hex}")
+        if result.certificate and result.certificate.fingerprint:
+            print(f"Certificate fingerprint: {result.certificate.fingerprint}")
+        if artifact.certificate_bundle_path:
+            print(f"Credential bundle: {artifact.certificate_bundle_path}")
         if result.project_configs:
             print("Updated configuration files:")
             for cfg in result.project_configs:
@@ -273,9 +278,14 @@ def _handle_flash(args, firmware_dir: Path, archive_dir: Path) -> int:
             firmware_version=args.firmware_version,
             firmware_dir=firmware_dir,
             archive_root=archive_dir,
+            certificate_bundle=result.certificate_bundle_path,
         )
         print(f"Flashed {result.node_id} ({port}) -> {artifact.manifest_path}")
         print(f"Binary SHA256: {artifact.sha256_hex}")
+        if result.certificate and result.certificate.fingerprint:
+            print(f"Certificate fingerprint: {result.certificate.fingerprint}")
+        if artifact.certificate_bundle_path:
+            print(f"Credential bundle: {artifact.certificate_bundle_path}")
         if result.project_configs:
             print("Updated configuration files:")
             for cfg in result.project_configs:
@@ -322,6 +332,7 @@ def _handle_update_all(args, firmware_dir: Path, archive_dir: Path) -> int:
                 firmware_version=args.firmware_version,
                 firmware_dir=firmware_dir,
                 archive_root=archive_dir,
+                certificate_bundle=result.certificate_bundle_path,
             )
             print(f"Built {result.node_id} -> {artifact.manifest_path}")
         return exit_code

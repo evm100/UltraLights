@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, SQLModel
 
-from . import database, node_credentials, registry
+from . import database, node_builder, node_credentials, registry
 from .auth.service import init_auth_storage
 from .config import settings
 
@@ -228,6 +228,40 @@ def api_manifest(
         download_id=download_id,
     )
     return _build_manifest_response(resolved_device_id, resolved_download_id)
+
+
+@router.get("/api/firmware/v1/credentials")
+def api_credentials_bundle(
+    request: Request, authorization: Optional[str] = Header(None)
+):
+    with database.SessionLocal() as session:
+        credential, _ = _authenticate_request(authorization, session)
+        if credential is None:
+            raise HTTPException(status_code=403, detail="Node token required")
+
+        metadata = node_credentials.NodeCertificateMetadata.from_model(credential)
+        if metadata is None or not metadata.bundle_path:
+            raise HTTPException(status_code=404, detail="Certificate bundle not available")
+
+        bundle_path = Path(metadata.bundle_path).expanduser()
+        resolved = bundle_path.resolve()
+        try:
+            resolved.relative_to(node_builder.CERTIFICATE_ROOT)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="Certificate bundle not available") from exc
+
+        if not resolved.exists():
+            raise HTTPException(status_code=404, detail="Certificate bundle not available")
+
+        response = _serve_file(resolved, request)
+        if metadata.fingerprint:
+            response.headers["X-Certificate-Fingerprint"] = metadata.fingerprint
+        response.headers["Cache-Control"] = "no-store"
+        response.headers.setdefault(
+            "Content-Disposition",
+            f'attachment; filename="{resolved.name}"',
+        )
+        return response
 
 
 @router.get("/firmware/{download_id}/manifest")

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app import database, node_credentials  # noqa: E402
+from app import database, node_builder, node_credentials  # noqa: E402
+from app.config import settings  # noqa: E402
 from app.auth.service import init_auth_storage  # noqa: E402
 
 
@@ -54,6 +56,9 @@ def _emit_csv(records: Iterable[Dict[str, Any]]) -> None:
         "token_hash",
         "created_at",
         "hardware_metadata",
+        "certificate_fingerprint",
+        "certificate_bundle_path",
+        "private_key_available",
     ]
     writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames)
     writer.writeheader()
@@ -66,6 +71,9 @@ def _emit_csv(records: Iterable[Dict[str, Any]]) -> None:
 
 def _format_record(entry: node_credentials.NodeRegistrationWithToken) -> Dict[str, Any]:
     registration = entry.registration
+    certificate = entry.certificate or node_credentials.NodeCertificateMetadata.from_model(
+        registration
+    )
     return {
         "node_id": registration.node_id,
         "download_id": registration.download_id,
@@ -75,6 +83,9 @@ def _format_record(entry: node_credentials.NodeRegistrationWithToken) -> Dict[st
         if isinstance(registration.created_at, datetime)
         else str(registration.created_at),
         "hardware_metadata": registration.hardware_metadata,
+        "certificate_fingerprint": certificate.fingerprint if certificate else None,
+        "certificate_bundle_path": certificate.bundle_path if certificate else None,
+        "private_key_available": bool(certificate and certificate.private_key_pem_path),
     }
 
 
@@ -95,6 +106,25 @@ def generate_nodes(
             count,
             metadata=metadata_iter,
         )
+        for entry in entries:
+            registration = node_credentials.get_registration_by_node_id(
+                session, entry.registration.node_id
+            )
+            if registration is None:
+                continue
+            certificate, bundle_path = node_builder.ensure_node_certificate(
+                session, registration, rotate=True
+            )
+            entry.certificate = certificate
+            session.refresh(registration)
+            entry.registration = registration
+            if bundle_path and bundle_path.exists():
+                download_dir = settings.FIRMWARE_DIR / registration.download_id
+                download_dir.mkdir(parents=True, exist_ok=True)
+                destination = download_dir / node_builder.CERTIFICATE_BUNDLE_NAME
+                shutil.copy2(bundle_path, destination)
+                if entry.certificate:
+                    entry.certificate.bundle_path = str(destination)
         return [_format_record(entry) for entry in entries]
 
 

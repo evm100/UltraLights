@@ -91,6 +91,7 @@ def test_cli_build_invokes_builder_and_archiver(cli_environment, monkeypatch: py
         return _make_build_result(node_id_arg, download_id)
 
     def fake_store(**kwargs):
+        assert "certificate_bundle" in kwargs
         calls.setdefault("store", []).append(kwargs)
         return _make_artifact(kwargs["node_id"], kwargs["download_id"])
 
@@ -124,6 +125,8 @@ def test_cli_build_invokes_builder_and_archiver(cli_environment, monkeypatch: py
     assert calls["store"][0]["node_id"] == node_id
     assert Path(calls["store"][0]["firmware_dir"]) == firmware_dir
     assert Path(calls["store"][0]["archive_root"]) == archive_dir
+    assert "certificate_bundle" in calls["store"][0]
+    assert calls["store"][0]["certificate_bundle"] is None
 
 
 def test_cli_update_all_builds_every_registration(cli_environment, monkeypatch: pytest.MonkeyPatch):
@@ -151,6 +154,7 @@ def test_cli_update_all_builds_every_registration(cli_environment, monkeypatch: 
         return _make_build_result(node_id_arg, download)
 
     def fake_store(**kwargs):
+        assert "certificate_bundle" in kwargs
         stored_nodes.append(kwargs["node_id"])
         return _make_artifact(kwargs["node_id"], kwargs["download_id"])
 

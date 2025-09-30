@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import argparse
 import json
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from sqlmodel import Session, select  # noqa: E402
 
-from app import database, node_credentials, registry  # noqa: E402
+from app import database, node_builder, node_credentials, registry  # noqa: E402
 from app.auth.models import AuditLog, NodeCredential, NodeRegistration, User  # noqa: E402
 from app.auth.service import init_auth_storage  # noqa: E402
 from app.config import settings  # noqa: E402
@@ -208,6 +209,8 @@ def _provision(args: argparse.Namespace) -> int:
     final_credential: Optional[NodeCredential] = None
     manifest_url: Optional[str] = None
     download_dir: Optional[Path] = None
+    certificate_metadata: Optional[node_credentials.NodeCertificateMetadata] = None
+    bundle_destination: Optional[Path] = None
 
     with database.SessionLocal() as session:
         node_credentials.sync_registry_nodes(session)
@@ -245,6 +248,13 @@ def _provision(args: argparse.Namespace) -> int:
         download_id = registration.download_id
 
         download_dir = _ensure_download_dir(download_id)
+
+        certificate_metadata, bundle_path = node_builder.ensure_node_certificate(
+            session, registration, rotate=True
+        )
+        if bundle_path and bundle_path.exists():
+            bundle_destination = download_dir / node_builder.CERTIFICATE_BUNDLE_NAME
+            shutil.copy2(bundle_path, bundle_destination)
 
         provided_token = (args.ota_token or "").strip() if args.ota_token else None
         token_source = ""
@@ -388,6 +398,10 @@ def _provision(args: argparse.Namespace) -> int:
         for cfg in updated_files:
             print(f"  - {cfg}")
     print(f"Firmware directory: {download_dir}")
+    if certificate_metadata and certificate_metadata.fingerprint:
+        print(f"Certificate fingerprint: {certificate_metadata.fingerprint}")
+    if bundle_destination:
+        print(f"Credential bundle: {bundle_destination}")
     if previous_download and previous_download != download_id:
         print(f"Previous download id was {previous_download}")
     return 0

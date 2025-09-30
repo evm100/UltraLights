@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
+import os
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from sqlmodel import Session, select
@@ -27,18 +28,21 @@ class NodeCertificateMetadata:
     fingerprint: Optional[str] = None
     certificate_pem_path: Optional[str] = None
     private_key_pem_path: Optional[str] = None
+    bundle_path: Optional[str] = None
 
     @classmethod
     def from_model(cls, model: Any) -> Optional["NodeCertificateMetadata"]:
         fingerprint = getattr(model, "certificate_fingerprint", None)
         certificate_path = getattr(model, "certificate_pem_path", None)
         private_key_path = getattr(model, "private_key_pem_path", None)
-        if not any([fingerprint, certificate_path, private_key_path]):
+        bundle_path = getattr(model, "certificate_bundle_path", None)
+        if not any([fingerprint, certificate_path, private_key_path, bundle_path]):
             return None
         return cls(
             fingerprint=fingerprint,
             certificate_pem_path=certificate_path,
             private_key_pem_path=private_key_path,
+            bundle_path=bundle_path,
         )
 
 
@@ -64,6 +68,7 @@ _CERTIFICATE_ATTRS: Tuple[str, ...] = (
     "certificate_fingerprint",
     "certificate_pem_path",
     "private_key_pem_path",
+    "certificate_bundle_path",
 )
 
 _CERTIFICATE_FIELD_ALIASES: Dict[str, str] = {
@@ -78,6 +83,10 @@ _CERTIFICATE_FIELD_ALIASES: Dict[str, str] = {
     "privateKeyPemPath": "private_key_pem_path",
     "private_key_path": "private_key_pem_path",
     "privateKeyPath": "private_key_pem_path",
+    "bundle_path": "certificate_bundle_path",
+    "bundlePath": "certificate_bundle_path",
+    "certificate_bundle_path": "certificate_bundle_path",
+    "certificateBundlePath": "certificate_bundle_path",
 }
 
 
@@ -93,6 +102,7 @@ def _sanitize_certificate_update(
             "certificate_fingerprint": raw.fingerprint,
             "certificate_pem_path": raw.certificate_pem_path,
             "private_key_pem_path": raw.private_key_pem_path,
+            "certificate_bundle_path": raw.bundle_path,
         }
     if not isinstance(raw, dict):
         return {}
@@ -574,6 +584,7 @@ def ensure_for_node(
             certificate_fingerprint=registration.certificate_fingerprint,
             certificate_pem_path=registration.certificate_pem_path,
             private_key_pem_path=registration.private_key_pem_path,
+            certificate_bundle_path=registration.certificate_bundle_path,
         )
         credential_changed = True
 
@@ -827,8 +838,64 @@ def rotate_token(
         certificate_fingerprint=registration.certificate_fingerprint,
         certificate_pem_path=registration.certificate_pem_path,
         private_key_pem_path=registration.private_key_pem_path,
+        certificate_bundle_path=registration.certificate_bundle_path,
     )
     return legacy, plaintext
+
+
+def store_certificate_artifacts(
+    session: Session,
+    node_id: str,
+    *,
+    fingerprint: Optional[str],
+    certificate_path: Optional[Union[str, "os.PathLike[str]"]],
+    private_key_path: Optional[Union[str, "os.PathLike[str]"]],
+    bundle_path: Optional[Union[str, "os.PathLike[str]"]],
+) -> NodeCertificateMetadata:
+    """Persist certificate metadata for ``node_id`` and return a snapshot."""
+
+    credential = _get_by_node_id(session, node_id)
+    registration = _get_registration_by_node_id(session, node_id)
+    if credential is None and registration is None:
+        raise KeyError("node credentials not found")
+
+    def _normalize(path: Optional[Union[str, "os.PathLike[str]"]]) -> Optional[str]:
+        if path is None:
+            return None
+        return str(path)
+
+    update: Dict[str, Optional[str]] = {
+        "certificate_fingerprint": fingerprint,
+        "certificate_pem_path": _normalize(certificate_path),
+        "private_key_pem_path": _normalize(private_key_path),
+        "certificate_bundle_path": _normalize(bundle_path),
+    }
+
+    changed = False
+    if credential is not None and _apply_certificate_update(credential, update):
+        session.add(credential)
+        changed = True
+    if registration is not None and _apply_certificate_update(registration, update):
+        session.add(registration)
+        changed = True
+
+    if changed:
+        session.commit()
+        if credential is not None:
+            session.refresh(credential)
+        if registration is not None:
+            session.refresh(registration)
+
+    snapshot_source = credential or registration
+    metadata = NodeCertificateMetadata.from_model(snapshot_source)
+    if metadata is None:
+        metadata = NodeCertificateMetadata(
+            fingerprint=update["certificate_fingerprint"],
+            certificate_pem_path=update["certificate_pem_path"],
+            private_key_pem_path=update["private_key_pem_path"],
+            bundle_path=update["certificate_bundle_path"],
+        )
+    return metadata
 
 
 def record_account_credentials(
@@ -862,6 +929,7 @@ def record_account_credentials(
             certificate_fingerprint=credential.certificate_fingerprint,
             certificate_pem_path=credential.certificate_pem_path,
             private_key_pem_path=credential.private_key_pem_path,
+            certificate_bundle_path=credential.certificate_bundle_path,
         )
         registration.assigned_at = credential.created_at
         session.add(registration)
@@ -1117,6 +1185,7 @@ def update_download_id(
         certificate_fingerprint=registration.certificate_fingerprint,
         certificate_pem_path=registration.certificate_pem_path,
         private_key_pem_path=registration.private_key_pem_path,
+        certificate_bundle_path=registration.certificate_bundle_path,
     )
     return legacy
 
@@ -1160,6 +1229,7 @@ def mark_provisioned(
         certificate_fingerprint=registration.certificate_fingerprint,
         certificate_pem_path=registration.certificate_pem_path,
         private_key_pem_path=registration.private_key_pem_path,
+        certificate_bundle_path=registration.certificate_bundle_path,
     )
     return legacy
 
@@ -1376,6 +1446,7 @@ def migrate_credentials_to_registrations(session: Session) -> int:
                 certificate_fingerprint=credential.certificate_fingerprint,
                 certificate_pem_path=credential.certificate_pem_path,
                 private_key_pem_path=credential.private_key_pem_path,
+                certificate_bundle_path=credential.certificate_bundle_path,
             )
             session.add(registration)
             created += 1
@@ -1458,6 +1529,7 @@ __all__ = [
     "mark_provisioned",
     "record_account_credentials",
     "rotate_token",
+    "store_certificate_artifacts",
     "sync_registry_nodes",
     "update_download_id",
 ]
