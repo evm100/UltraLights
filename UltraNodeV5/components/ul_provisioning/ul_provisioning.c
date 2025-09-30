@@ -45,6 +45,11 @@ static char s_status_ip[16];
 static bool s_wifi_started;
 static bool s_wifi_initialised;
 static bool s_handlers_registered;
+static portMUX_TYPE s_scan_lock = portMUX_INITIALIZER_UNLOCKED;
+
+#define MAX_SCAN_RESULTS 32
+static wifi_ap_record_t s_last_scan_results[MAX_SCAN_RESULTS];
+static size_t s_last_scan_count;
 
 extern const uint8_t portal_index_html_start[] asm("_binary_portal_index_html_start");
 extern const uint8_t portal_index_html_end[] asm("_binary_portal_index_html_end");
@@ -119,6 +124,88 @@ static void copy_username_lowercase(char *dest, size_t dest_size,
   }
 }
 
+static bool authmode_requires_username(wifi_auth_mode_t mode) {
+  switch (mode) {
+#ifdef WIFI_AUTH_WPA2_ENTERPRISE
+  case WIFI_AUTH_WPA2_ENTERPRISE:
+#endif
+#ifdef WIFI_AUTH_WPA3_ENTERPRISE
+  case WIFI_AUTH_WPA3_ENTERPRISE:
+#endif
+#ifdef WIFI_AUTH_WPA2_WPA3_ENTERPRISE
+  case WIFI_AUTH_WPA2_WPA3_ENTERPRISE:
+#endif
+    return true;
+  default:
+    return false;
+  }
+}
+
+static const char *authmode_to_string(wifi_auth_mode_t mode) {
+  switch (mode) {
+  case WIFI_AUTH_OPEN:
+    return "open";
+  case WIFI_AUTH_WEP:
+    return "wep";
+  case WIFI_AUTH_WPA_PSK:
+    return "wpa_psk";
+  case WIFI_AUTH_WPA2_PSK:
+    return "wpa2_psk";
+  case WIFI_AUTH_WPA_WPA2_PSK:
+    return "wpa_wpa2_psk";
+#ifdef WIFI_AUTH_WPA2_ENTERPRISE
+  case WIFI_AUTH_WPA2_ENTERPRISE:
+    return "wpa2_enterprise";
+#endif
+#ifdef WIFI_AUTH_WPA3_PSK
+  case WIFI_AUTH_WPA3_PSK:
+    return "wpa3_psk";
+#endif
+#ifdef WIFI_AUTH_WPA2_WPA3_PSK
+  case WIFI_AUTH_WPA2_WPA3_PSK:
+    return "wpa2_wpa3_psk";
+#endif
+#ifdef WIFI_AUTH_WAPI_PSK
+  case WIFI_AUTH_WAPI_PSK:
+    return "wapi_psk";
+#endif
+#ifdef WIFI_AUTH_OWE
+  case WIFI_AUTH_OWE:
+    return "owe";
+#endif
+#ifdef WIFI_AUTH_WPA3_ENTERPRISE
+  case WIFI_AUTH_WPA3_ENTERPRISE:
+    return "wpa3_enterprise";
+#endif
+#ifdef WIFI_AUTH_WPA2_WPA3_ENTERPRISE
+  case WIFI_AUTH_WPA2_WPA3_ENTERPRISE:
+    return "wpa2_wpa3_enterprise";
+#endif
+  default:
+    return "unknown";
+  }
+}
+
+static bool lookup_authmode_for_ssid(const char *ssid, wifi_auth_mode_t *out_mode) {
+  if (!ssid)
+    return false;
+  bool found = false;
+  taskENTER_CRITICAL(&s_scan_lock);
+  for (size_t i = 0; i < s_last_scan_count; ++i) {
+    char rec_ssid[sizeof(s_last_scan_results[i].ssid)];
+    memcpy(rec_ssid, s_last_scan_results[i].ssid, sizeof(rec_ssid));
+    rec_ssid[sizeof(rec_ssid) - 1] = '\0';
+    if (strcmp(rec_ssid, ssid) == 0) {
+      if (out_mode)
+        *out_mode = s_last_scan_results[i].authmode;
+      found = true;
+      break;
+    }
+  }
+  taskEXIT_CRITICAL(&s_scan_lock);
+  return found;
+}
+
 static void append_hotspot_headers(httpd_req_t *req) {
   httpd_resp_set_hdr(req, "Cache-Control", "no-cache, no-store, must-revalidate");
 }
@@ -171,8 +258,8 @@ static esp_err_t scan_handler(httpd_req_t *req) {
 
   uint16_t num = 0;
   esp_wifi_scan_get_ap_num(&num);
-  if (num > 32)
-    num = 32;
+  if (num > MAX_SCAN_RESULTS)
+    num = MAX_SCAN_RESULTS;
   wifi_ap_record_t *records = NULL;
   if (num > 0) {
     records = calloc(num, sizeof(*records));
@@ -190,6 +277,15 @@ static esp_err_t scan_handler(httpd_req_t *req) {
     return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "scan failed");
   }
 
+  taskENTER_CRITICAL(&s_scan_lock);
+  if (num > 0) {
+    memcpy(s_last_scan_results, record_buf, num * sizeof(*record_buf));
+    s_last_scan_count = num;
+  } else {
+    s_last_scan_count = 0;
+  }
+  taskEXIT_CRITICAL(&s_scan_lock);
+
   cJSON *root = cJSON_CreateObject();
   cJSON *arr = cJSON_AddArrayToObject(root, "aps");
   for (uint16_t i = 0; i < num; ++i) {
@@ -200,6 +296,9 @@ static esp_err_t scan_handler(httpd_req_t *req) {
     ssid[sizeof(ssid) - 1] = '\0';
     cJSON_AddStringToObject(item, "ssid", ssid);
     cJSON_AddNumberToObject(item, "rssi", rec->rssi);
+    cJSON_AddStringToObject(item, "auth", authmode_to_string(rec->authmode));
+    cJSON_AddBoolToObject(item, "requires_username",
+                          authmode_requires_username(rec->authmode));
     cJSON_AddItemToArray(arr, item);
   }
   char *json = cJSON_PrintUnformatted(root);
@@ -244,11 +343,22 @@ static bool parse_body(httpd_req_t *req, char *buffer, size_t buffer_len, size_t
   return true;
 }
 
-static void begin_connect(const char *ssid, const char *password) {
+static void begin_connect(const char *ssid, const char *password, bool requires_username) {
   wifi_config_t sta_cfg = {0};
   strlcpy((char *)sta_cfg.sta.ssid, ssid, sizeof(sta_cfg.sta.ssid));
   strlcpy((char *)sta_cfg.sta.password, password, sizeof(sta_cfg.sta.password));
-  sta_cfg.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+#ifdef WIFI_AUTH_WPA2_ENTERPRISE
+  wifi_auth_mode_t threshold = WIFI_AUTH_WPA2_PSK;
+  if (requires_username) {
+    threshold = WIFI_AUTH_WPA2_ENTERPRISE;
+  } else if (!password || password[0] == '\0') {
+    threshold = WIFI_AUTH_OPEN;
+  }
+#else
+  wifi_auth_mode_t threshold = (password && password[0] != '\0') ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+  (void)requires_username;
+#endif
+  sta_cfg.sta.threshold.authmode = threshold;
   esp_wifi_disconnect();
   esp_err_t err = esp_wifi_set_mode(WIFI_MODE_APSTA);
   if (err != ESP_OK) {
@@ -281,6 +391,9 @@ static esp_err_t provision_handler(httpd_req_t *req) {
       cJSON_GetObjectItem(root, "account_password");
   const cJSON *username = cJSON_GetObjectItem(root, "username");
   const cJSON *wifi_password_json = cJSON_GetObjectItem(root, "password");
+  const cJSON *wifi_user_json = cJSON_GetObjectItem(root, "wifi_username");
+  const cJSON *wifi_user_password_json =
+      cJSON_GetObjectItem(root, "wifi_user_password");
   if (!ssid || !cJSON_IsString(ssid) || ssid->valuestring[0] == '\0') {
     cJSON_Delete(root);
     return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing ssid");
@@ -289,6 +402,10 @@ static esp_err_t provision_handler(httpd_req_t *req) {
       (wifi_password_json && cJSON_IsString(wifi_password_json))
           ? wifi_password_json->valuestring
           : "";
+  wifi_auth_mode_t authmode = WIFI_AUTH_OPEN;
+  bool authmode_found = lookup_authmode_for_ssid(ssid->valuestring, &authmode);
+  bool scan_indicated_enterprise =
+      authmode_found && authmode_requires_username(authmode);
   if (!username || !cJSON_IsString(username) || username->valuestring[0] == '\0') {
     cJSON_Delete(root);
     return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing username");
@@ -302,6 +419,32 @@ static esp_err_t provision_handler(httpd_req_t *req) {
     return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing password");
   }
 
+  const char *wifi_user_str =
+      (wifi_user_json && cJSON_IsString(wifi_user_json)) ? wifi_user_json->valuestring : "";
+  const char *wifi_user_pass_str =
+      (wifi_user_password_json && cJSON_IsString(wifi_user_password_json))
+          ? wifi_user_password_json->valuestring
+          : "";
+
+  bool client_requested_enterprise =
+      wifi_user_str[0] != '\0' || wifi_user_pass_str[0] != '\0';
+  bool network_requires_username = scan_indicated_enterprise || client_requested_enterprise;
+
+  if (network_requires_username) {
+    if (wifi_user_str[0] == '\0' || wifi_user_pass_str[0] == '\0') {
+      if (client_requested_enterprise) {
+        cJSON_Delete(root);
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                   wifi_user_str[0] == '\0' ? "missing wifi username"
+                                                            : "missing wifi user password");
+      }
+      ESP_LOGW(TAG,
+               "Enterprise network '%s' missing Wi-Fi user credentials; treating as PSK",
+               ssid->valuestring);
+      network_requires_username = false;
+    }
+  }
+
   ul_wifi_credentials_t creds = {0};
   strlcpy(creds.ssid, ssid->valuestring, sizeof(creds.ssid));
   strlcpy(creds.password, wifi_pass_str, sizeof(creds.password));
@@ -309,15 +452,19 @@ static esp_err_t provision_handler(httpd_req_t *req) {
                           username->valuestring);
   strlcpy(creds.user_password, account_password_str,
           sizeof(creds.user_password));
+  strlcpy(creds.wifi_username, wifi_user_str, sizeof(creds.wifi_username));
+  strlcpy(creds.wifi_user_password, wifi_user_pass_str,
+          sizeof(creds.wifi_user_password));
   esp_err_t err = ul_wifi_credentials_save(&creds);
   if (err != ESP_OK) {
     cJSON_Delete(root);
     return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "persist failed");
   }
-  begin_connect(creds.ssid, creds.password);
   cJSON_Delete(root);
   httpd_resp_set_type(req, "application/json");
-  return httpd_resp_sendstr(req, "{\"ok\":true}");
+  esp_err_t send_err = httpd_resp_sendstr(req, "{\"ok\":true}");
+  begin_connect(creds.ssid, creds.password, network_requires_username);
+  return send_err;
 }
 
 static void idle_timer_cb(void *arg) {
