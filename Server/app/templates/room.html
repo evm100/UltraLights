@@ -19,15 +19,15 @@
   <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
     <h2 class="text-2xl font-semibold">Presets</h2>
     <div class="flex items-center gap-2">
-      <button id="presetSaveButton" type="button" class="glow-button rounded-lg text-sm font-semibold tracking-wide uppercase">Save Preset</button>
-      <button id="presetEditButton" type="button" class="glow-button rounded-lg text-sm font-semibold tracking-wide uppercase" aria-pressed="false" aria-controls="presetList">Edit</button>
+      <button id="presetSaveButton" type="button" class="glow-button text-sm font-semibold tracking-wide uppercase">Save Preset</button>
+      <button id="presetEditButton" type="button" class="glow-button text-sm font-semibold tracking-wide uppercase" aria-pressed="false" aria-controls="presetList">Edit</button>
     </div>
   </div>
   <div id="presetStatus" class="text-sm mb-3 opacity-80" role="status" aria-live="polite"></div>
   <div id="presetList" class="flex flex-wrap gap-2" data-editing="false" data-house-id="{{ house_public_id }}" data-room-id="{{ room.id }}" data-api-base="/api/house/{{ house_public_id }}/room/{{ room.id }}" data-initial-presets='{{ presets|tojson }}'>
     {% for p in presets %}
     <div class="preset-item" data-preset-id="{{ p.id }}" data-custom="{{ 'true' if p.source == 'custom' else 'false' }}">
-      <button class="preset preset-button glow-button rounded-lg" type="button" data-preset-id="{{ p.id }}">{{ p.name or p.id }}</button>
+      <button class="preset preset-button glow-button" type="button" data-preset-id="{{ p.id }}">{{ p.name or p.id }}</button>
       {% if p.source == 'custom' %}
       <button class="preset-delete" type="button" aria-hidden="true" tabindex="-1" hidden aria-label="Delete preset {{ p.name or p.id }}" data-preset-id="{{ p.id }}">✕</button>
       {% endif %}
