@@ -18,9 +18,14 @@ typedef int esp_err_t;
 #define CONFIG_UL_MQTT_URI "test://broker"
 #define CONFIG_UL_MQTT_USER "test_user"
 #define CONFIG_UL_MQTT_PASS "test_pass"
+#define CONFIG_UL_MQTT_LEGACY_USERPASS_COMPAT 1
 #define CONFIG_UL_MQTT_DIAL_HOST ""
 #define CONFIG_UL_MQTT_DIAL_PORT 0
 #define CONFIG_UL_MQTT_USE_TLS 1
+#define CONFIG_UL_MQTT_REQUIRE_CLIENT_CERT 1
+#define CONFIG_UL_MQTT_PROVISION_CERTS 1
+#define CONFIG_UL_MQTT_CLIENT_CERT_MAX_LEN 1024
+#define CONFIG_UL_MQTT_CLIENT_KEY_MAX_LEN 1024
 #define CONFIG_UL_MQTT_TLS_SKIP_COMMON_NAME_CHECK 0
 #define CONFIG_UL_MQTT_TLS_COMMON_NAME "test-broker"
 #define CONFIG_UL_MQTT_CONNECT_TIMEOUT_MS 20000
@@ -90,6 +95,10 @@ typedef struct {
     const char *username;
     struct {
       const char *password;
+      const char *certificate;
+      size_t certificate_len;
+      const char *key;
+      size_t key_len;
     } authentication;
   } credentials;
   struct {
@@ -119,18 +128,20 @@ typedef struct {
   char user_password[129];
   char wifi_username[65];
   char wifi_user_password[129];
+  unsigned char mqtt_client_cert[CONFIG_UL_MQTT_CLIENT_CERT_MAX_LEN];
+  size_t mqtt_client_cert_len;
+  unsigned char mqtt_client_key[CONFIG_UL_MQTT_CLIENT_KEY_MAX_LEN];
+  size_t mqtt_client_key_len;
 } ul_wifi_credentials_t;
+
+extern bool g_stub_credentials_available;
+extern ul_wifi_credentials_t g_stub_credentials;
 
 static inline bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
   if (!out)
     return false;
-  out->ssid[0] = '\0';
-  out->password[0] = '\0';
-  out->user[0] = '\0';
-  out->user_password[0] = '\0';
-  out->wifi_username[0] = '\0';
-  out->wifi_user_password[0] = '\0';
-  return false;
+  *out = g_stub_credentials;
+  return g_stub_credentials_available;
 }
 
 bool ul_core_is_connected(void);
@@ -149,4 +160,5 @@ esp_mqtt_client_handle_t ul_mqtt_test_get_client_handle(void);
 bool ul_mqtt_test_retry_pending(void);
 uint32_t ul_mqtt_test_consecutive_failures(void);
 bool ul_mqtt_test_restart_pending(void);
+const esp_mqtt_client_config_t *ul_mqtt_test_get_last_config(void);
 

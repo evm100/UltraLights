@@ -14,6 +14,10 @@
 #include "cJSON.h"
 #include "esp_system.h"
 #include "esp_mac.h"
+#include "sdkconfig.h"
+#if CONFIG_UL_MQTT_PROVISION_CERTS
+#include "mbedtls/base64.h"
+#endif
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -377,7 +381,7 @@ static void begin_connect(const char *ssid, const char *password, bool requires_
 
 static esp_err_t provision_handler(httpd_req_t *req) {
   reset_idle_timer();
-  char body[512];
+  char body[4096];
   size_t len = 0;
   if (!parse_body(req, body, sizeof(body), &len)) {
     return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
@@ -394,6 +398,12 @@ static esp_err_t provision_handler(httpd_req_t *req) {
   const cJSON *wifi_user_json = cJSON_GetObjectItem(root, "wifi_username");
   const cJSON *wifi_user_password_json =
       cJSON_GetObjectItem(root, "wifi_user_password");
+#if CONFIG_UL_MQTT_PROVISION_CERTS
+  const cJSON *client_cert_json =
+      cJSON_GetObjectItem(root, "mqtt_client_certificate");
+  const cJSON *client_key_json =
+      cJSON_GetObjectItem(root, "mqtt_client_key");
+#endif
   if (!ssid || !cJSON_IsString(ssid) || ssid->valuestring[0] == '\0') {
     cJSON_Delete(root);
     return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing ssid");
@@ -455,6 +465,75 @@ static esp_err_t provision_handler(httpd_req_t *req) {
   strlcpy(creds.wifi_username, wifi_user_str, sizeof(creds.wifi_username));
   strlcpy(creds.wifi_user_password, wifi_user_pass_str,
           sizeof(creds.wifi_user_password));
+#if CONFIG_UL_MQTT_PROVISION_CERTS
+  if (client_cert_json && cJSON_IsString(client_cert_json) &&
+      client_cert_json->valuestring && client_cert_json->valuestring[0] != '\0') {
+    const unsigned char *encoded =
+        (const unsigned char *)client_cert_json->valuestring;
+    size_t encoded_len = strlen(client_cert_json->valuestring);
+    size_t decoded_len = 0;
+    int rc = mbedtls_base64_decode(NULL, 0, &decoded_len, encoded, encoded_len);
+    if (rc != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL && rc != 0) {
+      cJSON_Delete(root);
+      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                 "invalid client certificate");
+    }
+    if (decoded_len > sizeof(creds.mqtt_client_cert)) {
+      cJSON_Delete(root);
+      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                 "client certificate too large");
+    }
+    rc = mbedtls_base64_decode(creds.mqtt_client_cert,
+                               sizeof(creds.mqtt_client_cert), &decoded_len,
+                               encoded, encoded_len);
+    if (rc != 0) {
+      cJSON_Delete(root);
+      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                 "invalid client certificate");
+    }
+    creds.mqtt_client_cert_len = decoded_len;
+  } else {
+    creds.mqtt_client_cert_len = 0;
+  }
+
+  if (client_key_json && cJSON_IsString(client_key_json) &&
+      client_key_json->valuestring && client_key_json->valuestring[0] != '\0') {
+    const unsigned char *encoded =
+        (const unsigned char *)client_key_json->valuestring;
+    size_t encoded_len = strlen(client_key_json->valuestring);
+    size_t decoded_len = 0;
+    int rc = mbedtls_base64_decode(NULL, 0, &decoded_len, encoded, encoded_len);
+    if (rc != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL && rc != 0) {
+      cJSON_Delete(root);
+      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                 "invalid client key");
+    }
+    if (decoded_len > sizeof(creds.mqtt_client_key)) {
+      cJSON_Delete(root);
+      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                 "client key too large");
+    }
+    rc = mbedtls_base64_decode(creds.mqtt_client_key,
+                               sizeof(creds.mqtt_client_key), &decoded_len,
+                               encoded, encoded_len);
+    if (rc != 0) {
+      cJSON_Delete(root);
+      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                 "invalid client key");
+    }
+    creds.mqtt_client_key_len = decoded_len;
+  } else {
+    creds.mqtt_client_key_len = 0;
+  }
+
+#if CONFIG_UL_MQTT_REQUIRE_CLIENT_CERT
+  if (creds.mqtt_client_cert_len == 0 || creds.mqtt_client_key_len == 0) {
+    cJSON_Delete(root);
+    return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                               "missing client certificate bundle");
+  }
+#endif
+#endif
   esp_err_t err = ul_wifi_credentials_save(&creds);
   if (err != ESP_OK) {
     cJSON_Delete(root);

@@ -27,14 +27,20 @@ bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
     return false;
   }
 
+  bool have_ssid = false;
   size_t ssid_len = sizeof(out->ssid);
   err = nvs_get_str(handle, "ssid", out->ssid, &ssid_len);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    out->ssid[0] = '\0';
+    err = ESP_OK;
+  }
   if (err != ESP_OK) {
-    if (err != ESP_ERR_NVS_NOT_FOUND) {
-      ESP_LOGW(TAG, "Failed to read stored SSID: %s", esp_err_to_name(err));
-    }
+    ESP_LOGW(TAG, "Failed to read stored SSID: %s", esp_err_to_name(err));
     nvs_close(handle);
     return false;
+  }
+  if (out->ssid[0] != '\0') {
+    have_ssid = true;
   }
 
   size_t pass_len = sizeof(out->password);
@@ -106,8 +112,36 @@ bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
     return false;
   }
 
+  size_t cert_len = sizeof(out->mqtt_client_cert);
+  err = nvs_get_blob(handle, "mqtt_client_cert", out->mqtt_client_cert, &cert_len);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    out->mqtt_client_cert_len = 0;
+    err = ESP_OK;
+  }
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to read stored MQTT client certificate: %s",
+             esp_err_to_name(err));
+    nvs_close(handle);
+    return false;
+  }
+  out->mqtt_client_cert_len = cert_len;
+
+  size_t key_len = sizeof(out->mqtt_client_key);
+  err = nvs_get_blob(handle, "mqtt_client_key", out->mqtt_client_key, &key_len);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    out->mqtt_client_key_len = 0;
+    err = ESP_OK;
+  }
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to read stored MQTT client key: %s",
+             esp_err_to_name(err));
+    nvs_close(handle);
+    return false;
+  }
+  out->mqtt_client_key_len = key_len;
+
   nvs_close(handle);
-  return out->ssid[0] != '\0';
+  return have_ssid;
 }
 
 esp_err_t ul_wifi_credentials_save(const ul_wifi_credentials_t *creds) {
@@ -169,6 +203,40 @@ esp_err_t ul_wifi_credentials_save(const ul_wifi_credentials_t *creds) {
     return err;
   }
 
+  if (creds->mqtt_client_cert_len > 0) {
+    err = nvs_set_blob(handle, "mqtt_client_cert", creds->mqtt_client_cert,
+                       creds->mqtt_client_cert_len);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to save MQTT client certificate: %s",
+               esp_err_to_name(err));
+      nvs_close(handle);
+      return err;
+    }
+  } else {
+    esp_err_t erase_cert = nvs_erase_key(handle, "mqtt_client_cert");
+    if (erase_cert != ESP_OK && erase_cert != ESP_ERR_NVS_NOT_FOUND) {
+      ESP_LOGW(TAG, "Failed to erase MQTT client certificate: %s",
+               esp_err_to_name(erase_cert));
+    }
+  }
+
+  if (creds->mqtt_client_key_len > 0) {
+    err = nvs_set_blob(handle, "mqtt_client_key", creds->mqtt_client_key,
+                       creds->mqtt_client_key_len);
+    if (err != ESP_OK) {
+      ESP_LOGE(TAG, "Failed to save MQTT client key: %s",
+               esp_err_to_name(err));
+      nvs_close(handle);
+      return err;
+    }
+  } else {
+    esp_err_t erase_key = nvs_erase_key(handle, "mqtt_client_key");
+    if (erase_key != ESP_OK && erase_key != ESP_ERR_NVS_NOT_FOUND) {
+      ESP_LOGW(TAG, "Failed to erase MQTT client key: %s",
+               esp_err_to_name(erase_key));
+    }
+  }
+
   // Remove legacy key if it exists so future reads use the new name.
   esp_err_t erase_legacy = nvs_erase_key(handle, "secret");
   if (erase_legacy != ESP_OK && erase_legacy != ESP_ERR_NVS_NOT_FOUND) {
@@ -219,6 +287,16 @@ esp_err_t ul_wifi_credentials_clear(void) {
   erase_err = nvs_erase_key(handle, "wifi_user_password");
   if (erase_err != ESP_OK && erase_err != ESP_ERR_NVS_NOT_FOUND) {
     ESP_LOGW(TAG, "Failed to erase Wi-Fi user password key: %s",
+             esp_err_to_name(erase_err));
+  }
+  erase_err = nvs_erase_key(handle, "mqtt_client_cert");
+  if (erase_err != ESP_OK && erase_err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_LOGW(TAG, "Failed to erase MQTT client certificate key: %s",
+             esp_err_to_name(erase_err));
+  }
+  erase_err = nvs_erase_key(handle, "mqtt_client_key");
+  if (erase_err != ESP_OK && erase_err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_LOGW(TAG, "Failed to erase MQTT client key: %s",
              esp_err_to_name(erase_err));
   }
   erase_err = nvs_erase_key(handle, "secret");

@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 #define UL_MQTT_TESTING 1
 #include "ul_mqtt_test_stubs.h"
@@ -15,6 +16,10 @@ static int g_stop_calls = 0;
 static int g_destroy_calls = 0;
 static int g_vtaskdelay_last = -1;
 static int g_init_failures_remaining = 1;
+bool g_stub_credentials_available = false;
+ul_wifi_credentials_t g_stub_credentials = {0};
+static esp_mqtt_client_config_t g_last_cfg = {0};
+static bool g_last_cfg_valid = false;
 
 struct ul_mqtt_test_client {
   int placeholder;
@@ -25,6 +30,10 @@ static esp_event_handler_t g_registered_handler = NULL;
 
 static esp_timer_t g_timer = {0};
 static bool g_timer_created = false;
+
+const esp_mqtt_client_config_t *ul_mqtt_test_get_last_config(void) {
+  return g_last_cfg_valid ? &g_last_cfg : NULL;
+}
 
 bool ul_core_is_connected(void) { return g_core_connected; }
 
@@ -63,7 +72,11 @@ esp_err_t esp_timer_stop(esp_timer_handle_t timer) {
 }
 
 esp_mqtt_client_handle_t esp_mqtt_client_init(const esp_mqtt_client_config_t *cfg) {
-  (void)cfg;
+  g_last_cfg_valid = false;
+  if (cfg) {
+    g_last_cfg = *cfg;
+    g_last_cfg_valid = true;
+  }
   g_init_calls++;
   if (g_init_failures_remaining > 0) {
     g_init_failures_remaining--;
@@ -143,6 +156,16 @@ static void reset_metrics(void) {
   g_vtaskdelay_last = -1;
   g_init_failures_remaining = 0;
   g_registered_handler = NULL;
+  g_last_cfg_valid = false;
+  memset(&g_stub_credentials, 0, sizeof(g_stub_credentials));
+  g_stub_credentials_available = true;
+  strncpy(g_stub_credentials.ssid, "test-ssid", sizeof(g_stub_credentials.ssid) - 1);
+  static const unsigned char cert_bytes[] = {'c', 'e', 'r', 't'};
+  static const unsigned char key_bytes[] = {'k', 'e', 'y'};
+  memcpy(g_stub_credentials.mqtt_client_cert, cert_bytes, sizeof(cert_bytes));
+  g_stub_credentials.mqtt_client_cert_len = sizeof(cert_bytes);
+  memcpy(g_stub_credentials.mqtt_client_key, key_bytes, sizeof(key_bytes));
+  g_stub_credentials.mqtt_client_key_len = sizeof(key_bytes);
 }
 
 static void test_init_failure_retry(void) {
@@ -251,10 +274,29 @@ static void test_consecutive_failure_restart(void) {
   ul_mqtt_stop();
 }
 
+static void test_mtls_certificate_configured(void) {
+  reset_metrics();
+  g_core_connected = true;
+
+  ul_mqtt_start();
+
+  const esp_mqtt_client_config_t *cfg = ul_mqtt_test_get_last_config();
+  assert(cfg != NULL);
+  assert(cfg->credentials.authentication.certificate != NULL);
+  assert(cfg->credentials.authentication.certificate_len ==
+         g_stub_credentials.mqtt_client_cert_len);
+  assert(cfg->credentials.authentication.key != NULL);
+  assert(cfg->credentials.authentication.key_len ==
+         g_stub_credentials.mqtt_client_key_len);
+
+  ul_mqtt_stop();
+}
+
 int main(void) {
   test_init_failure_retry();
   test_register_failure_retry();
   test_consecutive_failure_restart();
+  test_mtls_certificate_configured();
 
   printf("ul_mqtt_retry_test passed\n");
   return 0;

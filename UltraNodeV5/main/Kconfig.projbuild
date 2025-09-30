@@ -69,12 +69,23 @@ menu "MQTT"
     config UL_MQTT_URI
         string "MQTT URI"
         default "mqtts://lights.evm100.org:8883"
-    config UL_MQTT_USER
-        string "MQTT Username"
-        default "uluser"
-    config UL_MQTT_PASS
-        string "MQTT Password"
-        default "ulpwd"
+    config UL_MQTT_LEGACY_USERPASS_COMPAT
+        bool "Enable legacy MQTT username/password authentication"
+        default y
+        help
+            The UltraLights MQTT stack historically authenticated with a shared
+            username/password pair. Enable this option to continue seeding the
+            client configuration with UL_MQTT_USER / UL_MQTT_PASS while rolling
+            out mutual TLS. Disable once every node has a provisioned client
+            certificate.
+    if UL_MQTT_LEGACY_USERPASS_COMPAT
+        config UL_MQTT_USER
+            string "MQTT Username"
+            default "uluser"
+        config UL_MQTT_PASS
+            string "MQTT Password"
+            default "ulpwd"
+    endif
     config UL_MQTT_DIAL_HOST
         string "Override MQTT dial host/IP"
         default ""
@@ -97,6 +108,35 @@ menu "MQTT"
         help
             Enable TLS when connecting to the MQTT broker.
     if UL_MQTT_USE_TLS
+        config UL_MQTT_REQUIRE_CLIENT_CERT
+            bool "Require provisioned MQTT client certificate"
+            default y
+            help
+                Enforce mutual TLS when connecting to the MQTT broker. The node
+                refuses to start MQTT until a client certificate and encrypted
+                private key have been provisioned and stored in NVS.
+        config UL_MQTT_PROVISION_CERTS
+            bool "Provision client certificates via captive portal"
+            default y
+            help
+                Accept a base64 encoded client certificate/key bundle from the
+                provisioning server after authenticating with the node owner.
+                Disable when certificates are injected through another secure
+                channel.
+        config UL_MQTT_CLIENT_CERT_MAX_LEN
+            int "Maximum MQTT client certificate size (bytes)"
+            range 512 8192
+            default 3072
+            help
+                Upper bound on the decoded client certificate stored in NVS.
+                Increase this limit if using unusually large PEM chains.
+        config UL_MQTT_CLIENT_KEY_MAX_LEN
+            int "Maximum MQTT client private key size (bytes)"
+            range 512 8192
+            default 2048
+            help
+                Upper bound on the encrypted private key blob stored in NVS.
+                Increase when deploying longer RSA keys or custom key wrappers.
         config UL_MQTT_TLS_COMMON_NAME
             string "MQTT TLS common name"
             default "lights.evm100.org"

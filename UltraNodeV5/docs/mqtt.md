@@ -31,6 +31,29 @@ Leaving `UL_MQTT_TLS_COMMON_NAME` blank reuses the hostname from
 `UL_MQTT_URI`, which is useful when the certificate already matches the broker
 URI and only the dial host differs.
 
+## Mutual TLS provisioning
+
+Nodes now support mutual TLS when `CONFIG_UL_MQTT_REQUIRE_CLIENT_CERT=y`. The
+MQTT configuration menu exposes two new toggles:
+
+* `CONFIG_UL_MQTT_LEGACY_USERPASS_COMPAT` keeps the historical
+  username/password authentication enabled while migrating to per-node client
+  certificates. Disable it once every device has been re-provisioned.
+* `CONFIG_UL_MQTT_PROVISION_CERTS` enables the captive portal flow for
+  provisioning the certificate bundle. The portal expects base64-encoded fields
+  named `mqtt_client_certificate` and `mqtt_client_key` in the provisioning POST
+  body after the user authenticates with their UltraLights account.
+
+The decoded blobs are stored in NVS and injected into
+`esp_mqtt_client_config_t.credentials.authentication.certificate` / `key`
+before the MQTT client starts. When `CONFIG_UL_MQTT_REQUIRE_CLIENT_CERT` is
+enabled the node refuses to connect until both blobs are present, preventing
+plaintext or anonymous fallbacks.
+
+Set `CONFIG_UL_MQTT_CLIENT_CERT_MAX_LEN` /
+`CONFIG_UL_MQTT_CLIENT_KEY_MAX_LEN` if your certificate chain or encrypted key
+material exceeds the defaults (3 KiB and 2 KiB respectively).
+
 ## Topic scheme
 
 All topics are rooted at `ul/<node-id>/`. The node subscribes to commands addressed to itself and to the broadcast topic `ul/+/cmd/#`.
