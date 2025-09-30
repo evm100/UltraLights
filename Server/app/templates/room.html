@@ -8,10 +8,12 @@
 </div>
 <div class="grid md:grid-cols-3 gap-4">
   {% for n in room.nodes %}
-  <a href="/node/{{ n.id }}" class="glass rounded-xl p-4 block hover:ring-2 hover:ring-indigo-400">
-    <div class="text-sm opacity-70 uppercase tracking-wide">{{ n.kind|upper }}</div>
-    <div class="text-xl font-semibold">{{ n.name }}</div>
-    <div class="opacity-60 text-xs mt-2">ID: {{ n.id }}</div>
+  <a href="/node/{{ n.id }}" class="glow-card">
+    <div class="glow-card__inner">
+      <div class="glow-card__meta">{{ n.kind|upper }}</div>
+      <div class="text-xl font-semibold">{{ n.name }}</div>
+      <div class="glow-card__muted text-xs">ID: {{ n.id }}</div>
+    </div>
   </a>
   {% endfor %}
 </div>
