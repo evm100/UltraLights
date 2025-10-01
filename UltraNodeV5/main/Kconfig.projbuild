@@ -323,6 +323,14 @@ menu "RGB Strips (LEDC)"
 endmenu
 
 menu "WS2812 Strips"
+    config UL_WS_FLIP_RG
+        bool "Flip red/green values in MQTT payloads"
+        default n
+        help
+            Some WS2815 LED strips are wired with the red and green channels
+            reversed relative to WS2812 ordering. Enable this option to flip
+            the red and green values from incoming MQTT payloads before they
+            are applied to the strips.
     menu "Strip 0"
         config UL_WS0_ENABLED
             bool "Enabled"

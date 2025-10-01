@@ -153,13 +153,14 @@ class PirSensorConfig(BaseModel):
 
 class NodeHardwareConfig(BaseModel):
     board: str = Field(default="esp32")
+    ws2812_flip_rg: bool = Field(default=False, alias="ws2812FlipRG")
     ws2812: List[Ws2812ChannelConfig] = Field(default_factory=list)
     white: List[WhiteChannelConfig] = Field(default_factory=list)
     rgb: List[RgbChannelConfig] = Field(default_factory=list)
     pir: Optional[PirSensorConfig] = None
     overrides: Dict[str, Any] = Field(default_factory=dict)
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     @field_validator("board")
     @classmethod

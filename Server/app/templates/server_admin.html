@@ -134,6 +134,13 @@
             </label>
           </div>
           {% endfor %}
+          <label class="flex items-start gap-3 text-xs font-semibold">
+            <input type="checkbox" data-ws-flip-rg>
+            <span>
+              Flip red/green values for WS MQTT payloads
+              <span class="block font-normal opacity-60">Enable when using WS2815 strips with reversed wiring.</span>
+            </span>
+          </label>
         </div>
         <div class="grid gap-4" data-channel-group="white" data-channel-type="white">
           <div class="text-sm font-semibold">White channels</div>
@@ -543,6 +550,7 @@ function collectHardwarePayload(root) {
   const wsGroup = root.querySelector('[data-channel-group="ws"]');
   const whiteGroup = root.querySelector('[data-channel-group="white"]');
   const rgbGroup = root.querySelector('[data-channel-group="rgb"]');
+  const wsFlipInput = root.querySelector('[data-ws-flip-rg]');
   const overridesText = root.querySelector('[data-overrides]')?.value || '';
   const pirEnabled = root.querySelector('[data-pir-enabled]')?.checked || false;
   const pirGpioRaw = root.querySelector('[data-pir-gpio]')?.value || '';
@@ -561,6 +569,7 @@ function collectHardwarePayload(root) {
 
   const hardware = {
     board,
+    ws2812FlipRG: wsFlipInput?.checked || false,
     ws2812: wsGroup ? collectChannels(wsGroup) : [],
     white: whiteGroup ? collectChannels(whiteGroup) : [],
     rgb: rgbGroup ? collectChannels(rgbGroup) : [],
