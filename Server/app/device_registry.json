@@ -30,6 +30,18 @@
             ],
             "kind": "ultranode",
             "download_id": "IIkNlrKAZ3WF8HrYs6Aw7G7Jp8XtlgTcuklr2UY2m4I3uwpg"
+          },
+          {
+            "id": "nqdrgfqjwxl31x1bv218p918mna2xeg",
+            "name": "Sensor de la Sala",
+            "modules": [
+              "ws",
+              "rgb",
+              "white",
+              "ota"
+            ],
+            "kind": "ultranode",
+            "download_id": "Xg8rprFOHfiCffH1aMSzVfjGm2gERaw0Xw38bWsTBG7T1QMV"
           }
         ]
       },
@@ -112,8 +124,38 @@
             "download_id": "HArhhbWUZd7TvSNlqp9Idete7GebLbJpGiD1g8M9TFM0FtTF"
           },
           {
+            "id": "nqra3se62vktfklcx24iv91jzu5v1si",
+            "name": "Demo Board 2.0",
+            "modules": [
+              "ws",
+              "rgb",
+              "white",
+              "ota"
+            ],
+            "kind": "ultranode",
+            "download_id": "jFTbZY2fY7ArX7lcaNqeGruU4sPtzcwDEJ0MjXDfUiULJH7J"
+          }
+        ]
+      },
+      {
+        "id": "outside",
+        "name": "Outside",
+        "nodes": [
+          {
+            "id": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "name": "12V Demo",
+            "modules": [
+              "ws",
+              "rgb",
+              "white",
+              "ota"
+            ],
+            "kind": "ultranode",
+            "download_id": "4KxMHMoDtv3W4vcMHKH430xlwbtdlCI9QMjdUwK6EC6NbjoF"
+          },
+          {
             "id": "bamy85btphl8at81kcveeq7d4wgkc5r",
-            "name": "Demo Board Online",
+            "name": "5V Demo",
             "modules": [
               "ws",
               "rgb",

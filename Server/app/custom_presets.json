@@ -556,6 +556,41 @@
             "module": "white"
           }
         ]
+      },
+      {
+        "source": "custom",
+        "id": "night-light",
+        "name": "Night light",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 6,
+            "params": [],
+            "name": "\ud83c\udfa8\ud83c\udf3f",
+            "channel": 0,
+            "node": "44r9iy1w0ufe8v5zi0f6w3jwiv7v044",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 2,
+            "params": [],
+            "channel": 1,
+            "node": "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k",
+            "module": "white"
+          }
+        ]
       }
     ]
   },
@@ -768,6 +803,628 @@
             ],
             "strip": 0,
             "node": "1liml3h80hrvbrmkdwlql3l59ufosrt",
+            "module": "ws"
+          }
+        ]
+      }
+    ],
+    "outside": [
+      {
+        "source": "custom",
+        "id": "warm",
+        "name": "Warm",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "channel": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "color_swell",
+            "brightness": 255,
+            "params": [
+              0.0,
+              255.0,
+              21.0
+            ],
+            "color": [
+              0,
+              255,
+              17
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "rgb"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "rainbow",
+        "name": "Rainbow",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "modern_rainbow",
+            "brightness": 255,
+            "params": [],
+            "color": [
+              0,
+              255,
+              17
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "rgb"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "uv",
+        "name": "UV",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "color_swell",
+            "brightness": 255,
+            "params": [
+              0.0,
+              103.0,
+              255.0
+            ],
+            "color": [
+              0,
+              255,
+              17
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "rgb"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "full-white",
+        "name": "Full White",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "channel": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "channel": 1,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              159.0,
+              255.0,
+              69.0
+            ],
+            "color": [
+              159,
+              255,
+              69
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              165.0,
+              255.0,
+              82.0
+            ],
+            "color": [
+              165,
+              255,
+              82
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "rgb"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "preset",
+        "name": "\u270c\ufe0f \ud83c\udf08",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "modern_rainbow",
+            "brightness": 255,
+            "params": [],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "rgb"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "bamy85btphl8at81kcveeq7d4wgkc5r",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "bamy85btphl8at81kcveeq7d4wgkc5r",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "modern_rainbow",
+            "brightness": 255,
+            "params": [],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "bamy85btphl8at81kcveeq7d4wgkc5r",
+            "module": "ws"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "off",
+        "name": "Off",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "rgb"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "bamy85btphl8at81kcveeq7d4wgkc5r",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "bamy85btphl8at81kcveeq7d4wgkc5r",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "bamy85btphl8at81kcveeq7d4wgkc5r",
+            "module": "ws"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "uv-2x",
+        "name": "UV 2x",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "color_swell",
+            "brightness": 255,
+            "params": [
+              0.0,
+              103.0,
+              255.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              81.0,
+              255.0
+            ],
+            "color": [
+              0,
+              81,
+              255
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "rgb"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "bamy85btphl8at81kcveeq7d4wgkc5r",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "bamy85btphl8at81kcveeq7d4wgkc5r",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "color_swell",
+            "brightness": 255,
+            "params": [
+              98.0,
+              0.0,
+              255.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "bamy85btphl8at81kcveeq7d4wgkc5r",
+            "module": "ws"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "star-wars",
+        "name": "Star Wars",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "color_swell",
+            "brightness": 255,
+            "params": [
+              0.0,
+              8.0,
+              255.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "ws"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "dblh9hboy78ete3fore7ix0jmtowp5w",
+            "module": "rgb"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "bamy85btphl8at81kcveeq7d4wgkc5r",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "bamy85btphl8at81kcveeq7d4wgkc5r",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "color_swell",
+            "brightness": 255,
+            "params": [
+              255.0,
+              51.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "bamy85btphl8at81kcveeq7d4wgkc5r",
             "module": "ws"
           }
         ]

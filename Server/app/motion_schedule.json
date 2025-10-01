@@ -3,18 +3,18 @@
   "schedules": {
     "del-sur": {
       "kitchen": [
-        "night",
-        "night",
-        "night",
-        "night",
-        "night",
-        "night",
-        "night",
-        "night",
-        "night",
-        "night",
-        "night",
-        "night",
+        "night-light",
+        "night-light",
+        "night-light",
+        "night-light",
+        "night-light",
+        "night-light",
+        "night-light",
+        "night-light",
+        "night-light",
+        "night-light",
+        "night-light",
+        "night-light",
         "night",
         "night",
         "night",
@@ -102,18 +102,81 @@
         "preset-3",
         "preset-3"
       ]
+    },
+    "exampleHouse": {
+      "outside": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
     }
   },
   "preset_colors": {
     "del-sur": {
       "kitchen": {
-        "night": "#1A5FB4",
+        "1-2": "#F9F06B",
+        "night": "#152889",
         "off": "#000000",
-        "on": "#57E389"
+        "on": "#78BF40"
       },
       "master": {
-        "preset-3": "#1A5FB4",
-        "preset-4": "#DEDDDA"
+        "preset-3": "#152889",
+        "preset-4": "#C0BFBC"
+      }
+    }
+  },
+  "sensor_config": {
+    "del-sur": {
+      "kitchen": {
+        "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k": {
+          "enabled": true,
+          "duration": 180
+        }
       }
     }
   }
