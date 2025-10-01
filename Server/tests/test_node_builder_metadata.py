@@ -59,6 +59,19 @@ def test_ws2812_channel_values_are_copied():
     assert overrides["CONFIG_UL_WS0_PIXELS"][0] == 120
 
 
+def test_ws2812_flip_rg_override_flag():
+    metadata = {"board": "esp32", "ws2812_flip_rg": True}
+
+    overrides = node_builder.metadata_to_overrides(metadata)
+
+    assert overrides["CONFIG_UL_WS_FLIP_RG"][0] is True
+
+    disabled_metadata = {"board": "esp32", "ws2812_flip_rg": False}
+    disabled_overrides = node_builder.metadata_to_overrides(disabled_metadata)
+
+    assert disabled_overrides["CONFIG_UL_WS_FLIP_RG"][0] is False
+
+
 def test_project_sdkconfig_updates_include_metadata(tmp_path, monkeypatch: pytest.MonkeyPatch, auth_db):
     project_config = tmp_path / "sdkconfig"
     project_config.write_text("CONFIG_UL_NODE_ID=\"default\"\n", encoding="utf-8")
@@ -110,6 +123,7 @@ def test_project_sdkconfig_updates_include_metadata(tmp_path, monkeypatch: pytes
     assert captured["CONFIG_UL_WS0_ENABLED"][0] is True
     assert captured["CONFIG_UL_WS0_GPIO"][0] == 6
     assert captured["CONFIG_UL_WS0_PIXELS"][0] == 150
+    assert captured["CONFIG_UL_WS_FLIP_RG"][0] is False
     assert captured["CONFIG_UL_RGB0_ENABLED"][0] is True
     assert captured["CONFIG_UL_RGB0_R_GPIO"][0] == 18
     assert captured["CONFIG_UL_RGB0_G_GPIO"][0] == 19

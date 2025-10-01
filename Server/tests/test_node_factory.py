@@ -89,6 +89,7 @@ def test_create_node_registrations(admin_client: TestClient):
         "displayName": "Batch Node",
         "hardware": {
             "board": "esp32c3",
+            "ws2812FlipRG": True,
             "ws2812": [
                 {"index": 0, "enabled": True, "gpio": 6, "pixels": 60},
             ],
@@ -114,6 +115,7 @@ def test_create_node_registrations(admin_client: TestClient):
         assert all(reg.display_name.startswith("Batch Node") for reg in regs)
 
         expected_metadata = node_builder.normalize_hardware_metadata(payload["hardware"])
+        assert expected_metadata["ws2812_flip_rg"] is True
         for reg in regs:
             assert reg.hardware_metadata == expected_metadata
 

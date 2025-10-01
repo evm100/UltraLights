@@ -377,6 +377,11 @@ def normalize_hardware_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
     normalized = copy.deepcopy(metadata)
+
+    if "ws2812FlipRG" in normalized and "ws2812_flip_rg" not in normalized:
+        normalized["ws2812_flip_rg"] = normalized.pop("ws2812FlipRG")
+
+    normalized["ws2812_flip_rg"] = bool(normalized.get("ws2812_flip_rg"))
     board = str(normalized.get("board", "esp32")).lower()
     normalized["board"] = board
 
@@ -470,6 +475,7 @@ def _ws_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
     channels = metadata.get("ws2812") or []
     overrides: Dict[str, Tuple[Any, bool]] = {}
     indexed = {int(entry.get("index", -1)): entry for entry in channels if isinstance(entry, dict)}
+    overrides["CONFIG_UL_WS_FLIP_RG"] = _bool_flag(bool(metadata.get("ws2812_flip_rg")))
     for idx in range(2):
         entry = indexed.get(idx) or {}
         enabled = bool(entry.get("enabled"))

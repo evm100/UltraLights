@@ -32,8 +32,13 @@ void modern_rainbow_render(uint8_t *frame_rgb, int pixels, int frame_idx) {
         uint8_t hue = (uint8_t)((i * 256 / cycle + frame_idx) & 0xFF);
         uint8_t r, g, b;
         hsv_to_rgb(hue, &r, &g, &b);
+#if CONFIG_UL_WS_FLIP_RG
+        frame_rgb[3 * i + 0] = g;
+        frame_rgb[3 * i + 1] = r;
+#else
         frame_rgb[3 * i + 0] = r;
         frame_rgb[3 * i + 1] = g;
+#endif
         frame_rgb[3 * i + 2] = b;
     }
 }
