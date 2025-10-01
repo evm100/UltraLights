@@ -911,6 +911,69 @@ static void publish_motion_status(void) {
   cJSON_Delete(root);
 }
 
+#if CONFIG_UL_WS_FLIP_RG
+static void swap_rg_pair(cJSON *params, int idx_r, int idx_g) {
+  if (!params || idx_r < 0 || idx_g < 0)
+    return;
+  cJSON *item_r = cJSON_GetArrayItem(params, idx_r);
+  cJSON *item_g = cJSON_GetArrayItem(params, idx_g);
+  if (!item_r || !item_g || !cJSON_IsNumber(item_r) || !cJSON_IsNumber(item_g))
+    return;
+
+  double tmp_double = item_r->valuedouble;
+  int tmp_int = item_r->valueint;
+  item_r->valuedouble = item_g->valuedouble;
+  item_r->valueint = item_g->valueint;
+  item_g->valuedouble = tmp_double;
+  item_g->valueint = tmp_int;
+}
+
+static void maybe_flip_ws_params_rg(const char *effect, cJSON *params) {
+  if (!effect || !params || !cJSON_IsArray(params))
+    return;
+
+  int count = cJSON_GetArraySize(params);
+  if (count < 2)
+    return;
+
+  if (strcmp(effect, "solid") == 0 || strcmp(effect, "color_swell") == 0) {
+    swap_rg_pair(params, 0, 1);
+    return;
+  }
+
+  if (strcmp(effect, "flash") == 0) {
+    swap_rg_pair(params, 0, 1);
+    swap_rg_pair(params, 3, 4);
+    return;
+  }
+
+  if (strcmp(effect, "spacewaves") == 0) {
+    for (int i = 0; i + 1 < count; i += 3)
+      swap_rg_pair(params, i, i + 1);
+    return;
+  }
+
+  if (strcmp(effect, "triple_wave") == 0) {
+    for (int i = 0; i + 1 < count; i += 5)
+      swap_rg_pair(params, i, i + 1);
+    return;
+  }
+
+  if (strcmp(effect, "fire") == 0) {
+    swap_rg_pair(params, 1, 2);
+    swap_rg_pair(params, 4, 5);
+    return;
+  }
+
+  if (strcmp(effect, "black_ice") == 0) {
+    swap_rg_pair(params, 1, 2);
+    swap_rg_pair(params, 4, 5);
+    swap_rg_pair(params, 7, 8);
+    return;
+  }
+}
+#endif
+
 static bool handle_cmd_ws_set(cJSON *root, int *out_strip) {
   int strip = 0;
   cJSON *jstrip = cJSON_GetObjectItem(root, "strip");
@@ -926,6 +989,10 @@ static bool handle_cmd_ws_set(cJSON *root, int *out_strip) {
     effect = jeffect->valuestring;
 
   cJSON *params = cJSON_GetObjectItem(root, "params");
+
+#if CONFIG_UL_WS_FLIP_RG
+  maybe_flip_ws_params_rg(effect, params);
+#endif
 
   ul_ws_apply_json(root);
 
