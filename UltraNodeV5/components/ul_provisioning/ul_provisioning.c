@@ -398,12 +398,6 @@ static esp_err_t provision_handler(httpd_req_t *req) {
   const cJSON *wifi_user_json = cJSON_GetObjectItem(root, "wifi_username");
   const cJSON *wifi_user_password_json =
       cJSON_GetObjectItem(root, "wifi_user_password");
-#if CONFIG_UL_MQTT_PROVISION_CERTS
-  const cJSON *client_cert_json =
-      cJSON_GetObjectItem(root, "mqtt_client_certificate");
-  const cJSON *client_key_json =
-      cJSON_GetObjectItem(root, "mqtt_client_key");
-#endif
   if (!ssid || !cJSON_IsString(ssid) || ssid->valuestring[0] == '\0') {
     cJSON_Delete(root);
     return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing ssid");

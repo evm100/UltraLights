@@ -48,14 +48,6 @@ static bool s_account_credentials_sent = false;
 
 #define UL_MQTT_MAX_CONSECUTIVE_START_FAILURES 5
 
-#if CONFIG_UL_MQTT_USE_TLS
-static const time_t kUlMqttMinValidTime = 1700000000;
-static uint8_t s_client_cert[CONFIG_UL_MQTT_CLIENT_CERT_MAX_LEN];
-static size_t s_client_cert_len = 0;
-static uint8_t s_client_key[CONFIG_UL_MQTT_CLIENT_KEY_MAX_LEN];
-static size_t s_client_key_len = 0;
-#endif
-
 static esp_mqtt_transport_t transport_from_uri(const char *uri, bool tls_enabled) {
   if (!uri)
     return tls_enabled ? MQTT_TRANSPORT_OVER_SSL : MQTT_TRANSPORT_OVER_TCP;
@@ -557,59 +549,6 @@ static int publish_json(const char *topic, const char *json) {
   if (!s_client || !ul_core_is_connected() || !json)
     return -1;
   return esp_mqtt_client_publish(s_client, topic, json, 0, 1, 0);
-}
-
-static void publish_account_credentials_if_secure(void) {
-#if !CONFIG_UL_MQTT_USE_TLS
-  ESP_LOGW(TAG,
-           "Skipping UltraLights account credential publish; MQTT TLS disabled");
-  return;
-#endif
-  if (s_account_credentials_sent)
-    return;
-  if (!ul_core_is_connected() || !s_client)
-    return;
-
-  ul_wifi_credentials_t stored = {0};
-  if (!ul_wifi_credentials_load(&stored))
-    return;
-
-  if (stored.user[0] == '\0' || stored.user_password[0] == '\0') {
-    memset(&stored, 0, sizeof(stored));
-    return;
-  }
-
-  cJSON *root = cJSON_CreateObject();
-  if (!root) {
-    memset(&stored, 0, sizeof(stored));
-    return;
-  }
-
-  cJSON_AddStringToObject(root, "event", "account_credentials");
-  cJSON_AddStringToObject(root, "username", stored.user);
-  cJSON_AddStringToObject(root, "password", stored.user_password);
-
-  char *json = cJSON_PrintUnformatted(root);
-  cJSON_Delete(root);
-  if (!json) {
-    memset(&stored, 0, sizeof(stored));
-    return;
-  }
-
-  char topic[128];
-  snprintf(topic, sizeof(topic), "ul/%s/evt/account", ul_core_get_node_id());
-
-  int msg_id = publish_json(topic, json);
-  cJSON_free(json);
-  memset(&stored, 0, sizeof(stored));
-
-  if (msg_id <= 0) {
-    ESP_LOGW(TAG, "Failed to publish UltraLights account credentials");
-    return;
-  }
-
-  ESP_LOGI(TAG, "Published UltraLights account credentials for association");
-  s_account_credentials_sent = true;
 }
 
 #ifndef UL_MQTT_TESTING
@@ -1300,19 +1239,6 @@ void ul_mqtt_start(void) {
 
   cancel_mqtt_retry();
 
-#if CONFIG_UL_MQTT_USE_TLS
-  time_t now = 0;
-  time(&now);
-  if (now < kUlMqttMinValidTime) {
-    ESP_LOGW(TAG,
-             "System time not yet synchronized (%ld); deferring MQTT start",
-             (long)now);
-    ul_health_notify_mqtt(false);
-    schedule_mqtt_retry();
-    return;
-  }
-#endif
-
 #ifndef UL_MQTT_TESTING
   EventGroupHandle_t group = mqtt_state_event_group();
   if (group)
@@ -1320,141 +1246,25 @@ void ul_mqtt_start(void) {
   if (s_publish_ack_queue) {
     xQueueReset(s_publish_ack_queue);
   } else {
-    s_publish_ack_queue =
-        xQueueCreate(UL_MQTT_PUBLISH_ACK_QUEUE_LENGTH, sizeof(int));
-    if (!s_publish_ack_queue) {
-      ESP_LOGW(TAG, "Failed to allocate MQTT publish acknowledgment queue");
-    }
+    s_publish_ack_queue = xQueueCreate(UL_MQTT_PUBLISH_ACK_QUEUE_LENGTH, sizeof(int));
   }
 #endif
 
-  // MQTT runs at modest priority. On the ESP32-C3 all tasks share the
-  // single core, so no explicit core assignment is needed.
-  const char *mqtt_username = NULL;
-  const char *mqtt_secret = NULL;
-
-#if CONFIG_UL_MQTT_LEGACY_USERPASS_COMPAT
-  mqtt_username = CONFIG_UL_MQTT_USER;
-  mqtt_secret = CONFIG_UL_MQTT_PASS;
-#endif
-
-#if CONFIG_UL_MQTT_USE_TLS
-  ul_wifi_credentials_t stored = {0};
-  bool creds_loaded = ul_wifi_credentials_load(&stored);
-  (void)creds_loaded;
-  s_client_cert_len = 0;
-  s_client_key_len = 0;
-  if (stored.mqtt_client_cert_len > 0) {
-    size_t copy_len = stored.mqtt_client_cert_len;
-    if (copy_len > sizeof(s_client_cert))
-      copy_len = sizeof(s_client_cert);
-    memcpy(s_client_cert, stored.mqtt_client_cert, copy_len);
-    s_client_cert_len = copy_len;
-  }
-  if (stored.mqtt_client_key_len > 0) {
-    size_t copy_len = stored.mqtt_client_key_len;
-    if (copy_len > sizeof(s_client_key))
-      copy_len = sizeof(s_client_key);
-    memcpy(s_client_key, stored.mqtt_client_key, copy_len);
-    s_client_key_len = copy_len;
-  }
-
-#if CONFIG_UL_MQTT_REQUIRE_CLIENT_CERT
-  if (s_client_cert_len == 0 || s_client_key_len == 0) {
-    ESP_LOGE(TAG, "MQTT client certificate/key not provisioned; deferring start");
-    ul_health_notify_mqtt(false);
-    schedule_mqtt_retry();
-    return;
-  }
-#endif
-#endif
-
+  // Hardcode or pull simple credentials from menuconfig
   esp_mqtt_client_config_t cfg = {
-      .broker.address.uri = CONFIG_UL_MQTT_URI,
+      .broker.address.uri = CONFIG_UL_MQTT_URI, // e.g., "mqtt://192.168.1.100:1883"
       .task.priority = 5,
       .task.stack_size = 6144,
   };
 
-  cfg.credentials.username = mqtt_username;
-  cfg.credentials.authentication.password = mqtt_secret;
-
-#if CONFIG_UL_MQTT_USE_TLS
-  if (s_client_cert_len > 0) {
-    cfg.credentials.authentication.certificate = (const char *)s_client_cert;
-    cfg.credentials.authentication.certificate_len = s_client_cert_len;
-  }
-  if (s_client_key_len > 0) {
-    cfg.credentials.authentication.key = (const char *)s_client_key;
-    cfg.credentials.authentication.key_len = s_client_key_len;
-  }
-#endif
+  // We now just use simple username/password authentication
+  cfg.credentials.username = CONFIG_UL_MQTT_USER;
+  cfg.credentials.authentication.password = CONFIG_UL_MQTT_PASS;
 
   if (CONFIG_UL_MQTT_CONNECT_TIMEOUT_MS > 0)
     cfg.network.timeout_ms = CONFIG_UL_MQTT_CONNECT_TIMEOUT_MS;
   if (CONFIG_UL_MQTT_RECONNECT_DELAY_MS > 0)
     cfg.network.reconnect_timeout_ms = CONFIG_UL_MQTT_RECONNECT_DELAY_MS;
-
-  bool dial_override = CONFIG_UL_MQTT_DIAL_HOST[0] != '\0';
-  if (dial_override) {
-    bool tls = CONFIG_UL_MQTT_USE_TLS;
-    esp_mqtt_transport_t transport = transport_from_uri(CONFIG_UL_MQTT_URI, tls);
-    bool transport_tls =
-        (transport == MQTT_TRANSPORT_OVER_SSL ||
-         transport == MQTT_TRANSPORT_OVER_WSS);
-    int fallback_port = 1883;
-    switch (transport) {
-    case MQTT_TRANSPORT_OVER_SSL:
-      fallback_port = 8883;
-      break;
-    case MQTT_TRANSPORT_OVER_TCP:
-      fallback_port = 1883;
-      break;
-    case MQTT_TRANSPORT_OVER_WSS:
-      fallback_port = 443;
-      break;
-    case MQTT_TRANSPORT_OVER_WS:
-      fallback_port = 80;
-      break;
-    default:
-      fallback_port = transport_tls ? 8883 : 1883;
-      break;
-    }
-    int default_port = parse_port_from_uri(CONFIG_UL_MQTT_URI, fallback_port);
-    int port = CONFIG_UL_MQTT_DIAL_PORT;
-    if (port <= 0 || port > 65535)
-      port = parse_port_from_uri(CONFIG_UL_MQTT_DIAL_HOST, default_port);
-    if (port <= 0 || port > 65535)
-      port = default_port;
-    cfg.broker.address.uri = NULL;
-    static char s_dial_host[128];
-    const char *dial_host = CONFIG_UL_MQTT_DIAL_HOST;
-    if (parse_host_from_uri(CONFIG_UL_MQTT_DIAL_HOST, s_dial_host,
-                            sizeof(s_dial_host))) {
-      dial_host = s_dial_host;
-    }
-    cfg.broker.address.hostname = dial_host;
-    cfg.broker.address.port = port;
-    cfg.broker.address.transport = transport;
-    ESP_LOGI(TAG, "MQTT dialing override host %s:%d (transport %s)",
-             dial_host, port, transport_name(transport));
-  }
-
-#if CONFIG_UL_MQTT_USE_TLS
-#ifndef UL_MQTT_TESTING
-  cfg.broker.verification.crt_bundle_attach = esp_crt_bundle_attach;
-#endif
-#if CONFIG_UL_MQTT_TLS_SKIP_COMMON_NAME_CHECK
-  cfg.broker.verification.skip_cert_common_name_check = true;
-#else
-  if (CONFIG_UL_MQTT_TLS_COMMON_NAME[0] != '\0') {
-    cfg.broker.verification.common_name = CONFIG_UL_MQTT_TLS_COMMON_NAME;
-  } else {
-    static char s_tls_host[128];
-    if (parse_host_from_uri(CONFIG_UL_MQTT_URI, s_tls_host, sizeof(s_tls_host)))
-      cfg.broker.verification.common_name = s_tls_host;
-  }
-#endif
-#endif
 
   esp_mqtt_client_handle_t client = esp_mqtt_client_init(&cfg);
   if (!client) {
@@ -1463,18 +1273,8 @@ void ul_mqtt_start(void) {
     return;
   }
 
-  esp_err_t register_err =
-      esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID,
-                                     mqtt_event_handler, NULL);
-  if (register_err != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to register MQTT event handler (%d)",
-             (int)register_err);
-    esp_mqtt_client_destroy(client);
-    s_client = NULL;
-    note_mqtt_start_failure();
-    return;
-  }
-
+  esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+  
   s_client = client;
   esp_err_t start_err = esp_mqtt_client_start(s_client);
   if (start_err != ESP_OK) {

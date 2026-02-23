@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  mqtt:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto_broker
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
+    ota-server:
+      image: nginx:alpine
+      container_name: ultralights_ota
+      restart: unless-stopped
+      ports:
+        - "8080:80"
+      volumes:
+        - ./firmware:/usr/share/nginx/html

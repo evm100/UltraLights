@@ -112,20 +112,6 @@ bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
     return false;
   }
 
-  size_t cert_len = sizeof(out->mqtt_client_cert);
-  err = nvs_get_blob(handle, "mqtt_client_cert", out->mqtt_client_cert, &cert_len);
-  if (err == ESP_ERR_NVS_NOT_FOUND) {
-    out->mqtt_client_cert_len = 0;
-    err = ESP_OK;
-  }
-  if (err != ESP_OK) {
-    ESP_LOGW(TAG, "Failed to read stored MQTT client certificate: %s",
-             esp_err_to_name(err));
-    nvs_close(handle);
-    return false;
-  }
-  out->mqtt_client_cert_len = cert_len;
-
   size_t key_len = sizeof(out->mqtt_client_key);
   err = nvs_get_blob(handle, "mqtt_client_key", out->mqtt_client_key, &key_len);
   if (err == ESP_ERR_NVS_NOT_FOUND) {
