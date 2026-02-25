@@ -15,7 +15,6 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import quote
 
 from sqlmodel import Session, select
 
@@ -24,32 +23,24 @@ from .auth.models import NodeRegistration
 from .auth.service import record_audit_event
 from .config import settings
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FIRMWARE_ROOT = PROJECT_ROOT / "UltraNodeV5"
 FIRMWARE_ARCHIVE_ROOT = PROJECT_ROOT / "firmware_artifacts"
 SDKCONFIG_TEMPLATE = FIRMWARE_ROOT / "sdkconfig.defaults"
 SDKCONFIG_WORK_DIR = FIRMWARE_ROOT / "node_configs"
-CERTIFICATE_ROOT = settings.NODE_CERT_ROOT
-CERTIFICATE_SERIAL_PATH = CERTIFICATE_ROOT / "ca.serial"
-CERTIFICATE_BUNDLE_NAME = settings.NODE_CERT_BUNDLE_NAME or "credentials.tar.gz"
-
 
 @dataclass
 class CommandResult:
     """Outcome from invoking a command line helper."""
-
     command: List[str]
     returncode: int
     stdout: str
     stderr: str
     cwd: Path
 
-
 @dataclass
 class BuildResult(CommandResult):
     """Return value for individual node builds."""
-
     node_id: str
     sdkconfig_path: Path
     manifest_url: str
@@ -59,14 +50,10 @@ class BuildResult(CommandResult):
     ota_token: str
     sdkconfig_values: Dict[str, str]
     project_configs: Tuple[Path, ...] = field(default_factory=tuple)
-    certificate: Optional[node_credentials.NodeCertificateMetadata] = None
-    certificate_bundle_path: Optional[Path] = None
-
 
 @dataclass
 class ArtifactRecord:
     """Paths and metadata produced when archiving a build."""
-
     node_id: str
     download_id: str
     version: str
@@ -76,12 +63,9 @@ class ArtifactRecord:
     versioned_manifest_path: Optional[Path]
     size: int
     sha256_hex: str
-    certificate_bundle_path: Optional[Path] = None
-
 
 class NodeBuilderError(RuntimeError):
     """Raised when a firmware helper fails."""
-
 
 SUPPORTED_TARGETS: Dict[str, str] = {
     "esp32": "esp32",
@@ -89,15 +73,12 @@ SUPPORTED_TARGETS: Dict[str, str] = {
     "esp32s3": "esp32s3",
 }
 
-
 def _sanitize_node_for_path(node_id: str) -> str:
     safe = [ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in node_id]
     return "".join(safe).strip() or "node"
 
-
 def clean_build_dir() -> None:
     """Remove the ``build`` directory inside the firmware tree."""
-
     build_dir = FIRMWARE_ROOT / "build"
     if not build_dir.exists():
         return
@@ -107,10 +88,8 @@ def clean_build_dir() -> None:
         raise NodeBuilderError("refusing to remove unexpected build directory")
     shutil.rmtree(build_dir)
 
-
 def _sanitize_version(version: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", version.strip())
-
 
 def _sha256_file(path: Path) -> str:
     h = sha256()
@@ -119,248 +98,10 @@ def _sha256_file(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
-
-def _escape_subject_value(value: str) -> str:
-    escaped = value.replace("\\", "\\\\")
-    for ch in ("/", ",", "+", "="):
-        escaped = escaped.replace(ch, f"\\{ch}")
-    return escaped
-
-
-def _certificate_dir(node_id: str) -> Path:
-    safe = _sanitize_node_for_path(node_id)
-    target = CERTIFICATE_ROOT / safe
-    target.mkdir(parents=True, exist_ok=True)
-    return target
-
-
-def _certificate_artifact_paths(node_id: str) -> Dict[str, Path]:
-    base_dir = _certificate_dir(node_id)
-    safe = _sanitize_node_for_path(node_id)
-    return {
-        "base": base_dir,
-        "key": base_dir / f"{safe}.key.pem",
-        "cert": base_dir / f"{safe}.crt.pem",
-        "csr": base_dir / f"{safe}.csr.pem",
-        "ext": base_dir / f"{safe}.ext.ini",
-        "bundle": base_dir / CERTIFICATE_BUNDLE_NAME,
-    }
-
-
-def _require_ca_material() -> Tuple[Path, Path]:
-    ca_cert = str(settings.NODE_CERT_CA_CERT or "").strip()
-    ca_key = str(settings.NODE_CERT_CA_KEY or "").strip()
-    if not ca_cert or not ca_key:
-        raise NodeBuilderError(
-            "NODE_CERT_CA_CERT and NODE_CERT_CA_KEY must be configured to issue certificates"
-        )
-    ca_cert_path = Path(ca_cert).expanduser().resolve()
-    ca_key_path = Path(ca_key).expanduser().resolve()
-    if not ca_cert_path.exists():
-        raise NodeBuilderError(f"CA certificate not found: {ca_cert_path}")
-    if not ca_key_path.exists():
-        raise NodeBuilderError(f"CA private key not found: {ca_key_path}")
-    return ca_cert_path, ca_key_path
-
-
-def _openssl_checked(args: List[str], *, cwd: Path) -> CommandResult:
-    result = _run_command(args, cwd=cwd)
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        raise NodeBuilderError(
-            f"Command failed ({result.returncode}): {' '.join(args)}" + (f"\n{stderr}" if stderr else "")
-        )
-    return result
-
-
-def _fingerprint_certificate(cert_path: Path) -> str:
-    result = _openssl_checked(
-        ["openssl", "x509", "-in", str(cert_path), "-noout", "-fingerprint", "-sha256"],
-        cwd=cert_path.parent,
-    )
-    stdout = result.stdout.strip()
-    if "=" in stdout:
-        return stdout.split("=", 1)[1].strip()
-    return stdout
-
-
-def _subject_for_node(node_id: str) -> str:
-    template = settings.NODE_CERT_SUBJECT_TEMPLATE or "/CN={node_id}"
-    value = template.format(
-        node_id=_escape_subject_value(node_id),
-        node_id_raw=node_id,
-        node_id_sanitized=_sanitize_node_for_path(node_id),
-    )
-    return value.strip() or f"/CN={_escape_subject_value(node_id)}"
-
-
-def _san_for_node(node_id: str) -> str:
-    encoded = quote(node_id, safe="-._~")
-    safe = _sanitize_node_for_path(node_id)
-    entries = [f"DNS:{safe}", f"URI:urn:ultralights:node:{encoded}"]
-    template = settings.NODE_CERT_SAN_TEMPLATE or ""
-    if template:
-        custom = template.format(
-            node_id=node_id,
-            node_id_raw=node_id,
-            node_id_sanitized=safe,
-            node_id_encoded=encoded,
-        ).strip()
-        if custom:
-            entries.append(custom)
-    return ", ".join(dict.fromkeys(entries))
-
-
-def _generate_node_certificate(
-    session: Session,
-    registration: NodeRegistration,
-) -> Tuple[node_credentials.NodeCertificateMetadata, Path]:
-    ca_cert_path, ca_key_path = _require_ca_material()
-    paths = _certificate_artifact_paths(registration.node_id)
-    base_dir = paths["base"]
-    key_path = paths["key"]
-    cert_path = paths["cert"]
-    csr_path = paths["csr"]
-    ext_path = paths["ext"]
-    bundle_path = paths["bundle"]
-
-    for path in (key_path, cert_path, csr_path, ext_path, bundle_path):
-        if path.exists():
-            path.unlink()
-
-    key_bits = max(2048, int(settings.NODE_CERT_KEY_BITS or 0))
-    _openssl_checked(
-        [
-            "openssl",
-            "genpkey",
-            "-algorithm",
-            "RSA",
-            "-pkeyopt",
-            f"rsa_keygen_bits:{key_bits}",
-            "-out",
-            str(key_path),
-        ],
-        cwd=base_dir,
-    )
-    os.chmod(key_path, 0o600)
-
-    subject = _subject_for_node(registration.node_id)
-    san_value = _san_for_node(registration.node_id)
-    csr_args = [
-        "openssl",
-        "req",
-        "-new",
-        "-utf8",
-        "-key",
-        str(key_path),
-        "-out",
-        str(csr_path),
-        "-subj",
-        subject,
-        "-addext",
-        f"subjectAltName={san_value}",
-        "-addext",
-        "extendedKeyUsage=clientAuth",
-        "-addext",
-        "keyUsage=digitalSignature",
-    ]
-    _openssl_checked(csr_args, cwd=base_dir)
-
-    ext_body = textwrap.dedent(
-        f"""
-        subjectAltName = {san_value}
-        extendedKeyUsage = clientAuth
-        keyUsage = digitalSignature
-        basicConstraints = CA:FALSE
-        """
-    ).strip() + "\n"
-    ext_path.write_text(ext_body, encoding="utf-8")
-
-    sign_args = [
-        "openssl",
-        "x509",
-        "-req",
-        "-in",
-        str(csr_path),
-        "-CA",
-        str(ca_cert_path),
-        "-CAkey",
-        str(ca_key_path),
-        "-CAserial",
-        str(CERTIFICATE_SERIAL_PATH),
-        "-CAcreateserial",
-        "-out",
-        str(cert_path),
-        "-days",
-        str(max(1, int(settings.NODE_CERT_VALID_DAYS or 0))),
-        "-sha256",
-        "-extfile",
-        str(ext_path),
-    ]
-    passphrase = str(settings.NODE_CERT_CA_KEY_PASSPHRASE or "").strip()
-    if passphrase:
-        sign_args.extend(["-passin", f"pass:{passphrase}"])
-    _openssl_checked(sign_args, cwd=base_dir)
-
-    fingerprint = _fingerprint_certificate(cert_path)
-
-    with tarfile.open(bundle_path, "w:gz") as bundle:
-        bundle.add(cert_path, arcname="client.crt.pem")
-        bundle.add(key_path, arcname="client.key.pem")
-        bundle.add(ca_cert_path, arcname="ca.crt.pem")
-    os.chmod(bundle_path, 0o600)
-
-    metadata = node_credentials.store_certificate_artifacts(
-        session,
-        registration.node_id,
-        fingerprint=fingerprint,
-        certificate_path=cert_path,
-        private_key_path=key_path,
-        bundle_path=bundle_path,
-    )
-    record_audit_event(
-        session,
-        actor=None,
-        action="node_certificate_rotated",
-        summary=f"Issued client certificate for {registration.node_id}",
-        data={
-            "node_id": registration.node_id,
-            "download_id": registration.download_id,
-            "fingerprint": fingerprint,
-        },
-    )
-    session.commit()
-    session.refresh(registration)
-
-    for path in (csr_path, ext_path):
-        if path.exists():
-            path.unlink()
-
-    return metadata, bundle_path
-
-
-def ensure_node_certificate(
-    session: Session,
-    registration: NodeRegistration,
-    *,
-    rotate: bool = False,
-) -> Tuple[node_credentials.NodeCertificateMetadata, Path]:
-    existing = node_credentials.NodeCertificateMetadata.from_model(registration)
-    if existing and not rotate:
-        bundle_path = None
-        if existing.bundle_path:
-            bundle_path = Path(existing.bundle_path)
-        if bundle_path and bundle_path.exists():
-            return existing, bundle_path
-    return _generate_node_certificate(session, registration)
-
-
 def _read_manifest_version(manifest_path: Path) -> Optional[str]:
     try:
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except json.JSONDecodeError:
+    except (FileNotFoundError, json.JSONDecodeError):
         return None
     version = data.get("version")
     if isinstance(version, str):
@@ -368,10 +109,8 @@ def _read_manifest_version(manifest_path: Path) -> Optional[str]:
         return cleaned or None
     return None
 
-
 def embed_firmware_version(sdkconfig_path: Path, version: str) -> None:
     """Ensure ``sdkconfig`` records the supplied firmware version."""
-
     cleaned = (version or "").strip()
     if not cleaned:
         return
@@ -383,12 +122,7 @@ def embed_firmware_version(sdkconfig_path: Path, version: str) -> None:
     output: List[str] = []
 
     for line in lines:
-        if line.startswith("CONFIG_APP_PROJECT_VER_FROM_CONFIG"):
-            if not flag_written:
-                output.append("CONFIG_APP_PROJECT_VER_FROM_CONFIG=y")
-                flag_written = True
-            continue
-        if line.startswith("# CONFIG_APP_PROJECT_VER_FROM_CONFIG"):
+        if line.startswith("CONFIG_APP_PROJECT_VER_FROM_CONFIG") or line.startswith("# CONFIG_APP_PROJECT_VER_FROM_CONFIG"):
             if not flag_written:
                 output.append("CONFIG_APP_PROJECT_VER_FROM_CONFIG=y")
                 flag_written = True
@@ -407,7 +141,6 @@ def embed_firmware_version(sdkconfig_path: Path, version: str) -> None:
 
     sdkconfig_path.write_text("\n".join(output) + "\n", encoding="utf-8")
 
-
 def store_build_artifacts(
     *,
     node_id: str,
@@ -416,10 +149,8 @@ def store_build_artifacts(
     binary_path: Optional[Path] = None,
     firmware_dir: Optional[Path] = None,
     archive_root: Optional[Path] = None,
-    certificate_bundle: Optional[Path] = None,
 ) -> ArtifactRecord:
     """Copy build outputs into the public firmware tree and archive."""
-
     binary_path = Path(binary_path or (FIRMWARE_ROOT / "build" / "ultralights.bin"))
     if not binary_path.exists():
         raise FileNotFoundError(f"build output not found: {binary_path}")
@@ -471,14 +202,6 @@ def store_build_artifacts(
         versioned_manifest_path = download_dir / f"manifest_{safe_current}.json"
         versioned_manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
-    bundle_target: Optional[Path] = None
-    if certificate_bundle:
-        bundle_source = Path(certificate_bundle)
-        if not bundle_source.exists():
-            raise FileNotFoundError(f"certificate bundle not found: {bundle_source}")
-        bundle_target = download_dir / CERTIFICATE_BUNDLE_NAME
-        shutil.copy2(bundle_source, bundle_target)
-
     return ArtifactRecord(
         node_id=node_id,
         download_id=download_id,
@@ -489,17 +212,13 @@ def store_build_artifacts(
         versioned_manifest_path=versioned_manifest_path,
         size=size,
         sha256_hex=checksum,
-        certificate_bundle_path=bundle_target,
     )
-
 
 def _config_value(value: Any, quoted: bool = False) -> Tuple[Any, bool]:
     return value, quoted
 
-
 def _bool_flag(value: bool) -> Tuple[bool, bool]:
     return bool(value), False
-
 
 def _coerce_numeric(value: Any) -> Optional[Tuple[Any, bool]]:
     if value in (None, ""):
@@ -519,11 +238,9 @@ def _coerce_numeric(value: Any) -> Optional[Tuple[Any, bool]]:
             return (trimmed, True)
     return (value, True)
 
-
 def _ensure_work_dir() -> Path:
     SDKCONFIG_WORK_DIR.mkdir(parents=True, exist_ok=True)
     return SDKCONFIG_WORK_DIR
-
 
 def _extract_key(line: str) -> Optional[str]:
     line = line.rstrip()
@@ -537,11 +254,9 @@ def _extract_key(line: str) -> Optional[str]:
             return parts[1]
     return None
 
-
 def _format_value(key: str, entry: Tuple[Any, bool]) -> str:
     value, quoted = entry
     if isinstance(value, tuple) and len(value) == 2:
-        # Allow nested tuple unpacking
         value, quoted = value
 
     if isinstance(value, bool):
@@ -559,7 +274,6 @@ def _format_value(key: str, entry: Tuple[Any, bool]) -> str:
 
     escaped = text.replace("\\", "\\\\").replace('"', '\\"')
     return f'{key}="{escaped}"'
-
 
 def _merge_sdkconfig(base_lines: Iterable[str], overrides: Dict[str, Tuple[Any, bool]]) -> List[str]:
     applied: set[str] = set()
@@ -581,10 +295,7 @@ def _merge_sdkconfig(base_lines: Iterable[str], overrides: Dict[str, Tuple[Any, 
     merged.append("")
     return merged
 
-
 def _int_or_none(value: Any) -> Optional[int]:
-    """Best-effort conversion of ``value`` to an integer."""
-
     if value in (None, ""):
         return None
     if isinstance(value, bool):
@@ -603,31 +314,23 @@ def _int_or_none(value: Any) -> Optional[int]:
             return None
     return None
 
-
 def _next_ledc_channel(used: set[int]) -> int:
-    """Return the next unassigned LEDC channel index."""
-
     candidate = 0
     while candidate in used:
         candidate += 1
     used.add(candidate)
     return candidate
 
-
 def _board_overrides(board: str) -> Dict[str, Tuple[Any, bool]]:
     board = board.lower()
     target = SUPPORTED_TARGETS.get(board, "esp32")
-    overrides: Dict[str, Tuple[Any, bool]] = {
+    return {
         "CONFIG_UL_TARGET_CHIP": _config_value(target, quoted=True),
         "CONFIG_UL_IS_ESP32C3": _bool_flag(board == "esp32c3"),
         "CONFIG_UL_IS_ESP32S3": _bool_flag(board == "esp32s3"),
     }
-    return overrides
-
 
 def normalize_hardware_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
-    """Apply defaults for hardware metadata used by node registrations."""
-
     if not isinstance(metadata, dict):
         return {}
 
@@ -639,27 +342,19 @@ def normalize_hardware_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
 
     white_entries = []
     for raw in normalized.get("white") or []:
-        if not isinstance(raw, dict):
-            continue
+        if not isinstance(raw, dict): continue
         idx = _int_or_none(raw.get("index"))
-        if idx is None or idx < 0 or idx > 3:
-            continue
+        if idx is None or idx < 0 or idx > 3: continue
         enabled = bool(raw.get("enabled"))
         gpio = _int_or_none(raw.get("gpio"))
-        entry: Dict[str, Any] = {
-            "index": idx,
-            "enabled": enabled,
-        }
+        entry: Dict[str, Any] = {"index": idx, "enabled": enabled}
         if gpio is not None:
             entry["gpio"] = gpio
 
         active = enabled or gpio is not None
-        pwm_hz = _int_or_none(raw.get("pwm_hz")) or 3000
-        minimum = _int_or_none(raw.get("minimum"))
-        maximum = _int_or_none(raw.get("maximum"))
-        entry["pwm_hz"] = pwm_hz
-        entry["minimum"] = 0 if minimum is None else minimum
-        entry["maximum"] = 255 if maximum is None else maximum
+        entry["pwm_hz"] = _int_or_none(raw.get("pwm_hz")) or 3000
+        entry["minimum"] = _int_or_none(raw.get("minimum")) or 0
+        entry["maximum"] = _int_or_none(raw.get("maximum")) or 255
 
         if active:
             ledc = _int_or_none(raw.get("ledc_channel"))
@@ -668,20 +363,16 @@ def normalize_hardware_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 used_ledc.add(ledc)
             entry["ledc_channel"] = ledc
-
         white_entries.append(entry)
-
     white_entries.sort(key=lambda item: item["index"])
     normalized["white"] = white_entries
 
     rgb_mode_default = 0 if board == "esp32c3" else 1
     rgb_entries = []
     for raw in normalized.get("rgb") or []:
-        if not isinstance(raw, dict):
-            continue
+        if not isinstance(raw, dict): continue
         idx = _int_or_none(raw.get("index"))
-        if idx is None or idx < 0 or idx > 3:
-            continue
+        if idx is None or idx < 0 or idx > 3: continue
         enabled = bool(raw.get("enabled"))
         entry: Dict[str, Any] = {
             "index": idx,
@@ -714,12 +405,10 @@ def normalize_hardware_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
             entry[ledc_field] = ledc_value
 
         rgb_entries.append(entry)
-
     rgb_entries.sort(key=lambda item: item["index"])
     normalized["rgb"] = rgb_entries
 
     return normalized
-
 
 def _ws_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
     channels = metadata.get("ws2812") or []
@@ -729,16 +418,13 @@ def _ws_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
         entry = indexed.get(idx) or {}
         enabled = bool(entry.get("enabled"))
         overrides[f"CONFIG_UL_WS{idx}_ENABLED"] = _bool_flag(enabled)
-        gpio = entry.get("gpio")
-        pixels = entry.get("pixels")
-        gpio_entry = _coerce_numeric(gpio)
+        gpio_entry = _coerce_numeric(entry.get("gpio"))
         if gpio_entry is not None:
             overrides[f"CONFIG_UL_WS{idx}_GPIO"] = _config_value(*gpio_entry)
-        pixels_entry = _coerce_numeric(pixels)
+        pixels_entry = _coerce_numeric(entry.get("pixels"))
         if pixels_entry is not None:
             overrides[f"CONFIG_UL_WS{idx}_PIXELS"] = _config_value(*pixels_entry)
     return overrides
-
 
 def _white_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
     channels = metadata.get("white") or []
@@ -749,25 +435,13 @@ def _white_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
         if entry is None:
             overrides[f"CONFIG_UL_WHT{idx}_ENABLED"] = _bool_flag(False)
             continue
-
-        enabled = bool(entry.get("enabled"))
-        overrides[f"CONFIG_UL_WHT{idx}_ENABLED"] = _bool_flag(enabled)
-
-        field_map = {
-            "GPIO": "gpio",
-            "LEDC_CH": "ledc_channel",
-            "PWM_HZ": "pwm_hz",
-            "MIN": "minimum",
-            "MAX": "maximum",
-        }
-
+        overrides[f"CONFIG_UL_WHT{idx}_ENABLED"] = _bool_flag(bool(entry.get("enabled")))
+        field_map = {"GPIO": "gpio", "LEDC_CH": "ledc_channel", "PWM_HZ": "pwm_hz", "MIN": "minimum", "MAX": "maximum"}
         for suffix, field_key in field_map.items():
-            value = entry.get(field_key)
-            coerced = _coerce_numeric(value)
+            coerced = _coerce_numeric(entry.get(field_key))
             if coerced is not None:
                 overrides[f"CONFIG_UL_WHT{idx}_{suffix}"] = _config_value(*coerced)
     return overrides
-
 
 def _rgb_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
     channels = metadata.get("rgb") or []
@@ -775,43 +449,32 @@ def _rgb_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
     indexed = {int(entry.get("index", -1)): entry for entry in channels if isinstance(entry, dict)}
     for idx in range(4):
         entry = indexed.get(idx) or {}
-        enabled = bool(entry.get("enabled"))
-        overrides[f"CONFIG_UL_RGB{idx}_ENABLED"] = _bool_flag(enabled)
-        pwm_hz = entry.get("pwm_hz")
-        ledc_mode = entry.get("ledc_mode")
-        pwm_entry = _coerce_numeric(pwm_hz)
+        overrides[f"CONFIG_UL_RGB{idx}_ENABLED"] = _bool_flag(bool(entry.get("enabled")))
+        pwm_entry = _coerce_numeric(entry.get("pwm_hz"))
         if pwm_entry is not None:
             overrides[f"CONFIG_UL_RGB{idx}_PWM_HZ"] = _config_value(*pwm_entry)
-        ledc_mode_entry = _coerce_numeric(ledc_mode)
+        ledc_mode_entry = _coerce_numeric(entry.get("ledc_mode"))
         if ledc_mode_entry is not None:
             overrides[f"CONFIG_UL_RGB{idx}_LEDC_MODE"] = _config_value(*ledc_mode_entry)
         for channel, suffix in (("r", "R"), ("g", "G"), ("b", "B")):
-            gpio = entry.get(f"{channel}_gpio")
-            ledc = entry.get(f"{channel}_ledc_ch")
-            gpio_entry = _coerce_numeric(gpio)
+            gpio_entry = _coerce_numeric(entry.get(f"{channel}_gpio"))
             if gpio_entry is not None:
                 overrides[f"CONFIG_UL_RGB{idx}_{suffix}_GPIO"] = _config_value(*gpio_entry)
-            ledc_entry = _coerce_numeric(ledc)
+            ledc_entry = _coerce_numeric(entry.get(f"{channel}_ledc_ch"))
             if ledc_entry is not None:
                 overrides[f"CONFIG_UL_RGB{idx}_{suffix}_LEDC_CH"] = _config_value(*ledc_entry)
     return overrides
 
-
 def _pir_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
     pir = metadata.get("pir") or {}
     if not isinstance(pir, dict):
-        return {
-            "CONFIG_UL_PIR_ENABLED": _bool_flag(False),
-            "CONFIG_UL_PIR_GPIO": _config_value(None, quoted=False),
-        }
+        return {"CONFIG_UL_PIR_ENABLED": _bool_flag(False)}
     enabled = bool(pir.get("enabled"))
-    gpio = pir.get("gpio")
     overrides = {"CONFIG_UL_PIR_ENABLED": _bool_flag(enabled)}
-    gpio_entry = _coerce_numeric(gpio)
+    gpio_entry = _coerce_numeric(pir.get("gpio"))
     if gpio_entry is not None:
         overrides["CONFIG_UL_PIR_GPIO"] = _config_value(*gpio_entry)
     return overrides
-
 
 def _override_entries(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
     overrides = metadata.get("overrides") or {}
@@ -824,12 +487,9 @@ def _override_entries(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
                 result[key] = _bool_flag(value)
             else:
                 coerced = _coerce_numeric(value)
-                if coerced is None:
-                    continue
-                coerced_value, quoted = coerced
-                result[key] = _config_value(coerced_value, quoted)
+                if coerced is not None:
+                    result[key] = _config_value(*coerced)
     return result
-
 
 def metadata_to_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool]]:
     metadata = normalize_hardware_metadata(metadata or {})
@@ -842,7 +502,6 @@ def metadata_to_overrides(metadata: Dict[str, Any]) -> Dict[str, Tuple[Any, bool
     overrides.update(_override_entries(metadata))
     return overrides
 
-
 def render_sdkconfig(
     *,
     node_id: str,
@@ -852,8 +511,6 @@ def render_sdkconfig(
     manifest_url: Optional[str] = None,
     base_config: Path = SDKCONFIG_TEMPLATE,
 ) -> Path:
-    """Write a node-specific sdkconfig and return its path."""
-
     if manifest_url is None:
         manifest_url = f"{settings.PUBLIC_BASE}/firmware/{download_id}/manifest.json"
 
@@ -862,17 +519,14 @@ def render_sdkconfig(
     output_path = work_dir / f"sdkconfig.{target}"
 
     overrides = metadata_to_overrides(metadata)
-    overrides.update(
-        {
-            "CONFIG_UL_NODE_ID": _config_value(node_id, quoted=True),
-            "CONFIG_UL_OTA_MANIFEST_URL": _config_value(manifest_url, quoted=True),
-            "CONFIG_UL_OTA_BEARER_TOKEN": _config_value(token, quoted=True),
-            "CONFIG_UL_NODE_METADATA": _config_value(
-                json.dumps(metadata, separators=(",", ":"), sort_keys=True),
-                quoted=True,
-            ),
-        }
-    )
+    overrides.update({
+        "CONFIG_UL_NODE_ID": _config_value(node_id, quoted=True),
+        "CONFIG_UL_OTA_MANIFEST_URL": _config_value(manifest_url, quoted=True),
+        "CONFIG_UL_OTA_BEARER_TOKEN": _config_value(token, quoted=True),
+        "CONFIG_UL_NODE_METADATA": _config_value(
+            json.dumps(metadata, separators=(",", ":"), sort_keys=True), quoted=True
+        ),
+    })
 
     if not base_config.exists():
         raise FileNotFoundError(f"base sdkconfig not found: {base_config}")
@@ -882,14 +536,11 @@ def render_sdkconfig(
     output_path.write_text("\n".join(merged))
     return output_path
 
-
 def update_sdkconfig_files(
     values: Dict[str, Tuple[Any, bool]],
     *,
     config_paths: Iterable[Path],
 ) -> List[Path]:
-    """Persist override ``values`` into each sdkconfig in ``config_paths``."""
-
     overrides: Dict[str, Tuple[Any, bool]] = {}
     for key, value in values.items():
         if value is None:
@@ -910,7 +561,6 @@ def update_sdkconfig_files(
         updated.append(resolved)
     return updated
 
-
 def _prepare_environment(board: str, extra_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     env = os.environ.copy()
     target = SUPPORTED_TARGETS.get(board.lower(), "esp32")
@@ -918,7 +568,6 @@ def _prepare_environment(board: str, extra_env: Optional[Dict[str, str]] = None)
     if extra_env:
         env.update(extra_env)
     return env
-
 
 def _run_command(
     args: List[str],
@@ -942,8 +591,6 @@ def _run_command(
         cwd=cwd,
     )
 
-
-
 def build_individual_node(
     session: Session,
     node_id: str,
@@ -957,24 +604,19 @@ def build_individual_node(
     clean_build: bool = True,
     sdkconfig_paths: Optional[Iterable[Path]] = None,
 ) -> BuildResult:
-    """Generate an sdkconfig for ``node_id`` and optionally run ``idf.py build``."""
-
     node_credentials.sync_registry_nodes(session)
     registration = node_credentials.get_registration_by_node_id(session, node_id)
     if registration is None:
         raise NodeBuilderError(f"Unknown node id: {node_id}")
 
     token_value: Optional[str] = None
-
     if ota_token:
         supplied = ota_token.strip()
         if not supplied:
             raise NodeBuilderError("OTA token must not be empty")
         expected_hash = registry.hash_node_token(supplied)
         if registration.token_hash and registration.token_hash != expected_hash:
-            raise NodeBuilderError(
-                "Provided OTA token does not match the stored hash for this node"
-            )
+            raise NodeBuilderError("Provided OTA token does not match the stored hash for this node")
         if registration.token_hash != expected_hash:
             node_credentials.rotate_token(session, node_id, token=supplied)
             registration = node_credentials.get_registration_by_node_id(session, node_id)
@@ -989,10 +631,6 @@ def build_individual_node(
     download_id = registration.download_id
     manifest_url = f"{settings.PUBLIC_BASE}/firmware/{download_id}/manifest.json"
 
-    certificate_metadata, certificate_bundle_path = ensure_node_certificate(
-        session, registration, rotate=True
-    )
-
     metadata_payload = metadata or dict(registration.hardware_metadata or {})
     if board:
         metadata_payload["board"] = board
@@ -1000,10 +638,7 @@ def build_individual_node(
         metadata_payload.setdefault("board", "esp32")
 
     metadata_overrides = metadata_to_overrides(metadata_payload)
-
-    metadata_serialized = json.dumps(
-        metadata_payload or {}, separators=(",", ":"), sort_keys=True
-    )
+    metadata_serialized = json.dumps(metadata_payload or {}, separators=(",", ":"), sort_keys=True)
 
     config_values: Dict[str, str] = {
         "CONFIG_UL_NODE_ID": node_id,
@@ -1013,20 +648,15 @@ def build_individual_node(
     }
 
     combined_overrides: Dict[str, Tuple[Any, bool]] = dict(metadata_overrides)
-    combined_overrides.update(
-        {
-            key: _config_value(value, quoted=True)
-            for key, value in config_values.items()
-            if value is not None
-        }
-    )
+    combined_overrides.update({
+        key: _config_value(value, quoted=True)
+        for key, value in config_values.items()
+        if value is not None
+    })
 
     updated_configs: Tuple[Path, ...] = tuple()
     if sdkconfig_paths:
-        try:
-            updated = update_sdkconfig_files(combined_overrides, config_paths=sdkconfig_paths)
-        except FileNotFoundError as exc:  # pragma: no cover - defensive
-            raise NodeBuilderError(str(exc)) from exc
+        updated = update_sdkconfig_files(combined_overrides, config_paths=sdkconfig_paths)
         updated_configs = tuple(updated)
 
     sdkconfig_path = render_sdkconfig(
@@ -1066,10 +696,7 @@ def build_individual_node(
         ota_token=token_value,
         sdkconfig_values=config_values,
         project_configs=updated_configs,
-        certificate=certificate_metadata,
-        certificate_bundle_path=certificate_bundle_path,
     )
-
 
 def first_time_flash(
     session: Session,
@@ -1083,8 +710,6 @@ def first_time_flash(
     clean_build: bool = True,
     sdkconfig_paths: Optional[Iterable[Path]] = None,
 ) -> BuildResult:
-    """Perform ``idf.py -p <port> build flash`` for ``node_id``."""
-
     build_result = build_individual_node(
         session,
         node_id,
@@ -1102,10 +727,13 @@ def first_time_flash(
     board_name = board or metadata_payload.get("board") or build_result.target or "esp32"
     if not isinstance(board_name, str) or not board_name.strip():
         board_name = build_result.target or "esp32"
+        
     env = _prepare_environment(str(board_name))
     env["SDKCONFIG"] = str(build_result.sdkconfig_path)
+    
     if clean_build:
         clean_build_dir()
+        
     command = ["idf.py", "-p", port, "build", "flash"]
     result = _run_command(command, env=env)
 
@@ -1124,10 +752,7 @@ def first_time_flash(
         ota_token=build_result.ota_token,
         sdkconfig_values=build_result.sdkconfig_values,
         project_configs=build_result.project_configs,
-        certificate=build_result.certificate,
-        certificate_bundle_path=build_result.certificate_bundle_path,
     )
-
 
 def ensure_test_registration(
     session: Session,
@@ -1135,8 +760,6 @@ def ensure_test_registration(
     display_name: str = "Firmware Test Node",
     metadata: Optional[Dict[str, Any]] = None,
 ) -> NodeRegistration:
-    """Return a persistent registration used for firmware testing."""
-
     existing = session.exec(
         select(NodeRegistration).where(NodeRegistration.display_name == display_name)
     ).first()
@@ -1158,4 +781,3 @@ def ensure_test_registration(
     session.commit()
     session.refresh(registration)
     return registration
-

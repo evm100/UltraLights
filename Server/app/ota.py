@@ -13,21 +13,17 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, SQLModel
 
-from . import database, node_builder, node_credentials, registry
+from . import database, node_credentials, registry
 from .auth.service import init_auth_storage
 from .config import settings
 
 router = APIRouter()
 
-# If you have a central config module, prefer importing from it:
-# from .config import FIRMWARE_DIR, PUBLIC_BASE, API_BEARER, MANIFEST_HMAC_SECRET, LAN_PUBLIC_BASE
-
 FIRMWARE_DIR = settings.FIRMWARE_DIR
-LAN_PUBLIC_BASE = os.getenv("LAN_PUBLIC_BASE", "")  # e.g. https://lan.lights.evm100.org
+LAN_PUBLIC_BASE = os.getenv("LAN_PUBLIC_BASE", "")
 
 def latest_symlink_for(dev_id: str) -> Path:
     return settings.FIRMWARE_DIR / f"{dev_id}_latest.bin"
-
 
 def _resolve_latest(device_id: str, download_id: Optional[str] = None) -> Path:
     candidates = []
@@ -50,7 +46,6 @@ def _authenticate_request(
     auth_header: Optional[str], session: Session
 ) -> Tuple[Optional[node_credentials.NodeCredential], str]:
     """Return the node associated with ``auth_header`` if applicable."""
-
     require_auth = bool(settings.API_BEARER or node_credentials.any_tokens(session))
 
     if not auth_header:
@@ -85,7 +80,6 @@ def _authenticate_request(
 
     raise HTTPException(status_code=403, detail="Invalid bearer token")
 
-
 def _resolve_access_context(
     *,
     authorization: Optional[str],
@@ -93,7 +87,6 @@ def _resolve_access_context(
     download_id: Optional[str],
 ) -> Tuple[str, str, Optional[node_credentials.NodeCredential]]:
     """Determine which node and filesystem id a request should access."""
-
     with database.SessionLocal() as session:
         credential, _ = _authenticate_request(authorization, session)
 
@@ -166,10 +159,7 @@ def _manifest_sig(body: dict) -> Optional[str]:
         return None
 
     payload = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    if (
-        all(c in "0123456789abcdef" for c in secret.lower())
-        and len(secret) % 2 == 0
-    ):
+    if all(c in "0123456789abcdef" for c in secret.lower()) and len(secret) % 2 == 0:
         try:
             key = bytes.fromhex(secret)
         except ValueError:
@@ -178,7 +168,6 @@ def _manifest_sig(body: dict) -> Optional[str]:
         key = secret.encode("utf-8")
 
     return hmac.new(key, payload, hashlib.sha256).hexdigest()
-
 
 def _build_manifest_response(device_id: str, download_id: Optional[str]) -> JSONResponse:
     target = _resolve_latest(device_id, download_id)
@@ -215,7 +204,6 @@ def _build_manifest_response(device_id: str, download_id: Optional[str]) -> JSON
 
     return JSONResponse(body, headers=headers)
 
-
 @router.get("/api/firmware/v1/manifest")
 def api_manifest(
     device_id: Optional[str] = None,
@@ -228,41 +216,6 @@ def api_manifest(
         download_id=download_id,
     )
     return _build_manifest_response(resolved_device_id, resolved_download_id)
-
-
-@router.get("/api/firmware/v1/credentials")
-def api_credentials_bundle(
-    request: Request, authorization: Optional[str] = Header(None)
-):
-    with database.SessionLocal() as session:
-        credential, _ = _authenticate_request(authorization, session)
-        if credential is None:
-            raise HTTPException(status_code=403, detail="Node token required")
-
-        metadata = node_credentials.NodeCertificateMetadata.from_model(credential)
-        if metadata is None or not metadata.bundle_path:
-            raise HTTPException(status_code=404, detail="Certificate bundle not available")
-
-        bundle_path = Path(metadata.bundle_path).expanduser()
-        resolved = bundle_path.resolve()
-        try:
-            resolved.relative_to(node_builder.CERTIFICATE_ROOT)
-        except ValueError as exc:
-            raise HTTPException(status_code=404, detail="Certificate bundle not available") from exc
-
-        if not resolved.exists():
-            raise HTTPException(status_code=404, detail="Certificate bundle not available")
-
-        response = _serve_file(resolved, request)
-        if metadata.fingerprint:
-            response.headers["X-Certificate-Fingerprint"] = metadata.fingerprint
-        response.headers["Cache-Control"] = "no-store"
-        response.headers.setdefault(
-            "Content-Disposition",
-            f'attachment; filename="{resolved.name}"',
-        )
-        return response
-
 
 @router.get("/firmware/{download_id}/manifest")
 def api_manifest_by_download(

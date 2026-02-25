@@ -26,7 +26,6 @@ class HouseRole(str, Enum):
 
 def _utcnow() -> datetime:
     """Return a timezone-aware UTC timestamp."""
-
     return datetime.now(timezone.utc)
 
 
@@ -130,7 +129,6 @@ class AuditLog(SQLModel, table=True):
 
 class NodeRegistration(SQLModel, table=True):
     """Opaque node identifiers that may be claimed and provisioned later."""
-
     __tablename__ = "node_registrations"
     __table_args__ = (
         UniqueConstraint("download_id", name="uq_node_registrations_download_id"),
@@ -196,22 +194,6 @@ class NodeRegistration(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
-    certificate_fingerprint: Optional[str] = Field(
-        default=None,
-        sa_column=Column(String(128), nullable=True),
-    )
-    certificate_pem_path: Optional[str] = Field(
-        default=None,
-        sa_column=Column(String(255), nullable=True),
-    )
-    private_key_pem_path: Optional[str] = Field(
-        default=None,
-        sa_column=Column(String(255), nullable=True),
-    )
-    certificate_bundle_path: Optional[str] = Field(
-        default=None,
-        sa_column=Column(String(255), nullable=True),
-    )
 
 
 class NodeCredential(SQLModel, table=True):
@@ -239,23 +221,6 @@ class NodeCredential(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
-    certificate_fingerprint: Optional[str] = Field(
-        default=None,
-        sa_column=Column(String(128), nullable=True),
-    )
-    certificate_pem_path: Optional[str] = Field(
-        default=None,
-        sa_column=Column(String(255), nullable=True),
-    )
-    private_key_pem_path: Optional[str] = Field(
-        default=None,
-        sa_column=Column(String(255), nullable=True),
-    )
-    certificate_bundle_path: Optional[str] = Field(
-        default=None,
-        sa_column=Column(String(255), nullable=True),
-    )
-
 
 __all__ = [
     "AuditLog",

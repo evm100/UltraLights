@@ -1,6 +1,7 @@
 import os, json
 from pathlib import Path
 from dotenv import load_dotenv
+
 load_dotenv()  # reads .env in the project root
 
 class Settings:
@@ -16,48 +17,15 @@ class Settings:
 
     BROKER_HOST = os.getenv("BROKER_HOST", "127.0.0.1")
     BROKER_CONNECT_HOST = os.getenv("BROKER_CONNECT_HOST", "")
-    BROKER_PORT = int(os.getenv("BROKER_PORT", "8883"))
+    BROKER_PORT = int(os.getenv("BROKER_PORT", "1883"))
     BROKER_USERNAME = os.getenv("BROKER_USERNAME", "")
     BROKER_PASSWORD = os.getenv("BROKER_PASSWORD", "")
     EMBED_BROKER = os.getenv("EMBED_BROKER", "0") == "1"
-    _broker_tls_default = "0" if EMBED_BROKER else "1"
-    BROKER_TLS_ENABLED = os.getenv("BROKER_TLS_ENABLED", _broker_tls_default) == "1"
-    BROKER_TLS_CA_FILE = os.getenv("BROKER_TLS_CA_FILE", "")
-    BROKER_TLS_CERTFILE = os.getenv("BROKER_TLS_CERTFILE", "")
-    BROKER_TLS_KEYFILE = os.getenv("BROKER_TLS_KEYFILE", "")
-    BROKER_TLS_VERSION = os.getenv("BROKER_TLS_VERSION", "")
-    BROKER_TLS_CIPHERS = os.getenv("BROKER_TLS_CIPHERS", "")
-    BROKER_TLS_INSECURE = os.getenv("BROKER_TLS_INSECURE", "0") == "1"
-    BROKER_TLS_SERVERNAME = os.getenv("BROKER_TLS_SERVERNAME", "")
 
     FIRMWARE_DIR = Path(
         os.getenv("FIRMWARE_DIR", "/srv/firmware/UltraLights")
     )
     FIRMWARE_DIR.mkdir(parents=True, exist_ok=True)
-
-    _cert_root_env = os.getenv("NODE_CERT_ROOT", "")
-    if _cert_root_env:
-        _cert_root = Path(_cert_root_env)
-        if not _cert_root.is_absolute():
-            _cert_root = DATA_DIR / _cert_root
-    else:
-        _cert_root = DATA_DIR / "node_certs"
-    NODE_CERT_ROOT = _cert_root.expanduser().resolve()
-    NODE_CERT_ROOT.mkdir(parents=True, exist_ok=True)
-    NODE_CERT_CA_CERT = os.getenv("NODE_CERT_CA_CERT", "")
-    NODE_CERT_CA_KEY = os.getenv("NODE_CERT_CA_KEY", "")
-    NODE_CERT_CA_KEY_PASSPHRASE = os.getenv("NODE_CERT_CA_KEY_PASSPHRASE", "")
-    NODE_CERT_VALID_DAYS = int(os.getenv("NODE_CERT_VALID_DAYS", "365"))
-    NODE_CERT_KEY_BITS = int(os.getenv("NODE_CERT_KEY_BITS", "3072"))
-    NODE_CERT_SUBJECT_TEMPLATE = os.getenv(
-        "NODE_CERT_SUBJECT_TEMPLATE", "/CN={node_id}"
-    )
-    NODE_CERT_SAN_TEMPLATE = os.getenv(
-        "NODE_CERT_SAN_TEMPLATE", "DNS:{node_id}"
-    )
-    NODE_CERT_BUNDLE_NAME = os.getenv(
-        "NODE_CERT_BUNDLE_NAME", "credentials.tar.gz"
-    )
 
     API_BEARER = os.getenv("API_BEARER", "")
     MANIFEST_HMAC_SECRET = os.getenv("MANIFEST_HMAC_SECRET", "")
@@ -76,7 +44,6 @@ class Settings:
     # ------------------------------------------------------------------
     # Device registry ---------------------------------------------------
 
-    # registry of houses/rooms/nodes as JSON
     DEFAULT_REGISTRY = [
         {
             "id": "del-sur",

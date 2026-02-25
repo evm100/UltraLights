@@ -240,21 +240,27 @@ void app_main(void) {
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-  ul_wifi_credentials_t creds = {0};
-  bool have_creds = ul_wifi_credentials_load(&creds);
+  // ALLOCATE CREDENTIALS ON THE HEAP
+  ul_wifi_credentials_t *creds = calloc(1, sizeof(ul_wifi_credentials_t));
+  if (!creds) {
+    ESP_LOGE(TAG, "Failed to allocate memory for credentials");
+    abort();
+  }
+
+  bool have_creds = ul_wifi_credentials_load(creds);
 
 #if CONFIG_UL_WIFI_STATIC_CREDENTIALS
   if (!have_creds && strlen(CONFIG_UL_WIFI_SSID)) {
-    strlcpy(creds.ssid, CONFIG_UL_WIFI_SSID, sizeof(creds.ssid));
-    strlcpy(creds.password, CONFIG_UL_WIFI_PSK, sizeof(creds.password));
-    esp_err_t seed_err = ul_wifi_credentials_save(&creds);
+    strlcpy(creds->ssid, CONFIG_UL_WIFI_SSID, sizeof(creds->ssid));
+    strlcpy(creds->password, CONFIG_UL_WIFI_PSK, sizeof(creds->password));
+    esp_err_t seed_err = ul_wifi_credentials_save(creds);
     if (seed_err == ESP_OK) {
       have_creds = true;
       ESP_LOGI(TAG, "Seeded stored Wi-Fi credentials from sdkconfig");
     } else {
       ESP_LOGE(TAG, "Failed to seed Wi-Fi credentials: %s",
                esp_err_to_name(seed_err));
-      memset(&creds, 0, sizeof(creds));
+      memset(creds, 0, sizeof(ul_wifi_credentials_t));
     }
   }
 #endif
@@ -283,7 +289,7 @@ void app_main(void) {
       vTaskDelay(pdMS_TO_TICKS(2000));
       esp_restart();
     }
-    have_creds = ul_wifi_credentials_load(&creds);
+    have_creds = ul_wifi_credentials_load(creds);
     if (!have_creds) {
       ESP_LOGE(TAG, "Provisioning completed but credentials missing; restarting");
       vTaskDelay(pdMS_TO_TICKS(2000));
@@ -291,8 +297,11 @@ void app_main(void) {
     }
     ESP_LOGI(TAG, "Provisioning completed; continuing with Wi-Fi setup");
   } else {
-    ESP_LOGI(TAG, "Using stored Wi-Fi credentials for SSID '%s'", creds.ssid);
+    ESP_LOGI(TAG, "Using stored Wi-Fi credentials for SSID '%s'", creds->ssid);
   }
+
+  // FREE THE CREDENTIALS MEMORY NOW THAT WE ARE DONE LOADING THEM
+  free(creds);
 
   ul_task_init();
 

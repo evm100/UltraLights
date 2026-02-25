@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import logging
-import os
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from sqlmodel import Session, select
@@ -22,152 +21,39 @@ from .auth.security import hash_password, normalize_username, verify_password
 
 
 @dataclass
-class NodeCertificateMetadata:
-    """Snapshot of the certificate artifacts stored for a node."""
-
-    fingerprint: Optional[str] = None
-    certificate_pem_path: Optional[str] = None
-    private_key_pem_path: Optional[str] = None
-    bundle_path: Optional[str] = None
-
-    @classmethod
-    def from_model(cls, model: Any) -> Optional["NodeCertificateMetadata"]:
-        fingerprint = getattr(model, "certificate_fingerprint", None)
-        certificate_path = getattr(model, "certificate_pem_path", None)
-        private_key_path = getattr(model, "private_key_pem_path", None)
-        bundle_path = getattr(model, "certificate_bundle_path", None)
-        if not any([fingerprint, certificate_path, private_key_path, bundle_path]):
-            return None
-        return cls(
-            fingerprint=fingerprint,
-            certificate_pem_path=certificate_path,
-            private_key_pem_path=private_key_path,
-            bundle_path=bundle_path,
-        )
-
-
-@dataclass
 class NodeCredentialWithToken:
     """Return value that optionally includes a freshly issued token."""
-
     credential: NodeCredential
     plaintext_token: Optional[str]
-    certificate: Optional[NodeCertificateMetadata] = None
 
 
 @dataclass
 class NodeRegistrationWithToken:
     """Batch generation return type including the plaintext token."""
-
     registration: NodeRegistration
     plaintext_token: str
-    certificate: Optional[NodeCertificateMetadata] = None
-
-
-_CERTIFICATE_ATTRS: Tuple[str, ...] = (
-    "certificate_fingerprint",
-    "certificate_pem_path",
-    "private_key_pem_path",
-    "certificate_bundle_path",
-)
-
-_CERTIFICATE_FIELD_ALIASES: Dict[str, str] = {
-    "fingerprint": "certificate_fingerprint",
-    "certificate_fingerprint": "certificate_fingerprint",
-    "certificateFingerprint": "certificate_fingerprint",
-    "certificate_pem_path": "certificate_pem_path",
-    "certificatePemPath": "certificate_pem_path",
-    "certificate_path": "certificate_pem_path",
-    "certificatePath": "certificate_pem_path",
-    "private_key_pem_path": "private_key_pem_path",
-    "privateKeyPemPath": "private_key_pem_path",
-    "private_key_path": "private_key_pem_path",
-    "privateKeyPath": "private_key_pem_path",
-    "bundle_path": "certificate_bundle_path",
-    "bundlePath": "certificate_bundle_path",
-    "certificate_bundle_path": "certificate_bundle_path",
-    "certificateBundlePath": "certificate_bundle_path",
-}
-
-
-def _sanitize_certificate_update(
-    raw: Optional[Union[NodeCertificateMetadata, Dict[str, Any]]]
-) -> Dict[str, Optional[str]]:
-    """Normalize raw certificate input into model attribute names."""
-
-    if raw is None:
-        return {}
-    if isinstance(raw, NodeCertificateMetadata):
-        return {
-            "certificate_fingerprint": raw.fingerprint,
-            "certificate_pem_path": raw.certificate_pem_path,
-            "private_key_pem_path": raw.private_key_pem_path,
-            "certificate_bundle_path": raw.bundle_path,
-        }
-    if not isinstance(raw, dict):
-        return {}
-
-    cleaned: Dict[str, Optional[str]] = {}
-    for key, value in raw.items():
-        mapped = _CERTIFICATE_FIELD_ALIASES.get(key)
-        if not mapped:
-            continue
-        if value is None:
-            cleaned[mapped] = None
-            continue
-        if isinstance(value, str):
-            cleaned[mapped] = value.strip() or None
-        else:
-            cleaned[mapped] = str(value)
-    return cleaned
-
-
-def _apply_certificate_update(target: Any, update: Dict[str, Optional[str]]) -> bool:
-    """Apply certificate attributes to ``target`` if changed."""
-
-    if not update:
-        return False
-
-    changed = False
-    for attr in _CERTIFICATE_ATTRS:
-        if attr not in update:
-            continue
-        value = update[attr]
-        if getattr(target, attr, None) != value:
-            setattr(target, attr, value)
-            changed = True
-    return changed
-
-
-def _copy_certificate_fields(source: Any, target: Any) -> bool:
-    """Copy certificate fields from ``source`` onto ``target``."""
-
-    update = {attr: getattr(source, attr, None) for attr in _CERTIFICATE_ATTRS}
-    return _apply_certificate_update(target, update)
 
 
 def _now() -> datetime:
     """Return a timezone-aware UTC timestamp."""
-
     return datetime.now(timezone.utc)
 
 
 def _first_result(result: Any) -> Any:
     """Return the first item from a SQLModel result or stub."""
-
     if hasattr(result, "first"):
         return result.first()
     if hasattr(result, "one_or_none"):
         try:
             return result.one_or_none()
-        except Exception:  # pragma: no cover - defensive fallback
+        except Exception:  # pragma: no cover
             pass
     if hasattr(result, "all"):
         rows = result.all()
         return rows[0] if rows else None
     try:
         iterator = iter(result)
-    except TypeError:  # pragma: no cover - defensive
+    except TypeError:  # pragma: no cover
         return None
     return next(iterator, None)
 
@@ -223,7 +109,6 @@ def get_registration_by_download_id(
 
 def any_tokens(session: Session) -> bool:
     """Return True if any node credentials or registrations exist."""
-
     if _first_result(session.exec(select(NodeCredential.id))):
         return True
     return _first_result(session.exec(select(NodeRegistration.id))) is not None
@@ -234,12 +119,8 @@ def create_batch(
     count: int,
     *,
     metadata: Optional[Iterable[Dict[str, Any]]] = None,
-    certificates: Optional[
-        Iterable[Union[NodeCertificateMetadata, Dict[str, Any]]]
-    ] = None,
 ) -> List[NodeRegistrationWithToken]:
     """Generate ``count`` opaque registrations and persist them."""
-
     if count <= 0:
         raise ValueError("count must be positive")
 
@@ -262,11 +143,6 @@ def create_batch(
     if metadata is not None:
         for entry in metadata:
             metadata_list.append(dict(entry))
-
-    certificate_updates: List[Dict[str, Optional[str]]] = []
-    if certificates is not None:
-        for entry in certificates:
-            certificate_updates.append(_sanitize_certificate_update(entry))
 
     for index in range(count):
         node_id = registry.generate_node_id()
@@ -292,37 +168,27 @@ def create_batch(
             token_hash=token_hash,
             hardware_metadata=metadata_entry,
         )
-        certificate_update: Dict[str, Optional[str]] = {}
-        if index < len(certificate_updates):
-            certificate_update = certificate_updates[index]
-            if certificate_update:
-                _apply_certificate_update(registration, certificate_update)
         session.add(registration)
         registrations.append(
             NodeRegistrationWithToken(
                 registration=registration,
                 plaintext_token=plaintext_token,
-                certificate=NodeCertificateMetadata.from_model(registration),
             )
         )
 
     session.commit()
     for entry in registrations:
         session.refresh(entry.registration)
-        entry.certificate = NodeCertificateMetadata.from_model(entry.registration)
-
         if entry.registration.provisioning_token:
             entry.registration.provisioning_token = None
             session.add(entry.registration)
 
     session.commit()
-
     return registrations
 
 
 def list_available_registrations(session: Session) -> List[NodeRegistration]:
     """Return registrations that have not been assigned to a house/user."""
-
     result = session.exec(
         select(NodeRegistration).where(NodeRegistration.assigned_at.is_(None))
     )
@@ -331,7 +197,6 @@ def list_available_registrations(session: Session) -> List[NodeRegistration]:
 
 def list_assigned_registrations(session: Session) -> List[NodeRegistration]:
     """Return registrations that have been associated with a house or user."""
-
     result = session.exec(
         select(NodeRegistration).where(NodeRegistration.assigned_at.is_not(None))
     )
@@ -342,7 +207,6 @@ def list_pending_registrations_for_user(
     session: Session, user_id: Optional[int]
 ) -> List[NodeRegistration]:
     """Return unassigned registrations claimed by ``user_id``."""
-
     if not user_id:
         return []
 
@@ -367,7 +231,6 @@ def claim_registration(
     hardware_metadata: Optional[Dict[str, Any]] = None,
 ) -> NodeRegistration:
     """Mark a pre-generated registration as claimed for later assignment."""
-
     registration = _get_registration_by_node_id(session, node_id)
     if registration is None:
         raise KeyError("node registration not found")
@@ -468,14 +331,11 @@ def ensure_for_node(
     assigned_house_id: Optional[int] = None,
     assigned_user_id: Optional[int] = None,
     hardware_metadata: Optional[Dict[str, Any]] = None,
-    certificate: Optional[Union[NodeCertificateMetadata, Dict[str, Any]]] = None,
 ) -> NodeCredentialWithToken:
     """Ensure a credential row exists for ``node_id`` and return it."""
-
     plaintext: Optional[str] = None
     registration = _get_registration_by_node_id(session, node_id)
     registration_changed = False
-    certificate_update = _sanitize_certificate_update(certificate)
 
     if registration is None:
         if download_id is None:
@@ -498,8 +358,6 @@ def ensure_for_node(
             hardware_metadata=hardware_metadata or {},
         )
         registration_changed = True
-        if certificate_update and _apply_certificate_update(registration, certificate_update):
-            registration_changed = True
     else:
         registration, updated = _sync_registration_assignment(
             registration,
@@ -528,9 +386,6 @@ def ensure_for_node(
         elif token_hash and registration.token_hash != token_hash:
             registration.token_hash = token_hash
             registration.token_issued_at = _now()
-            registration_changed = True
-
-        if certificate_update and _apply_certificate_update(registration, certificate_update):
             registration_changed = True
 
     credential = _get_by_node_id(session, node_id)
@@ -562,9 +417,6 @@ def ensure_for_node(
             credential.token_hash = registration.token_hash
             credential.token_issued_at = registration.token_issued_at
             credential_changed = True
-
-        if certificate_update and _apply_certificate_update(credential, certificate_update):
-            credential_changed = True
     else:
         if plaintext:
             token_hash = registry.hash_node_token(plaintext)
@@ -581,16 +433,8 @@ def ensure_for_node(
             token_hash=registration.token_hash,
             created_at=_now(),
             token_issued_at=registration.token_issued_at,
-            certificate_fingerprint=registration.certificate_fingerprint,
-            certificate_pem_path=registration.certificate_pem_path,
-            private_key_pem_path=registration.private_key_pem_path,
-            certificate_bundle_path=registration.certificate_bundle_path,
         )
         credential_changed = True
-
-    if credential and registration_changed:
-        if _copy_certificate_fields(registration, credential):
-            credential_changed = True
 
     if registration_changed:
         session.add(registration)
@@ -603,11 +447,9 @@ def ensure_for_node(
         if credential_changed:
             session.refresh(credential)
 
-    certificate_snapshot = NodeCertificateMetadata.from_model(credential)
     return NodeCredentialWithToken(
         credential=credential,
         plaintext_token=plaintext,
-        certificate=certificate_snapshot,
     )
 
 
@@ -622,7 +464,6 @@ def assign_registration_to_room(
     assigned_user_id: Optional[int] = None,
 ) -> NodeRegistration:
     """Place ``node_id`` into ``house_slug``/``room_id`` and update metadata."""
-
     if not node_id:
         raise ValueError("node_id must be provided")
 
@@ -637,15 +478,9 @@ def assign_registration_to_room(
 
     previous_house_slug = existing_registration.house_slug if existing_registration else None
     previous_room_id = existing_registration.room_id if existing_registration else None
-    previous_display = (
-        existing_registration.display_name if existing_registration else None
-    )
-    previous_assigned_house = (
-        existing_registration.assigned_house_id if existing_registration else None
-    )
-    previous_assigned_user = (
-        existing_registration.assigned_user_id if existing_registration else None
-    )
+    previous_display = existing_registration.display_name if existing_registration else None
+    previous_assigned_house = existing_registration.assigned_house_id if existing_registration else None
+    previous_assigned_user = existing_registration.assigned_user_id if existing_registration else None
 
     if assigned_house_id is None and existing_registration:
         assigned_house_id = existing_registration.assigned_house_id
@@ -667,25 +502,15 @@ def assign_registration_to_room(
     download_id = (
         existing_registration.download_id
         if existing_registration is not None
-        else (
-            existing_credential.download_id
-            if existing_credential is not None
-            else None
-        )
+        else (existing_credential.download_id if existing_credential is not None else None)
     )
     token_hash = (
         existing_registration.token_hash
         if existing_registration is not None
-        else (
-            existing_credential.token_hash
-            if existing_credential is not None
-            else None
-        )
+        else (existing_credential.token_hash if existing_credential is not None else None)
     )
     hardware_metadata: Optional[Dict[str, Any]] = (
-        existing_registration.hardware_metadata
-        if existing_registration is not None
-        else None
+        existing_registration.hardware_metadata if existing_registration is not None else None
     )
 
     ensured = ensure_for_node(
@@ -705,17 +530,11 @@ def assign_registration_to_room(
     if registration is None:
         raise KeyError("node registration not found")
 
-    metadata = (
-        registration.hardware_metadata if isinstance(registration.hardware_metadata, dict) else {}
-    )
+    metadata = registration.hardware_metadata if isinstance(registration.hardware_metadata, dict) else {}
     modules_meta: Optional[List[str]] = None
     modules_value = metadata.get("modules") if isinstance(metadata, dict) else None
     if isinstance(modules_value, list):
-        cleaned: List[str] = []
-        for entry in modules_value:
-            text = str(entry).strip()
-            if text:
-                cleaned.append(text)
+        cleaned: List[str] = [str(entry).strip() for entry in modules_value if str(entry).strip()]
         modules_meta = cleaned or None
 
     try:
@@ -753,13 +572,11 @@ def unassign_node(
     assigned_user_id: Optional[int] = None,
 ) -> NodeRegistration:
     """Detach ``node_id`` from its room while preserving the registration."""
-
     registration = _get_registration_by_node_id(session, node_id)
     if registration is None:
         raise KeyError("node registration not found")
 
     credential = _get_by_node_id(session, node_id)
-
     registration_changed = False
 
     if registration.room_id is not None:
@@ -824,8 +641,7 @@ def rotate_token(
         return credential, plaintext
 
     session.refresh(registration)
-    # Legacy callers expect a credential, so fabricate a placeholder when
-    # only a registration exists.
+    # Legacy callers expect a credential, so fabricate a placeholder
     legacy = NodeCredential(
         node_id=registration.node_id,
         house_slug=registration.house_slug or "",
@@ -835,74 +651,14 @@ def rotate_token(
         token_hash=registration.token_hash,
         created_at=registration.created_at,
         token_issued_at=registration.token_issued_at,
-        certificate_fingerprint=registration.certificate_fingerprint,
-        certificate_pem_path=registration.certificate_pem_path,
-        private_key_pem_path=registration.private_key_pem_path,
-        certificate_bundle_path=registration.certificate_bundle_path,
     )
     return legacy, plaintext
-
-
-def store_certificate_artifacts(
-    session: Session,
-    node_id: str,
-    *,
-    fingerprint: Optional[str],
-    certificate_path: Optional[Union[str, "os.PathLike[str]"]],
-    private_key_path: Optional[Union[str, "os.PathLike[str]"]],
-    bundle_path: Optional[Union[str, "os.PathLike[str]"]],
-) -> NodeCertificateMetadata:
-    """Persist certificate metadata for ``node_id`` and return a snapshot."""
-
-    credential = _get_by_node_id(session, node_id)
-    registration = _get_registration_by_node_id(session, node_id)
-    if credential is None and registration is None:
-        raise KeyError("node credentials not found")
-
-    def _normalize(path: Optional[Union[str, "os.PathLike[str]"]]) -> Optional[str]:
-        if path is None:
-            return None
-        return str(path)
-
-    update: Dict[str, Optional[str]] = {
-        "certificate_fingerprint": fingerprint,
-        "certificate_pem_path": _normalize(certificate_path),
-        "private_key_pem_path": _normalize(private_key_path),
-        "certificate_bundle_path": _normalize(bundle_path),
-    }
-
-    changed = False
-    if credential is not None and _apply_certificate_update(credential, update):
-        session.add(credential)
-        changed = True
-    if registration is not None and _apply_certificate_update(registration, update):
-        session.add(registration)
-        changed = True
-
-    if changed:
-        session.commit()
-        if credential is not None:
-            session.refresh(credential)
-        if registration is not None:
-            session.refresh(registration)
-
-    snapshot_source = credential or registration
-    metadata = NodeCertificateMetadata.from_model(snapshot_source)
-    if metadata is None:
-        metadata = NodeCertificateMetadata(
-            fingerprint=update["certificate_fingerprint"],
-            certificate_pem_path=update["certificate_pem_path"],
-            private_key_pem_path=update["private_key_pem_path"],
-            bundle_path=update["certificate_bundle_path"],
-        )
-    return metadata
 
 
 def record_account_credentials(
     session: Session, node_id: str, username: str, password: str
 ) -> Optional[NodeRegistration]:
     """Persist account credentials observed from firmware."""
-
     username = normalize_username(username)
     password = password or ""
     if not username or not password:
@@ -926,10 +682,6 @@ def record_account_credentials(
             house_slug=credential.house_slug or None,
             room_id=credential.room_id or None,
             display_name=credential.display_name or credential.node_id,
-            certificate_fingerprint=credential.certificate_fingerprint,
-            certificate_pem_path=credential.certificate_pem_path,
-            private_key_pem_path=credential.private_key_pem_path,
-            certificate_bundle_path=credential.certificate_bundle_path,
         )
         registration.assigned_at = credential.created_at
         session.add(registration)
@@ -939,19 +691,11 @@ def record_account_credentials(
 
     user = _first_result(session.exec(select(User).where(User.username == username)))
     if user is None:
-        logging.warning(
-            "Received credentials for unknown user '%s' on node '%s'",
-            username,
-            node_id,
-        )
+        logging.warning("Received credentials for unknown user '%s' on node '%s'", username, node_id)
         return None
 
     if not verify_password(password, user.hashed_password):
-        logging.warning(
-            "Credential verification failed for user '%s' on node '%s'",
-            username,
-            node_id,
-        )
+        logging.warning("Credential verification failed for user '%s' on node '%s'", username, node_id)
         return None
 
     membership_candidates = session.exec(
@@ -961,10 +705,7 @@ def record_account_credentials(
     membership: Optional[HouseMembership] = None
     if membership_candidates:
         for candidate in membership_candidates:
-            if (
-                registration.assigned_house_id is not None
-                and candidate.house_id == registration.assigned_house_id
-            ):
+            if registration.assigned_house_id is not None and candidate.house_id == registration.assigned_house_id:
                 membership = candidate
                 break
         if membership is None:
@@ -972,9 +713,7 @@ def record_account_credentials(
 
     house_row: Optional[House] = None
     if membership:
-        house_row = _first_result(
-            session.exec(select(House).where(House.id == membership.house_id))
-        )
+        house_row = _first_result(session.exec(select(House).where(House.id == membership.house_id)))
 
     previous_user_id = registration.assigned_user_id
     previous_house_id = registration.assigned_house_id
@@ -1004,29 +743,17 @@ def record_account_credentials(
     if isinstance(existing_node, dict):
         raw_modules = existing_node.get("modules")
         if isinstance(raw_modules, list):
-            cleaned_modules = [
-                str(entry).strip()
-                for entry in raw_modules
-                if isinstance(entry, str) and entry.strip()
-            ]
+            cleaned_modules = [str(entry).strip() for entry in raw_modules if isinstance(entry, str) and entry.strip()]
             existing_modules = cleaned_modules or None
         raw_name = existing_node.get("name")
         if isinstance(raw_name, str) and raw_name.strip():
             existing_name = raw_name.strip()
 
-    metadata = (
-        registration.hardware_metadata
-        if isinstance(registration.hardware_metadata, dict)
-        else {}
-    )
+    metadata = registration.hardware_metadata if isinstance(registration.hardware_metadata, dict) else {}
     metadata_modules: Optional[List[str]] = None
     modules_value = metadata.get("modules") if isinstance(metadata, dict) else None
     if isinstance(modules_value, list):
-        cleaned_meta = [
-            str(entry).strip()
-            for entry in modules_value
-            if str(entry).strip()
-        ]
+        cleaned_meta = [str(entry).strip() for entry in modules_value if str(entry).strip()]
         metadata_modules = cleaned_meta or None
 
     should_clear_assignment = created_registration
@@ -1038,11 +765,7 @@ def record_account_credentials(
         should_clear_assignment = True
     if target_slug and previous_house_slug and previous_house_slug != target_slug:
         should_clear_assignment = True
-    if (
-        target_external_id
-        and existing_external
-        and existing_external != target_external_id
-    ):
+    if target_external_id and existing_external and existing_external != target_external_id:
         should_clear_assignment = True
 
     hashed = hash_password(password)
@@ -1085,10 +808,7 @@ def record_account_credentials(
         registration.room_id = None
         changed = True
 
-    if (
-        target_external_id
-        and (should_clear_assignment or registration.room_id is None or previous_room_id is None)
-    ):
+    if target_external_id and (should_clear_assignment or registration.room_id is None or previous_room_id is None):
         if existing_external and existing_external != target_external_id:
             try:
                 registry.remove_node(node_id)
@@ -1103,25 +823,20 @@ def record_account_credentials(
                 modules=modules,
             )
         except KeyError:
-            logging.warning(
-                "Unable to place node '%s' in house '%s'", node_id, target_external_id
-            )
+            logging.warning("Unable to place node '%s' in house '%s'", node_id, target_external_id)
 
-    if (
-        should_clear_assignment
-        or (target_external_id and existing_external and existing_external != target_external_id)
-    ):
+    if should_clear_assignment or (target_external_id and existing_external and existing_external != target_external_id):
         try:
             from .motion import motion_manager  # type: ignore
-        except Exception:  # pragma: no cover - defensive
-            motion_manager = None  # type: ignore[assignment]
+        except Exception:  # pragma: no cover
+            pass
         else:
             motion_manager.forget_node(node_id)
 
         try:
             from .status_monitor import status_monitor  # type: ignore
-        except Exception:  # pragma: no cover - defensive
-            status_monitor = None  # type: ignore[assignment]
+        except Exception:  # pragma: no cover
+            pass
         else:
             status_monitor.forget(node_id)
 
@@ -1142,7 +857,6 @@ def record_account_credentials(
         username,
         "" if not membership else f" in house {membership.house_id}",
     )
-
     return registration
 
 
@@ -1182,10 +896,6 @@ def update_download_id(
         token_hash=registration.token_hash,
         created_at=registration.created_at,
         token_issued_at=registration.token_issued_at,
-        certificate_fingerprint=registration.certificate_fingerprint,
-        certificate_pem_path=registration.certificate_pem_path,
-        private_key_pem_path=registration.private_key_pem_path,
-        certificate_bundle_path=registration.certificate_bundle_path,
     )
     return legacy
 
@@ -1226,17 +936,12 @@ def mark_provisioned(
         created_at=registration.created_at,
         token_issued_at=registration.token_issued_at,
         provisioned_at=registration.provisioned_at,
-        certificate_fingerprint=registration.certificate_fingerprint,
-        certificate_pem_path=registration.certificate_pem_path,
-        private_key_pem_path=registration.private_key_pem_path,
-        certificate_bundle_path=registration.certificate_bundle_path,
     )
     return legacy
 
 
 def clear_stored_provisioning_token(session: Session, node_id: str) -> bool:
     """Remove any legacy plaintext provisioning token for ``node_id``."""
-
     registration = _get_registration_by_node_id(session, node_id)
     if registration is None or not registration.provisioning_token:
         return False
@@ -1277,9 +982,6 @@ def clear_provisioned(session: Session, node_id: str) -> NodeCredential:
         token_hash=registration.token_hash,
         created_at=registration.created_at,
         token_issued_at=registration.token_issued_at,
-        certificate_fingerprint=registration.certificate_fingerprint,
-        certificate_pem_path=registration.certificate_pem_path,
-        private_key_pem_path=registration.private_key_pem_path,
     )
     return legacy
 
@@ -1348,7 +1050,6 @@ def list_unprovisioned_registrations(session: Session) -> List[NodeRegistration]
 
 def sync_registry_nodes(session: Session) -> None:
     """Ensure every registry node has a credential entry and synced download id."""
-
     registry.ensure_house_external_ids(persist=False)
 
     changed = False
@@ -1411,7 +1112,6 @@ def sync_registry_nodes(session: Session) -> None:
 
 def migrate_credentials_to_registrations(session: Session) -> int:
     """Ensure every legacy credential has a backing registration."""
-
     created = 0
     updated = 0
 
@@ -1443,10 +1143,6 @@ def migrate_credentials_to_registrations(session: Session) -> int:
                 room_id=room_id,
                 display_name=display_name,
                 hardware_metadata={},
-                certificate_fingerprint=credential.certificate_fingerprint,
-                certificate_pem_path=credential.certificate_pem_path,
-                private_key_pem_path=credential.private_key_pem_path,
-                certificate_bundle_path=credential.certificate_bundle_path,
             )
             session.add(registration)
             created += 1
@@ -1489,10 +1185,6 @@ def migrate_credentials_to_registrations(session: Session) -> int:
                 registration.hardware_metadata = {}
                 changed = True
 
-            if any(getattr(credential, attr, None) for attr in _CERTIFICATE_ATTRS):
-                if _copy_certificate_fields(credential, registration):
-                    changed = True
-
             if changed:
                 session.add(registration)
                 updated += 1
@@ -1504,7 +1196,6 @@ def migrate_credentials_to_registrations(session: Session) -> int:
 
 
 __all__ = [
-    "NodeCertificateMetadata",
     "NodeCredentialWithToken",
     "NodeRegistrationWithToken",
     "any_tokens",
@@ -1529,7 +1220,6 @@ __all__ = [
     "mark_provisioned",
     "record_account_credentials",
     "rotate_token",
-    "store_certificate_artifacts",
     "sync_registry_nodes",
     "update_download_id",
 ]

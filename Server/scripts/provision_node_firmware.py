@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import argparse
 import json
-import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -16,12 +14,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlmodel import Session, select  # noqa: E402
+from sqlmodel import Session, select
 
-from app import database, node_builder, node_credentials, registry  # noqa: E402
-from app.auth.models import AuditLog, NodeCredential, NodeRegistration, User  # noqa: E402
-from app.auth.service import init_auth_storage  # noqa: E402
-from app.config import settings  # noqa: E402
+from app import database, node_builder, node_credentials, registry
+from app.auth.models import AuditLog, NodeCredential, NodeRegistration, User
+from app.auth.service import init_auth_storage
+from app.config import settings
 
 
 def _ensure_download_dir(download_id: str) -> Path:
@@ -66,8 +64,6 @@ def _format_timestamp(value: Optional[datetime]) -> str:
 
 
 def _actor_lookup(session: Session) -> Dict[int, str]:
-    """Return a mapping of user ids to usernames."""
-
     users = session.exec(select(User.id, User.username)).all()
     mapping: Dict[int, str] = {}
     for user_id, username in users:
@@ -78,8 +74,6 @@ def _actor_lookup(session: Session) -> Dict[int, str]:
 
 
 def _extract_node_id(data: Any) -> Optional[str]:
-    """Best-effort attempt to find a node id within ``data``."""
-
     if isinstance(data, dict):
         for key in ("node_id", "nodeId", "node"):
             value = data.get(key)
@@ -100,40 +94,31 @@ def _extract_node_id(data: Any) -> Optional[str]:
                 candidate = _extract_node_id(item)
                 if candidate:
                     return candidate
-
     elif isinstance(data, (list, tuple)):
         for item in data:
             candidate = _extract_node_id(item)
             if candidate:
                 return candidate
-
     return None
 
 
 def _load_node_creators(session: Session) -> Dict[str, str]:
-    """Return a mapping of node ids to usernames based on audit logs."""
-
     actor_names = _actor_lookup(session)
     creators: Dict[str, str] = {}
-
     audit_entries = session.exec(select(AuditLog).order_by(AuditLog.created_at)).all()
     for entry in audit_entries:
         node_id = _extract_node_id(entry.data)
         if not node_id:
             continue
-
         action = (entry.action or "").lower()
         if not any(keyword in action for keyword in ("create", "add", "register")):
             continue
-
         if node_id in creators:
             continue
-
         if entry.actor_id is None:
             creators[node_id] = "—"
         else:
             creators[node_id] = actor_names.get(entry.actor_id, f"User #{entry.actor_id}")
-
     return creators
 
 
@@ -209,8 +194,6 @@ def _provision(args: argparse.Namespace) -> int:
     final_credential: Optional[NodeCredential] = None
     manifest_url: Optional[str] = None
     download_dir: Optional[Path] = None
-    certificate_metadata: Optional[node_credentials.NodeCertificateMetadata] = None
-    bundle_destination: Optional[Path] = None
 
     with database.SessionLocal() as session:
         node_credentials.sync_registry_nodes(session)
@@ -246,15 +229,7 @@ def _provision(args: argparse.Namespace) -> int:
             credential = node_credentials.get_by_node_id(session, args.node_id)
 
         download_id = registration.download_id
-
         download_dir = _ensure_download_dir(download_id)
-
-        certificate_metadata, bundle_path = node_builder.ensure_node_certificate(
-            session, registration, rotate=True
-        )
-        if bundle_path and bundle_path.exists():
-            bundle_destination = download_dir / node_builder.CERTIFICATE_BUNDLE_NAME
-            shutil.copy2(bundle_path, bundle_destination)
 
         provided_token = (args.ota_token or "").strip() if args.ota_token else None
         token_source = ""
@@ -398,10 +373,6 @@ def _provision(args: argparse.Namespace) -> int:
         for cfg in updated_files:
             print(f"  - {cfg}")
     print(f"Firmware directory: {download_dir}")
-    if certificate_metadata and certificate_metadata.fingerprint:
-        print(f"Certificate fingerprint: {certificate_metadata.fingerprint}")
-    if bundle_destination:
-        print(f"Credential bundle: {bundle_destination}")
     if previous_download and previous_download != download_id:
         print(f"Previous download id was {previous_download}")
     return 0

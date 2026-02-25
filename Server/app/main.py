@@ -1,7 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional
+from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, Response
@@ -24,36 +24,8 @@ from .status_monitor import status_monitor
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-# Optional embedded broker
-try:
-    from hbmqtt.broker import Broker
-    HBMQTT_AVAILABLE = True
-except Exception:
-    HBMQTT_AVAILABLE = False
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    broker: Optional[Any] = None
-    broker_task: Optional[asyncio.Task[Any]] = None
-
-    if settings.EMBED_BROKER:
-        if not HBMQTT_AVAILABLE:
-            raise RuntimeError("EMBED_BROKER=1 but 'hbmqtt' not installed")
-        broker = Broker(
-            {
-                "listeners": {
-                    "default": {
-                        "type": "tcp",
-                        "bind": f"{settings.BROKER_HOST}:{settings.BROKER_PORT}",
-                    }
-                },
-                "auth": {"allow-anonymous": True},
-                "topic-check": {"enabled": False},
-            }
-        )
-        broker_task = asyncio.create_task(broker.start())
-        await asyncio.sleep(0.6)
-
     motion_manager.start()
     status_monitor.start()
     account_linker.start()
@@ -67,13 +39,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         app.dependency_overrides.pop(get_session, None)
-        if broker:
-            await broker.shutdown()
-        if broker_task:
-            try:
-                await broker_task
-            except asyncio.CancelledError:
-                pass
         motion_manager.stop()
         status_monitor.stop()
         account_linker.stop()

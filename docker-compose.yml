@@ -11,11 +11,11 @@ services:
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
 
-    ota-server:
-      image: nginx:alpine
-      container_name: ultralights_ota
-      restart: unless-stopped
-      ports:
-        - "8080:80"
-      volumes:
-        - ./firmware:/usr/share/nginx/html
+  ota-server:
+    image: nginx:alpine
+    container_name: ultralights_ota
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./firmware:/usr/share/nginx/html

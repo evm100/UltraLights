@@ -48,117 +48,6 @@ static bool s_account_credentials_sent = false;
 
 #define UL_MQTT_MAX_CONSECUTIVE_START_FAILURES 5
 
-static esp_mqtt_transport_t transport_from_uri(const char *uri, bool tls_enabled) {
-  if (!uri)
-    return tls_enabled ? MQTT_TRANSPORT_OVER_SSL : MQTT_TRANSPORT_OVER_TCP;
-  if (strncmp(uri, "mqtts://", strlen("mqtts://")) == 0)
-    return MQTT_TRANSPORT_OVER_SSL;
-  if (strncmp(uri, "mqtt://", strlen("mqtt://")) == 0)
-    return MQTT_TRANSPORT_OVER_TCP;
-  if (strncmp(uri, "wss://", strlen("wss://")) == 0)
-    return MQTT_TRANSPORT_OVER_WSS;
-  if (strncmp(uri, "ws://", strlen("ws://")) == 0)
-    return tls_enabled ? MQTT_TRANSPORT_OVER_WSS : MQTT_TRANSPORT_OVER_WS;
-  return tls_enabled ? MQTT_TRANSPORT_OVER_SSL : MQTT_TRANSPORT_OVER_TCP;
-}
-
-static inline const char *transport_name(esp_mqtt_transport_t transport) {
-  switch (transport) {
-  case MQTT_TRANSPORT_OVER_TCP:
-    return "tcp";
-  case MQTT_TRANSPORT_OVER_SSL:
-    return "ssl";
-  case MQTT_TRANSPORT_OVER_WS:
-    return "ws";
-  case MQTT_TRANSPORT_OVER_WSS:
-    return "wss";
-  default:
-    return "unknown";
-  }
-}
-
-static bool uri_authority_range(const char *uri, const char **authority_out,
-                                const char **end_out) {
-  if (!uri || !authority_out || !end_out)
-    return false;
-
-  const char *authority = uri;
-  const char *scheme_end = strstr(uri, "://");
-  if (scheme_end)
-    authority = scheme_end + 3;
-  if (!authority || *authority == '\0')
-    return false;
-
-  const char *path = strchr(authority, '/');
-  const char *end = path ? path : authority + strlen(authority);
-  if (authority == end)
-    return false;
-
-  *authority_out = authority;
-  *end_out = end;
-  return true;
-}
-
-static bool parse_host_from_uri(const char *uri, char *out, size_t out_len) {
-  if (!uri || !out || out_len == 0)
-    return false;
-
-  const char *authority = NULL;
-  const char *end = NULL;
-  if (!uri_authority_range(uri, &authority, &end))
-    return false;
-
-  if (*authority == '[') {
-    const char *closing = memchr(authority, ']', end - authority);
-    if (!closing)
-      return false;
-    size_t len = closing - authority - 1;
-    if (len + 1 > out_len)
-      len = out_len - 1;
-    memcpy(out, authority + 1, len);
-    out[len] = '\0';
-    return true;
-  }
-
-  const char *colon = memchr(authority, ':', end - authority);
-  if (colon)
-    end = colon;
-
-  size_t len = end - authority;
-  if (len == 0)
-    return false;
-  if (len + 1 > out_len)
-    len = out_len - 1;
-  memcpy(out, authority, len);
-  out[len] = '\0';
-  return true;
-}
-
-static int parse_port_from_uri(const char *uri, int default_port) {
-  if (!uri)
-    return default_port;
-
-  const char *authority = NULL;
-  const char *end = NULL;
-  if (!uri_authority_range(uri, &authority, &end))
-    return default_port;
-  const char *colon = NULL;
-  if (authority < end && authority[0] == '[') {
-    const char *closing = memchr(authority, ']', end - authority);
-    if (closing && closing + 1 < end && closing[1] == ':') {
-      colon = closing + 1;
-    }
-  } else {
-    colon = memchr(authority, ':', end - authority);
-  }
-  if (!colon)
-    return default_port;
-  int port = atoi(colon + 1);
-  if (port <= 0 || port > 65535)
-    return default_port;
-  return port;
-}
-
 #ifndef UL_MQTT_TESTING
 static EventGroupHandle_t s_state_event_group;
 static portMUX_TYPE s_state_event_group_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -190,8 +79,6 @@ static QueueHandle_t s_publish_ack_queue = NULL;
 
 static esp_timer_handle_t s_retry_timer = NULL;
 static bool s_retry_pending = false;
-
-#ifndef UL_MQTT_TESTING
 
 #define UL_WS_MAX_STRIPS 2
 #define UL_RGB_MAX_STRIPS 4
@@ -1085,10 +972,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
       char topic[128];
       snprintf(topic, sizeof(topic), "ul/%s/cmd/#", ul_core_get_node_id());
       esp_mqtt_client_subscribe(s_client, topic, 1);
-      // Also allow broadcast to any node if you publish to ul/+/cmd/#
       esp_mqtt_client_subscribe(s_client, "ul/+/cmd/#", 0);
     }
-    publish_account_credentials_if_secure();
+    // REMOVED: publish_account_credentials_if_secure();
     break;
   }
 #ifndef UL_MQTT_TESTING
@@ -1148,7 +1034,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
     break;
   }
 }
-#endif
 
 static void cancel_mqtt_retry(void) {
   if (!s_retry_timer)
@@ -1274,7 +1159,7 @@ void ul_mqtt_start(void) {
   }
 
   esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
-  
+
   s_client = client;
   esp_err_t start_err = esp_mqtt_client_start(s_client);
   if (start_err != ESP_OK) {
