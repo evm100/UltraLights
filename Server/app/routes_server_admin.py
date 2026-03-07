@@ -1,13 +1,21 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import asyncio
+import json
+import shlex
+from pathlib import Path
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import delete, func
 from sqlmodel import Session, select
 
 from . import node_builder, node_credentials, registry
+from .motion_prefs import motion_preferences
+from .presets import remove_node_actions
 from .auth.dependencies import require_admin
 from .auth.models import (
     House,
@@ -23,6 +31,8 @@ from .config import settings
 from .database import get_session
 
 router = APIRouter(prefix="/api/server-admin", tags=["server-admin"])
+
+_flash_lock = asyncio.Lock()
 
 
 class RotateHouseIdRequest(BaseModel):
@@ -204,6 +214,20 @@ class NodeFactoryCreatedNode(BaseModel):
 
 class NodeFactoryCreateResponse(BaseModel):
     nodes: List[NodeFactoryCreatedNode]
+
+
+class ExternalNodeCreateRequest(BaseModel):
+    display_name: str = Field(..., alias="displayName", min_length=1, max_length=120)
+    assign_house_slug: str = Field(..., alias="assignHouseSlug")
+    assign_room_id: str = Field(..., alias="assignRoomId")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ExternalNodeCreateResponse(BaseModel):
+    node_id: str = Field(..., alias="nodeId")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class NodeFactoryRegistrationInfo(BaseModel):
@@ -552,6 +576,7 @@ def create_node_factory_registrations(
     created_nodes: List[NodeFactoryCreatedNode] = []
     node_ids: List[str] = []
     needs_commit = False
+    registry_nodes: List[dict] = []  # node entries to persist after loop
     base_display = (payload.display_name or "").strip()
 
     for index, entry in enumerate(entries, start=1):
@@ -582,10 +607,35 @@ def create_node_factory_registrations(
                 assigned_house_id=payload.assign_house_id,
                 hardware_metadata=metadata,
             )
+            if payload.assign_house_slug and payload.assign_room_id:
+                try:
+                    node_entry = registry.place_node_in_room(
+                        registration.node_id,
+                        payload.assign_house_slug,
+                        payload.assign_room_id,
+                        name=display_name or registration.node_id,
+                        download_id=registration.download_id,
+                        persist=False,
+                    )
+                    registry_nodes.append(node_entry)
+                except (KeyError, ValueError):
+                    pass
+            elif payload.assign_house_slug:
+                try:
+                    node_entry = registry.move_node_to_unassigned(
+                        registration.node_id,
+                        payload.assign_house_slug,
+                        name=display_name or registration.node_id,
+                        download_id=registration.download_id,
+                        persist=False,
+                    )
+                    registry_nodes.append(node_entry)
+                except (KeyError, ValueError):
+                    pass
         else:
             session.add(registration)
 
-        manifest_url = f"{settings.PUBLIC_BASE}/firmware/{registration.download_id}/manifest.json"
+        manifest_url = f"{settings.PUBLIC_BASE}/firmware/{registration.download_id}/manifest"
         
         created_nodes.append(
             NodeFactoryCreatedNode(
@@ -597,6 +647,9 @@ def create_node_factory_registrations(
             )
         )
         node_ids.append(registration.node_id)
+
+    if registry_nodes:
+        registry.save_registry()
 
     if needs_commit:
         session.commit()
@@ -614,6 +667,64 @@ def create_node_factory_registrations(
     session.commit()
 
     return NodeFactoryCreateResponse(nodes=created_nodes)
+
+
+@router.post(
+    "/external-nodes",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ExternalNodeCreateResponse,
+)
+def create_external_node(
+    payload: ExternalNodeCreateRequest,
+    current_user: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> ExternalNodeCreateResponse:
+    house, room = registry.find_room(payload.assign_house_slug, payload.assign_room_id)
+    if room is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "House or room not found")
+
+    metadata: Dict[str, Any] = {"external": True}
+    entries = node_credentials.create_batch(session, 1, metadata=[metadata.copy()])
+    entry = entries[0]
+    reg = entry.registration
+
+    display_name = payload.display_name.strip()
+    reg.display_name = display_name
+    reg.hardware_metadata = metadata
+
+    reg = node_credentials.claim_registration(
+        session,
+        reg.node_id,
+        house_slug=payload.assign_house_slug,
+        room_id=payload.assign_room_id,
+        display_name=display_name,
+        hardware_metadata=metadata,
+    )
+
+    registry.place_node_in_room(
+        reg.node_id,
+        payload.assign_house_slug,
+        payload.assign_room_id,
+        name=display_name,
+        kind="external",
+        modules=["rgb"],
+        download_id=reg.download_id,
+    )
+
+    record_audit_event(
+        session,
+        actor=current_user,
+        action="external_node_created",
+        summary=f"Registered external node {display_name}",
+        data={
+            "node_id": reg.node_id,
+            "house_slug": payload.assign_house_slug,
+            "room_id": payload.assign_room_id,
+        },
+        commit=True,
+    )
+
+    return ExternalNodeCreateResponse(nodeId=reg.node_id)
 
 
 @router.delete(
@@ -634,6 +745,26 @@ def delete_node_factory_registration(
     room_id = registration.room_id
 
     session.delete(registration)
+
+    # Remove the matching NodeCredential so it is not resurrected on restart
+    # by migrate_credentials_to_registrations.
+    node_credentials.delete_credentials(session, node_id)
+
+    # Remove the node from the device registry (rooms/houses in registry JSON).
+    try:
+        registry.remove_node(node_id)
+    except KeyError:
+        pass  # node was never placed in the registry
+
+    # Remove the per-node sdkconfig file from the firmware work directory.
+    node_builder.delete_node_sdkconfig(node_id)
+
+    # Strip actions referencing this node from every saved preset.
+    remove_node_actions(node_id)
+
+    # Remove from motion automation immunity lists.
+    motion_preferences.remove_node(node_id)
+
     record_audit_event(
         session,
         actor=current_user,
@@ -648,3 +779,221 @@ def delete_node_factory_registration(
     )
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _resolve_flash_target(name: str) -> Tuple[str, str]:
+    """Return ``("local", "")`` or ``("remote", url)`` for *name*."""
+    servers = settings.FLASH_SERVERS
+    if not name or not servers:
+        return ("local", "")
+    entry = servers.get(name)
+    if entry is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown flash target: {name}")
+    if entry == "local":
+        return ("local", "")
+    return ("remote", entry)
+
+
+async def _remote_flash(target_url: str) -> AsyncIterator[str]:
+    """POST build artifacts to a remote flash agent and proxy its SSE output."""
+    try:
+        artifacts = await asyncio.to_thread(node_builder.collect_flash_artifacts)
+    except node_builder.NodeBuilderError as exc:
+        yield f"data: Error collecting flash artifacts: {exc}\n\n"
+        yield "event: done\ndata: error\n\n"
+        return
+
+    flasher_args = artifacts["flasher_args"]
+    files_map = artifacts["files"]
+
+    # Build multipart payload: flasher_args JSON + each binary file
+    multipart_files: list[tuple[str, tuple[str, bytes, str]]] = [
+        ("flasher_args", ("flasher_args.json", json.dumps(flasher_args).encode(), "application/json")),
+    ]
+    for address, file_path in files_map.items():
+        multipart_files.append(
+            ("files", (f"{address}:{file_path.name}", file_path.read_bytes(), "application/octet-stream")),
+        )
+
+    yield "data: Sending firmware to remote flash agent...\n\n"
+
+    headers = {}
+    if settings.FLASH_AGENT_SECRET:
+        headers["Authorization"] = f"Bearer {settings.FLASH_AGENT_SECRET}"
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=300.0, write=30.0, pool=5.0)) as client:
+            async with client.stream("POST", f"{target_url}/flash", files=multipart_files, headers=headers) as resp:
+                if resp.status_code != 200:
+                    body = await resp.aread()
+                    yield f"data: Remote flash agent error ({resp.status_code}): {body.decode(errors='replace')}\n\n"
+                    yield "event: done\ndata: error\n\n"
+                    return
+                async for line in resp.aiter_lines():
+                    if line:
+                        yield f"{line}\n\n"
+    except httpx.ConnectError:
+        yield "data: Error: could not connect to remote flash agent. Is it running?\n\n"
+        yield "event: done\ndata: error\n\n"
+    except httpx.TimeoutException:
+        yield "data: Error: remote flash agent timed out.\n\n"
+        yield "event: done\ndata: error\n\n"
+    except Exception as exc:
+        yield f"data: Error communicating with remote flash agent: {exc}\n\n"
+        yield "event: done\ndata: error\n\n"
+
+
+@router.get("/node-factory/flash/stream")
+async def flash_node_stream(
+    node_id: str,
+    flash_target: str = "",
+    current_user: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> StreamingResponse:
+    if not settings.IDF_PATH:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "IDF_PATH is not configured on the server")
+
+    idf_path = Path(settings.IDF_PATH)
+    export_sh = idf_path / "export.sh"
+    if not export_sh.exists():
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "IDF export.sh not found at configured IDF_PATH")
+
+    registration = node_credentials.get_registration_by_node_id(session, node_id)
+    if registration is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Node not found")
+
+    metadata = registration.hardware_metadata or {}
+    if isinstance(metadata, dict) and metadata.get("external"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "External nodes cannot be flashed")
+
+    _, token_value = node_credentials.rotate_token(session, node_id)
+    registration = node_credentials.get_registration_by_node_id(session, node_id)
+    if registration is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Node not found after token rotation")
+
+    metadata = dict(registration.hardware_metadata or {})
+    board = str(metadata.get("board", "esp32"))
+    target = node_builder.SUPPORTED_TARGETS.get(board.lower(), "esp32")
+    manifest_url = f"{settings.PUBLIC_BASE}/firmware/{registration.download_id}/manifest"
+
+    sdkconfig_path = await asyncio.to_thread(
+        node_builder.render_sdkconfig,
+        node_id=node_id,
+        download_id=registration.download_id,
+        token=token_value,
+        metadata=metadata,
+        manifest_url=manifest_url,
+    )
+
+    flash_kind, flash_url = _resolve_flash_target(flash_target)
+
+    # Release the database connection before the long-running subprocess starts.
+    # The generator does not need the session and SQLite only allows one writer;
+    # holding a read transaction open here would block delete/other write requests
+    # for the entire duration of the build+flash.
+    session.close()
+
+    async def generate():
+        if _flash_lock.locked():
+            yield "data: Another flash job is already in progress. Please wait.\n\n"
+            yield "event: done\ndata: error\n\n"
+            return
+
+        async with _flash_lock:
+            try:
+                await asyncio.to_thread(node_builder.clean_build_dir)
+                yield "data: Build directory cleaned.\n\n"
+            except Exception as exc:
+                yield f"data: Warning: could not clean build directory: {exc}\n\n"
+
+            try:
+                await asyncio.to_thread(node_builder.activate_sdkconfig, sdkconfig_path)
+                yield f"data: Activated sdkconfig for {node_id}.\n\n"
+            except Exception as exc:
+                yield f"data: Error: could not activate sdkconfig: {exc}\n\n"
+                yield "event: done\ndata: error\n\n"
+                return
+
+            active_sdkconfig = node_builder.FIRMWARE_ROOT / "sdkconfig"
+            env_prefix = (
+                f". {shlex.quote(str(export_sh))} > /dev/null 2>&1 && "
+                f"IDF_TARGET={shlex.quote(target)} "
+                f"SDKCONFIG={shlex.quote(str(active_sdkconfig))} "
+            )
+
+            # --- Phase 1: Build (always local) ---
+            build_cmd = env_prefix + "idf.py build"
+            yield f"data: Starting build for {node_id}...\n\n"
+
+            proc = await asyncio.create_subprocess_exec(
+                "/bin/bash", "-c", build_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=str(node_builder.FIRMWARE_ROOT),
+            )
+            assert proc.stdout is not None
+            while True:
+                try:
+                    line = await asyncio.wait_for(proc.stdout.readline(), timeout=20.0)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="replace").rstrip("\r\n")
+                if text:
+                    yield f"data: {text}\n\n"
+            await proc.wait()
+
+            if proc.returncode != 0:
+                yield f"data: Build failed (exit code {proc.returncode}).\n\n"
+                yield "event: done\ndata: error\n\n"
+                return
+
+            yield "data: Build completed successfully.\n\n"
+
+            # --- Phase 2: Flash (local or remote) ---
+            if flash_kind == "remote":
+                yield f"data: Flashing via remote agent ({flash_target})...\n\n"
+                async for chunk in _remote_flash(flash_url):
+                    yield chunk
+            else:
+                flash_cmd = env_prefix + "idf.py flash"
+                yield "data: Starting local flash...\n\n"
+
+                proc = await asyncio.create_subprocess_exec(
+                    "/bin/bash", "-c", flash_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    cwd=str(node_builder.FIRMWARE_ROOT),
+                )
+                assert proc.stdout is not None
+                while True:
+                    try:
+                        line = await asyncio.wait_for(proc.stdout.readline(), timeout=20.0)
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"
+                        continue
+                    if not line:
+                        break
+                    text = line.decode("utf-8", errors="replace").rstrip("\r\n")
+                    if text:
+                        yield f"data: {text}\n\n"
+                await proc.wait()
+
+                if proc.returncode == 0:
+                    yield "data: Flash completed successfully.\n\n"
+                    yield "event: done\ndata: success\n\n"
+                else:
+                    yield f"data: Flash failed (exit code {proc.returncode}).\n\n"
+                    yield "event: done\ndata: error\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

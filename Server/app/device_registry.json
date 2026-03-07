@@ -8,7 +8,19 @@
         "name": "Cocina",
         "nodes": [
           {
-            "id": "44r9iy1w0ufe8v5zi0f6w3jwiv7v044",
+            "id": "t40ew08fcz50se4sm7ll4fh1c2huuk1",
+            "name": "Cocina",
+            "kind": "ultranode",
+            "modules": [
+              "ws",
+              "rgb",
+              "white",
+              "ota"
+            ],
+            "download_id": "PYVmqHtSZuu47RlLcGaIYwugpNd41ZvTMFB52POWheO5w8zu"
+          },
+          {
+            "id": "o9byoq8arkqdvrb6cfe6xv9acn0mu1i",
             "name": "Sala",
             "kind": "ultranode",
             "modules": [
@@ -17,67 +29,27 @@
               "white",
               "ota"
             ],
-            "download_id": "OPwzctxAFz0klb0ONLYae6O6GWrLEuNNSZSY3Pkt0DOOe1Ft"
-          },
-          {
-            "id": "ktw2ptwrhaxnglo9c9p4kkqvgpiyu6k",
-            "name": "Cocina",
-            "modules": [
-              "ws",
-              "rgb",
-              "white",
-              "ota"
-            ],
-            "kind": "ultranode",
-            "download_id": "IIkNlrKAZ3WF8HrYs6Aw7G7Jp8XtlgTcuklr2UY2m4I3uwpg"
+            "download_id": "MaLnLXJzOUtZgfjMUCq5MB2okYzNkCZQty3wvVUfTnxHwrdx"
           }
         ]
       },
       {
         "id": "master",
         "name": "Master",
-        "nodes": [
-          {
-            "id": "gzb8fo5q1rf9q55y92oodcc9cxsxayu",
-            "name": "Master TV",
-            "kind": "ultranode",
-            "modules": [
-              "ws",
-              "rgb",
-              "white",
-              "ota"
-            ],
-            "download_id": "lzt8sdwunEgq3Dpjib7yfmC7xtfxw0oB44wuZzs3TggVxNvZ"
-          },
-          {
-            "id": "ohsxmeqpyw9z7sb20tt8eld85ez2dxk",
-            "name": "Master Closet",
-            "kind": "ultranode",
-            "modules": [
-              "ws",
-              "rgb",
-              "white",
-              "ota"
-            ],
-            "download_id": "P9rlhyJuFX4Y4RQetJBNnyE2w07JJDjMLZ3x2pmzSv13I06l"
-          }
-        ]
+        "nodes": []
       },
       {
         "id": "edgar",
         "name": "Edgar",
         "nodes": [
           {
-            "id": "bz6zpm1z59hw94xg4mse5i1touedm8a",
-            "name": "Amp Lights",
-            "kind": "ultranode",
+            "id": "n9d11y72ohy53h5fif3x3pbmwjcn6sk",
+            "name": "evmPC",
+            "kind": "external",
             "modules": [
-              "ws",
-              "rgb",
-              "white",
-              "ota"
+              "rgb"
             ],
-            "download_id": "sTcDseCgZ1qBQ1tSMDSOW72udG1HghJKFN1uByB5jsqEG3OV"
+            "download_id": "RWeFaFO5WBysE54QSN3QNgJNPT6pIKeGsm4QQeuIxH85yNS1"
           }
         ]
       }
@@ -100,28 +72,16 @@
         "name": "Example Room",
         "nodes": [
           {
-            "id": "1liml3h80hrvbrmkdwlql3l59ufosrt",
-            "name": "Demo Board",
+            "id": "jgwb4hofchcm6potby3y8xsssp68pwx",
+            "name": "emilie was here",
+            "kind": "ultranode",
             "modules": [
               "ws",
               "rgb",
               "white",
               "ota"
             ],
-            "kind": "ultranode",
-            "download_id": "HArhhbWUZd7TvSNlqp9Idete7GebLbJpGiD1g8M9TFM0FtTF"
-          },
-          {
-            "id": "bamy85btphl8at81kcveeq7d4wgkc5r",
-            "name": "Demo Board Online",
-            "modules": [
-              "ws",
-              "rgb",
-              "white",
-              "ota"
-            ],
-            "kind": "ultranode",
-            "download_id": "vUY3oTKpGPuXyVDpk56Esf4uzvDi2Cm0G5voI5G2lx18lEUW"
+            "download_id": "dv6UW072KFFQMseZSRGSAKPmR3tyyFgqnDwdZnPfYQmO0l9u"
           }
         ]
       }

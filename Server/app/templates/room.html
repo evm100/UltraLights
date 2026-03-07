@@ -37,6 +37,39 @@
     {% endfor %}
   </div>
 </div>
+<div class="mt-8" id="brightnessCurve"
+     data-api-base="/api/house/{{ house_public_id }}/room/{{ room.id }}"
+     data-curve='{{ brightness_curve|tojson }}'
+     data-nodes='{{ brightness_curve_nodes|tojson }}'>
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <h2 class="text-2xl font-semibold">Brightness Curve</h2>
+    <div class="flex items-center gap-3">
+      <label class="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" id="brightnessCurveEnabled" class="brightness-curve-toggle" />
+        <span class="font-semibold uppercase tracking-wide text-xs opacity-80">Auto</span>
+      </label>
+      <button id="brightnessCurveReset" type="button" class="glass px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide uppercase hover:ring-2 hover:ring-indigo-400">Reset</button>
+      <button id="brightnessCurveSave" type="button" class="motion-button motion-button--primary" disabled>Save</button>
+    </div>
+  </div>
+  <div class="glass rounded-xl p-4">
+    <div class="brightness-curve-canvas-wrap">
+      <canvas id="brightnessCurveCanvas"></canvas>
+    </div>
+    <div id="brightnessCurveStatus" class="text-sm mt-3 opacity-80" role="status" aria-live="polite"></div>
+    {% if brightness_curve_nodes %}
+    <div class="flex flex-wrap gap-2 mt-3">
+      {% for n in brightness_curve_nodes %}
+      <div class="brightness-curve-legend-item">
+        <span class="brightness-curve-legend-swatch" style="background: {{ n.color }}"></span>
+        <span class="text-xs font-semibold opacity-80">{{ n.name }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+<script src="/static/brightness_curve.js"></script>
 {% if motion_config %}
 <div class="mt-8" id="motionSchedule" data-save-url="/api/house/{{ house_public_id }}/room/{{ room.id }}/motion-schedule" data-slot-minutes="{{ motion_config.slot_minutes|default(60) }}" data-color-url="/api/house/{{ house_public_id }}/room/{{ room.id }}/motion-schedule/color">
   <h2 class="text-2xl font-semibold mb-4">Motion Schedule</h2>
@@ -148,13 +181,87 @@
 </div>
 {% endif %}
 <script type="module" src="/static/presets.js"></script>
+<div id="addNodeModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm hidden" aria-modal="true" role="dialog">
+  <div class="glass rounded-xl p-6 w-full max-w-md mx-4">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-xl font-semibold">Add Node to Room</h3>
+      <button id="addNodeModalClose" type="button" class="text-2xl leading-none opacity-60 hover:opacity-100">&times;</button>
+    </div>
+    <div id="addNodeList" class="space-y-3"></div>
+    <div id="addNodeEmpty" class="text-sm opacity-70 hidden">No unassigned nodes available. Provision a node and enter your account credentials to claim it.</div>
+  </div>
+</div>
 <script>
+const pendingNodes = {{ pending_nodes|tojson }};
 const addNodeButton = document.getElementById('addNode');
+const addNodeModal = document.getElementById('addNodeModal');
+const addNodeModalClose = document.getElementById('addNodeModalClose');
+const addNodeList = document.getElementById('addNodeList');
+const addNodeEmpty = document.getElementById('addNodeEmpty');
+const houseId = '{{ house_public_id }}';
+const roomId = '{{ room.id }}';
+
 if (addNodeButton) {
-  addNodeButton.classList.add('opacity-50', 'cursor-not-allowed');
-  addNodeButton.disabled = true;
-  addNodeButton.addEventListener('click', () => {
-    alert('Nodes are now provisioned in batches. Please use the offline provisioning workflow.');
+  if (!pendingNodes.length) {
+    addNodeButton.classList.add('opacity-50', 'cursor-not-allowed');
+    addNodeButton.disabled = true;
+    addNodeButton.title = 'No unassigned nodes available';
+  } else {
+    addNodeButton.addEventListener('click', () => {
+      addNodeList.innerHTML = '';
+      pendingNodes.forEach((node) => {
+        const entry = document.createElement('div');
+        entry.className = 'glass rounded-lg p-4 border border-slate-700/60';
+        entry.innerHTML = `
+          <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+            <div class="font-semibold">${node.name}</div>
+            <div class="text-xs opacity-60 font-mono break-all">${node.id}</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="text" class="flex-1 bg-slate-900/60 border border-slate-700 rounded px-3 py-2 text-sm" value="${node.name}" placeholder="Display name" data-node-name>
+            <button type="button" class="px-4 py-2 pill bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold" data-node-assign="${node.id}">Assign</button>
+          </div>
+          <div class="text-sm opacity-70 mt-2" data-node-status role="status" aria-live="polite"></div>
+        `;
+        entry.querySelector('[data-node-assign]').addEventListener('click', async (evt) => {
+          const btn = evt.currentTarget;
+          const nameInput = entry.querySelector('[data-node-name]');
+          const statusEl = entry.querySelector('[data-node-status]');
+          btn.disabled = true;
+          btn.textContent = 'Assigning…';
+          if (statusEl) statusEl.textContent = '';
+          try {
+            const res = await fetch(`/api/house/${encodeURIComponent(houseId)}/nodes/assign`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              credentials: 'same-origin',
+              body: JSON.stringify({nodeId: node.id, roomId, name: nameInput ? nameInput.value.trim() : node.name}),
+            });
+            if (!res.ok) {
+              const message = await res.text();
+              throw new Error(message || `HTTP ${res.status}`);
+            }
+            location.reload();
+          } catch (err) {
+            if (statusEl) statusEl.textContent = err instanceof Error ? err.message : 'Failed to assign node.';
+            btn.disabled = false;
+            btn.textContent = 'Assign';
+          }
+        });
+        addNodeList.appendChild(entry);
+      });
+      addNodeEmpty.classList.toggle('hidden', pendingNodes.length > 0);
+      addNodeModal.classList.remove('hidden');
+    });
+  }
+}
+
+if (addNodeModalClose) {
+  addNodeModalClose.addEventListener('click', () => addNodeModal.classList.add('hidden'));
+}
+if (addNodeModal) {
+  addNodeModal.addEventListener('click', (evt) => {
+    if (evt.target === addNodeModal) addNodeModal.classList.add('hidden');
   });
 }
 {% if motion_config %}

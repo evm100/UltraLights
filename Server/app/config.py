@@ -11,9 +11,23 @@ class Settings:
     WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")
     WEB_PORT = int(os.getenv("WEB_PORT", "443"))
     PUBLIC_BASE = os.getenv("PUBLIC_BASE", "https://lights.evm100.org")
+    LAN_PUBLIC_BASE = os.getenv("LAN_PUBLIC_BASE", "")
 
     SSL_CERTFILE = os.getenv("SSL_CERTFILE", "")
     SSL_KEYFILE  = os.getenv("SSL_KEYFILE", "")
+
+    # Path to the ESP-IDF installation root (parent of export.sh).
+    # e.g. /home/user/esp/esp-idf
+    IDF_PATH = os.getenv("IDF_PATH", "")
+    # Default serial port used by the web flash UI.
+    FLASH_DEFAULT_PORT = os.getenv("FLASH_DEFAULT_PORT", "/dev/ttyUSB0")
+    # JSON mapping of display names → URLs for remote flash agents.
+    # Use "local" as the value for the server that builds firmware.
+    # e.g. {"optiplex": "local", "raspberry-pi": "http://rpi.evm100.org:8901"}
+    _FLASH_SERVERS_RAW = os.getenv("FLASH_SERVERS", "")
+    FLASH_SERVERS: dict = json.loads(_FLASH_SERVERS_RAW) if _FLASH_SERVERS_RAW else {}
+    # Shared secret for authenticating with remote flash agents.
+    FLASH_AGENT_SECRET = os.getenv("FLASH_AGENT_SECRET", "")
 
     BROKER_HOST = os.getenv("BROKER_HOST", "127.0.0.1")
     BROKER_CONNECT_HOST = os.getenv("BROKER_CONNECT_HOST", "")
@@ -107,6 +121,12 @@ class Settings:
         os.getenv(
             "CHANNEL_NAMES_FILE",
             str(Path(__file__).with_name("channel_names.json")),
+        )
+    )
+    BRIGHTNESS_CURVE_FILE = Path(
+        os.getenv(
+            "BRIGHTNESS_CURVE_FILE",
+            str(Path(__file__).with_name("brightness_curve.json")),
         )
     )
     if REGISTRY_FILE.exists():

@@ -493,6 +493,7 @@ def place_node_in_room(
     name: str,
     kind: Optional[str] = None,
     modules: Optional[Iterable[str]] = None,
+    download_id: Optional[str] = None,
     persist: bool = True,
 ) -> Node:
     """Attach ``node_id`` to ``house_id``/``room_id`` and return the node entry."""
@@ -558,6 +559,9 @@ def place_node_in_room(
             "kind": kind or "ultranode",
             "modules": module_list or list(DEFAULT_NODE_MODULES),
         }
+
+    if download_id is not None:
+        node_entry["download_id"] = download_id
 
     nodes_in_target = room.setdefault("nodes", [])
 
@@ -637,6 +641,7 @@ def move_node_to_unassigned(
     *,
     name: Optional[str] = None,
     modules: Optional[Iterable[str]] = None,
+    download_id: Optional[str] = None,
     persist: bool = True,
 ) -> Node:
     """Place ``node_id`` in the unassigned pool for ``house_id``."""
@@ -689,6 +694,9 @@ def move_node_to_unassigned(
 
     if not node_entry.get("kind"):
         node_entry["kind"] = "ultranode"
+
+    if download_id is not None:
+        node_entry["download_id"] = download_id
 
     orphan_nodes = house.setdefault("nodes", [])
     for idx in range(len(orphan_nodes) - 1, -1, -1):

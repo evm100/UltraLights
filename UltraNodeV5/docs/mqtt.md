@@ -1,20 +1,55 @@
-# UltraNodeV5 MQTT Guide
+# UltraNodeV5 MQTT Protocol Reference
 
-This document describes how the ESP32 firmware communicates via MQTT and how to format control messages.
+This document is the authoritative specification for the MQTT messaging protocol used by UltraNodeV5 firmware nodes. It is intended for external broker and controller implementors.
 
-## Broker connection settings
+---
 
-The firmware reads its connection details from the MQTT section of
-`menuconfig` (or from `sdkconfig.defaults` when building in CI). The
-`UL_MQTT_URI` option continues to define the canonical broker address, scheme
-and default port. When migrating to `mqtts` it is common to terminate TLS on a
-broker that is only reachable via a LAN IP. Use the new
-`UL_MQTT_DIAL_HOST`/`UL_MQTT_DIAL_PORT` pair to point the transport layer at
-that local endpoint while keeping certificate validation tied to
-`UL_MQTT_TLS_COMMON_NAME`.
+## Table of Contents
 
-Example: if your certificate is issued for `lights.example.org` but Mosquitto is
-reachable inside the house at `192.168.1.50`, set:
+1. [Broker Connection](#broker-connection)
+2. [Authentication](#authentication)
+3. [Topic Namespace](#topic-namespace)
+4. [Subscriptions](#subscriptions)
+5. [Command Topics (Inbound)](#command-topics-inbound)
+   - [ws/set — Addressable RGB strips](#wsset--addressable-rgb-strips)
+   - [rgb/set — Analog RGB strips](#rgbset--analog-rgb-strips)
+   - [white/set — White PWM channels](#whiteset--white-pwm-channels)
+   - [motion/off — Fade lights out](#motionoff--fade-lights-out)
+   - [motion/on — Cancel fade](#motionon--cancel-fade)
+   - [pir/status — Query PIR status](#pirstatus--query-pir-status)
+   - [ota/check — Trigger OTA](#otacheck--trigger-ota)
+   - [system/wipe-nvs — Factory reset](#systemwipe-nvs--factory-reset)
+   - [status — Request snapshot](#status--request-snapshot)
+6. [Event Topics (Outbound)](#event-topics-outbound)
+   - [evt/status — ACK and snapshots](#evtstatus--ack-and-snapshots)
+   - [evt/\<sensor\>/motion — Motion events](#evtsensormotion--motion-events)
+   - [evt/\<sensor\>/status — Sensor status](#evtsensorstatus--sensor-status)
+   - [evt/ota — OTA progress](#evtota--ota-progress)
+7. [Effect Reference](#effect-reference)
+   - [WS2812 / Addressable effects](#ws2812--addressable-effects)
+   - [Analog RGB effects](#analog-rgb-effects)
+   - [White PWM effects](#white-pwm-effects)
+8. [Full Status Snapshot Schema](#full-status-snapshot-schema)
+9. [Wire Examples](#wire-examples)
+
+---
+
+## Broker Connection
+
+Connection parameters are compiled into firmware via `menuconfig` / `sdkconfig.defaults`.
+
+| Parameter | Kconfig key | Default |
+|-----------|-------------|---------|
+| Broker URI | `CONFIG_UL_MQTT_URI` | — |
+| Override dial host | `CONFIG_UL_MQTT_DIAL_HOST` | _(URI host)_ |
+| Override dial port | `CONFIG_UL_MQTT_DIAL_PORT` | _(URI port)_ |
+| TLS common name | `CONFIG_UL_MQTT_TLS_COMMON_NAME` | _(URI host)_ |
+| Username | `CONFIG_UL_MQTT_USER` | — |
+| Password | `CONFIG_UL_MQTT_PASS` | — |
+| Connect timeout (ms) | `CONFIG_UL_MQTT_CONNECT_TIMEOUT_MS` | — |
+| Reconnect delay (ms) | `CONFIG_UL_MQTT_RECONNECT_DELAY_MS` | — |
+
+**Split-hostname TLS example** — certificate issued for `lights.example.org`, Mosquitto running on LAN at `192.168.1.50`:
 
 ```
 CONFIG_UL_MQTT_URI="mqtts://lights.example.org:8883"
@@ -23,339 +58,588 @@ CONFIG_UL_MQTT_DIAL_PORT=8883
 CONFIG_UL_MQTT_TLS_COMMON_NAME="lights.example.org"
 ```
 
-The client will dial `192.168.1.50:8883`, validate the certificate against
-`UL_MQTT_TLS_COMMON_NAME`, and only mark the MQTT subsystem ready once the TLS
-handshake succeeds.
+The node dials `192.168.1.50:8883` but validates the server certificate against `lights.example.org`. Leaving `UL_MQTT_TLS_COMMON_NAME` blank re-uses the hostname from `UL_MQTT_URI`.
 
-Leaving `UL_MQTT_TLS_COMMON_NAME` blank reuses the hostname from
-`UL_MQTT_URI`, which is useful when the certificate already matches the broker
-URI and only the dial host differs.
+---
 
-## Mutual TLS provisioning
+## Authentication
 
-Nodes now support mutual TLS when `CONFIG_UL_MQTT_REQUIRE_CLIENT_CERT=y`. The
-MQTT configuration menu exposes two new toggles:
+Two authentication modes are supported and may coexist during migration.
 
-* `CONFIG_UL_MQTT_LEGACY_USERPASS_COMPAT` keeps the historical
-  username/password authentication enabled while migrating to per-node client
-  certificates. Disable it once every device has been re-provisioned.
-* `CONFIG_UL_MQTT_PROVISION_CERTS` enables the captive portal flow for
-  provisioning the certificate bundle. The portal expects base64-encoded fields
-  named `mqtt_client_certificate` and `mqtt_client_key` in the provisioning POST
-  body after the user authenticates with their UltraLights account.
+### Username / password
 
-Provisioning services now mint certificates using the server-side UltraLights CA
-whenever a node claims its credentials. Each bundle contains a single-node key
-pair and X.509 certificate whose Common Name equals the opaque node ID so the
-Mosquitto broker can map the TLS identity straight to an ACL entry. The decoded
-blobs are stored in NVS and injected into
-`esp_mqtt_client_config_t.credentials.authentication.certificate` / `key`
-before the MQTT client starts. When `CONFIG_UL_MQTT_REQUIRE_CLIENT_CERT` is
-enabled the node refuses to connect until both blobs are present, preventing
-plaintext or anonymous fallbacks.
+The firmware sends `CONFIG_UL_MQTT_USER` / `CONFIG_UL_MQTT_PASS` on every connect. The broker must permit these credentials on its listener.
 
-Set `CONFIG_UL_MQTT_CLIENT_CERT_MAX_LEN` /
-`CONFIG_UL_MQTT_CLIENT_KEY_MAX_LEN` if your certificate chain or encrypted key
-material exceeds the defaults (3 KiB and 2 KiB respectively). Certificates are
-stored alongside Wi-Fi credentials, so keep the size under the configured limit
-to avoid exhausting the NVS partition. If a larger chain is required, increase
-the limits and regenerate the provisioning bundle so the firmware reserves
-enough space.
+### Mutual TLS (mTLS)
 
-### Certificate rotation
+Enable with `CONFIG_UL_MQTT_REQUIRE_CLIENT_CERT=y`. The node refuses to connect until a certificate bundle has been provisioned into NVS. The bundle is delivered through the captive-portal provisioning flow (base64 fields `mqtt_client_certificate` and `mqtt_client_key`). The certificate Common Name equals the node ID, enabling per-node ACLs on the broker.
 
-When the server revokes a node certificate (for example via the admin portal or
-`manage_node_credentials.py`) it issues a fresh key pair and delivers the new
-bundle through the captive portal. Triggering the portal for an already deployed
-node replaces the stored certificate and key, and the MQTT client presents the
-new identity on the next reconnect without requiring a firmware rebuild.
+Set `CONFIG_UL_MQTT_CLIENT_CERT_MAX_LEN` / `CONFIG_UL_MQTT_CLIENT_KEY_MAX_LEN` if your chain or key exceeds the defaults (3 KiB / 2 KiB).
 
-Legacy hardware that has not yet been re-provisioned may continue to use the
-username/password path while `CONFIG_UL_MQTT_LEGACY_USERPASS_COMPAT=y` and the
-broker still advertises credentials-based listeners. Once every node stores a
-certificate, disable the compatibility flag and remove the plaintext listener so
-all traffic relies on mutual TLS.
+Set `CONFIG_UL_MQTT_LEGACY_USERPASS_COMPAT=y` to keep username/password active while migrating — disable once every node carries a certificate.
 
-## Topic scheme
+---
 
-All topics are rooted at `ul/<node-id>/`. The node subscribes to commands addressed to itself and to the broadcast topic `ul/+/cmd/#`.
+## Topic Namespace
 
-| Direction | Topic pattern | Purpose |
-|-----------|---------------|---------|
-| → node | `ul/<node-id>/cmd/...` | Control commands |
-| ← node | `ul/<node-id>/evt/status` | Status updates and snapshots |
-| ← node | `ul/<node-id>/evt/sensor/motion` | Motion events |
-| ← node | `ul/<node-id>/evt/motion/status` | Motion module capabilities |
-| ← node | `ul/<node-id>/evt/ota` | OTA check and update progress |
+All topics share the prefix `ul/<node-id>/`. The node ID is set at build time and is unique per device.
 
-`<node-id>` is set at build time by `ul_core_get_node_id()`.
+```
+ul/<node-id>/
+├── cmd/                          ← server → node  (subscribed by node)
+│   ├── ws/set[/<strip>]
+│   ├── rgb/set[/<strip>]
+│   ├── white/set[/<channel>]
+│   ├── motion/off
+│   ├── motion/on
+│   ├── <sensor>/status           e.g. pir/status
+│   ├── ota/check
+│   ├── system/wipe-nvs
+│   └── status
+└── evt/                          ← node → server  (published by node)
+    ├── status
+    ├── <sensor>/motion           e.g. pir/motion
+    ├── <sensor>/status           e.g. pir/status
+    └── ota
+```
 
-## Command payloads
+`<sensor>` is the sensor identifier string. The currently deployed sensor is `pir`. Additional sensors follow the same pattern without requiring firmware changes to the broker schema.
 
-Every command is a JSON object. For addressable strips the payload always includes the same top‑level keys and an effect‑specific parameter array.
+---
 
-### Addressable RGB strips (`ws`)
+## Subscriptions
 
-`ul/<node-id>/cmd/ws/set/<strip>`
+The node registers two subscriptions on every MQTT connect:
 
-Fields:
+| Topic filter | QoS | Purpose |
+|---|---|---|
+| `ul/<node-id>/cmd/#` | 1 | All commands addressed to this specific node |
+| `ul/+/cmd/#` | 0 | Broadcast commands addressed to any node |
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `strip` | int | Strip index (0‑3). Optional when encoded in the topic path |
-| `effect` | string | One of the registered effect names |
-| `brightness` | int 0‑255 | Overall brightness |
-| `params` | array | Effect‑specific parameters |
+A message received on the broadcast filter is processed identically to a device-specific message. The node rejects messages whose embedded node segment does not match its own ID (or `+`).
 
-Animations advance at the firmware's fixed frame rate. Individual effects may
-expose timing controls via their parameter arrays when a different pace is
-required.
+---
 
-On success, the node replies on `ul/<node-id>/evt/status` with the chosen effect and echoed parameters.
+## Command Topics (Inbound)
 
-The contents of `params` depend on the chosen effect:
+All command payloads are JSON objects. An empty object `{}` is valid for commands that take no parameters.
 
-* `rainbow` – one integer `[wavelength]` controlling the color cycle in pixels
-* `solid` – RGB `[r,g,b]` values
-* `color_swell` – RGB `[r,g,b]` base colour that swells from 0 to the configured brightness over 3 000 ms before holding steady
-* `triple_wave` – fifteen numbers defining three sine waves `[r1,g1,b1,w1,f1,r2,g2,b2,w2,f2,r3,g3,b3,w3,f3]`
-* `spacewaves` – nine integers specifying three RGB waves `[r1,g1,b1,r2,g2,b2,r3,g3,b3]`
-* `fire` – intensity and colour gradient `[intensity,r1,g1,b1,r2,g2,b2]`. Values above `10` are treated as percentages (the web UI sends `0-200` for convenience). Requires PSRAM-enabled firmware.
-* `black_ice` – shimmer intensity with a three colour ice palette `[shimmer,r1,g1,b1,r2,g2,b2,r3,g3,b3]`. Values above `10` are treated as percentages (the web UI sends `0-200`). Requires PSRAM-enabled firmware.
-* `flash` – six integers `[r1,g1,b1,r2,g2,b2]`
+### `ws/set` — Addressable RGB strips
 
-Example – set strip 1 to a green solid color:
+**Topic:** `ul/<node-id>/cmd/ws/set` or `ul/<node-id>/cmd/ws/set/<strip>`
 
+Controls a WS2812 (NeoPixel) addressable LED strip.
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `strip` | integer 0–1 | No | Strip index. Omit when index is in the topic path — topic takes precedence if both are present |
+| `effect` | string | Yes | Effect name (see [WS2812 effects](#ws2812--addressable-effects)) |
+| `brightness` | integer 0–255 | Yes | Master brightness |
+| `params` | array | Yes | Effect-specific parameters |
+
+**Response:** ACK on `evt/status`. The command is also saved to NVS so the strip resumes the same state after a power cycle.
+
+Any active motion fade is cancelled when this command is received.
+
+**Example — solid green on strip 0:**
 ```json
 {
-  "strip": 1,
+  "strip": 0,
   "effect": "solid",
   "brightness": 255,
   "params": [0, 255, 0]
 }
 ```
 
-The `strip` index identifies which RGB strip to control. It is echoed in the
-topic path (`ws/set/<strip>`), so the field may be omitted from the payload and
-the topic value takes precedence. This allows each strip's last state to be
-retained independently.
+**Example — rainbow on strip 1 via topic path:**
+```
+Topic:   ul/<node-id>/cmd/ws/set/1
+Payload: {"effect":"rainbow","brightness":200,"params":[32]}
+```
 
-Example – triple wave combining red, green, and blue waves:
+---
 
+### `rgb/set` — Analog RGB strips
+
+**Topic:** `ul/<node-id>/cmd/rgb/set` or `ul/<node-id>/cmd/rgb/set/<strip>`
+
+Controls an analog (PWM) RGB strip on up to 4 strips (0–3).
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `strip` | integer 0–3 | No | Strip index. Topic path takes precedence if both present |
+| `effect` | string | Yes | Effect name (see [Analog RGB effects](#analog-rgb-effects)) |
+| `brightness` | integer 0–255 | Yes | Master brightness |
+| `params` | array | Yes | `[r, g, b]` integers 0–255 |
+
+**Response:** ACK on `evt/status`. Saved to NVS.
+
+Any active motion fade is cancelled when this command is received.
+
+**Example — dim warm white:**
 ```json
 {
   "strip": 0,
-  "effect": "triple_wave",
+  "effect": "solid",
+  "brightness": 128,
+  "params": [255, 200, 120]
+}
+```
+
+---
+
+### `white/set` — White PWM channels
+
+**Topic:** `ul/<node-id>/cmd/white/set` or `ul/<node-id>/cmd/white/set/<channel>`
+
+Controls a single-channel white PWM output on up to 4 channels (0–3).
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `channel` | integer 0–3 | No | Channel index. Topic path takes precedence if both present |
+| `effect` | string | Yes | Effect name (see [White PWM effects](#white-pwm-effects)) |
+| `brightness` | integer 0–255 | Yes | Master brightness |
+| `params` | array | Varies | Effect-specific — see effect table |
+
+**Response:** ACK on `evt/status`. Saved to NVS.
+
+Any active motion fade is cancelled when this command is received.
+
+**Example — slow breathe on channel 2:**
+```json
+{
+  "channel": 2,
+  "effect": "breathe",
   "brightness": 200,
-  "params": [
-    255, 0, 0, 30, 0.20,
-    0, 255, 0, 45, 0.15,
-    0, 0, 255, 60, 0.10
-  ]
+  "params": [4000]
 }
 ```
 
-Shell command using `mosquitto_pub`:
+---
 
-```sh
-mosquitto_pub -t "ul/<node-id>/cmd/ws/set/0" -m '{"strip":0,"effect":"triple_wave","brightness":200,"params":[255,0,0,30,0.20,0,255,0,45,0.15,0,0,255,60,0.10]}'
-```
+### `motion/off` — Fade lights out
 
-Example – spacewaves with three calm colors:
+**Topic:** `ul/<node-id>/cmd/motion/off`
 
-```json
-{
-  "strip": 0,
-  "effect": "spacewaves",
-  "brightness": 200,
-  "params": [128, 0, 255, 0, 255, 255, 255, 255, 255]
-}
-```
+Ramps all active WS, RGB, and white channels from their current brightness down to 0 over the specified duration. Brightness values are captured at command receipt; each timer tick applies a linear step toward zero.
 
-Example – flash between red and blue:
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `fade.duration_ms` | integer | No | Total fade duration in ms. Default: 2000. Values ≤ 0 → immediate off |
+| `fade.steps` | integer | No | Number of brightness steps. Default: 255. Values ≤ 0 → immediate off |
 
-```json
-{
-  "strip": 0,
-  "effect": "flash",
-  "brightness": 255,
-  "params": [255, 0, 0, 0, 0, 255]
-}
-```
+If the `fade` object is omitted entirely, the node uses the defaults (2000 ms, 255 steps).
 
-To turn a strip off, publish a `ws/set` command with the `solid` effect and
-RGB parameters `[0, 0, 0]`.
+A subsequent `motion/on` command or any `ws/set`, `rgb/set`, `white/set` command cancels the fade immediately.
 
-### Analog RGB strips (`rgb`)
-
-`ul/<node-id>/cmd/rgb/set/<strip>`
-
-```json
-{
-  "strip": <int>,
-  "brightness": <int 0-255>,
-  "effect": "<name>",
-  "params": [<int>, <int>, <int>]
-}
-```
-
-Analog strips expose three PWM channels and support two effects:
-
-* `solid` – static RGB `[r, g, b]` output.
-* `color_swell` – RGB `[r, g, b]` base colour that swells from 0 to the master brightness over 3 000 ms, then holds that level.
-
-Publish with `brightness: 0` to turn a strip off while preserving its colour for
-the next command.
-
-### White PWM channels (`white`)
-
-`ul/<node-id>/cmd/white/set/<channel>`
-
-```json
-{
-  "channel": <int>,
-  "brightness": <int 0-255>,
-  "effect": "<name>",
-  "params": [<int>, ...]
-}
-```
-
-The `channel` value selects the white PWM output (0‑3). It is also encoded in
-the topic path, so the field may be omitted from the payload and the topic
-value will be used. This enables each channel's state to be retained
-separately.
-
-Registered effects: `solid`, `breathe`, and `swell`.
-* `solid` – static output with no parameters.
-* `breathe` – optional params: `[period_ms]` to control the breath cycle length.
-* `swell` – no parameters. Brightens from 0 to full output over 3 000 ms and then holds the final level. The master brightness
-  scales the curve so a brightness of 128 yields a 0→128 swell.
-
-### Sensor and OTA commands
-
-`ul/<node-id>/cmd/sensor/motion` – configure motion behaviour. Fields:
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `pir_motion_time` | int | Seconds PIR detection persists |
-| `motion_on_channel` | int | Legacy brightness override channel |
-| `state0/1` | object | Optional command payloads |
-
-Each `stateN` object may contain `ws` and `white` sub‑objects matching the
-payloads for `ws/set` and `white/set`. When the node enters a new motion state,
-these commands execute locally, enabling preset effects.
-
-Motion events are published on `ul/<node-id>/evt/sensor/motion` with payload
-`{"sid":"pir","state":"<MOTION_*>"}`. The PIR sensor emits
-`MOTION_DETECTED` when motion starts and `MOTION_CLEAR` when it ends.
-
-Motion state meanings:
-
-1. `0` – no motion
-2. `1` – motion detected
-
-`ul/<node-id>/cmd/motion/status` – request the motion module capabilities. The
-node responds on `ul/<node-id>/evt/motion/status` with:
-
-```json
-{ "pir_enabled": <bool> }
-```
-
-`pir_enabled` reports whether the firmware was built with the PIR task enabled
-and ready to publish motion events.
-
-`ul/<node-id>/cmd/motion/off` – request a fade-out of the active motion preset.
-
+**Example — two-second fade:**
 ```json
 {
   "fade": {
-    "duration_ms": <int>,
-    "steps": <int>
+    "duration_ms": 2000,
+    "steps": 40
   }
 }
 ```
 
-The `fade` object is optional; when omitted the node falls back to an
-eight-step ramp spread across roughly two seconds (2 000 ms). Any explicitly
-provided `duration_ms` or `steps` values override those defaults, and values
-≤ 0 switch to an immediate turn-off. When the command is accepted, the node
-captures the current brightness of every active WS, RGB, and white channel and
-walks them down evenly toward zero on each timer tick. If fresh motion activity
-arrives (`motion/on` followed by new preset commands), the fade is cancelled so
-the new scene can take over without fighting the ramp-down.
+**Example — immediate off:**
+```json
+{
+  "fade": {
+    "duration_ms": 0,
+    "steps": 0
+  }
+}
+```
 
-Motion immunity is honoured by omission: controllers exclude immune fixtures
-from this command, so nodes that never receive `motion/off` simply maintain
-their existing levels.
+---
 
-`ul/<node-id>/cmd/ota/check` – empty JSON `{}` triggers an OTA manifest check.
+### `motion/on` — Cancel fade
 
-OTA progress events are published on `ul/<node-id>/evt/ota` with payload
-`{"status":"<state>","detail":"..."}` describing each step.
+**Topic:** `ul/<node-id>/cmd/motion/on`
 
-`ul/<node-id>/cmd/status` – request a full status snapshot.
+**Payload:** `{}` (empty object)
 
-## Status and snapshots
+Cancels any in-progress motion fade, leaving all channels at their current brightness. No event is published. Typically sent when new motion is detected so the scene is not left mid-fade.
 
-Most commands produce a short acknowledgement on `ul/<node-id>/evt/status`:
+---
 
-* General commands reply with `{ "status": "ok" }`.
-* `ws/set` echoes the chosen effect and its parameters.
+### `<sensor>/status` — Query sensor status
 
-To retrieve the full device state, publish an empty JSON object to `ul/<node-id>/cmd/status`. The node then responds on `ul/<node-id>/evt/status` with a detailed snapshot describing each strip and channel. The `color` fields in the `ws` and `rgb` sections are meaningful only when the corresponding strip effect is `solid`.
+**Topic:** `ul/<node-id>/cmd/<sensor>/status`
 
-Snapshots also include `"pir_enabled": <bool>` so controllers can detect
-whether motion events are expected from the node.
+Requests a status publish for the named sensor. Currently defined sensor: `pir`.
 
-## Publishing from Python
+**Payload:** `{}` (empty object)
 
-Example using `paho-mqtt`:
+**Response:** Published on `ul/<node-id>/evt/<sensor>/status` (see [evt/\<sensor\>/status](#evtsensorstatus--sensor-status)).
+
+**Example topic:** `ul/<node-id>/cmd/pir/status`
+
+---
+
+### `ota/check` — Trigger OTA
+
+**Topic:** `ul/<node-id>/cmd/ota/check`
+
+**Payload:** `{}`
+
+Triggers an OTA manifest download and firmware update if a newer version is available. Progress is published on `evt/ota`. If the update succeeds, the node restarts automatically after the success event is acknowledged by the broker.
+
+---
+
+### `system/wipe-nvs` — Factory reset
+
+**Topic:** `ul/<node-id>/cmd/system/wipe-nvs`
+
+**Payload:** `{}`
+
+Erases the NVS partition (stored Wi-Fi credentials, light states, MQTT certificates) and restarts the node. A status publish is attempted before the erase. Use with caution — the node will re-enter provisioning mode.
+
+---
+
+### `status` — Request snapshot
+
+**Topic:** `ul/<node-id>/cmd/status`
+
+**Payload:** `{}`
+
+Requests a full device state snapshot. The response is published on `evt/status` (see [Full Status Snapshot Schema](#full-status-snapshot-schema)).
+
+---
+
+## Event Topics (Outbound)
+
+### `evt/status` — ACK and snapshots
+
+**Topic:** `ul/<node-id>/evt/status`
+
+**QoS:** 1
+
+Published in two forms:
+
+#### Command ACK
+
+Published after every `ws/set`, `rgb/set`, or `white/set` command.
+
+**Success:**
+```json
+{
+  "event": "ack",
+  "status": "ok",
+  "strip": 0,
+  "effect": "solid",
+  "params": [0, 255, 0]
+}
+```
+
+For `rgb/set` and `white/set` the ACK also includes `brightness`:
+```json
+{
+  "event": "ack",
+  "status": "ok",
+  "strip": 0,
+  "brightness": 200,
+  "effect": "solid",
+  "params": [0, 255, 0]
+}
+```
+
+For `white/set` the index field is `channel` instead of `strip`:
+```json
+{
+  "event": "ack",
+  "status": "ok",
+  "channel": 1,
+  "brightness": 200,
+  "effect": "breathe",
+  "params": [3000]
+}
+```
+
+**Failure** (unknown effect name or invalid parameters):
+```json
+{
+  "event": "ack",
+  "status": "error",
+  "error": "invalid effect"
+}
+```
+
+#### Full Snapshot
+
+Published in response to `cmd/status` or `cmd/ota/check`. See [Full Status Snapshot Schema](#full-status-snapshot-schema).
+
+---
+
+### `evt/<sensor>/motion` — Motion events
+
+**Topic:** `ul/<node-id>/evt/<sensor>/motion`
+
+**Example:** `ul/<node-id>/evt/pir/motion`
+
+**QoS:** 1
+
+Published when the sensor detects a trigger. The publish rate is rate-limited by the `CONFIG_UL_PIR_EVENT_MIN_INTERVAL_S` Kconfig option to prevent flooding.
+
+```json
+{
+  "state": "MOTION_DETECTED"
+}
+```
+
+| `state` value | Meaning |
+|---|---|
+| `MOTION_DETECTED` | Sensor GPIO is high |
+
+---
+
+### `evt/<sensor>/status` — Sensor status
+
+**Topic:** `ul/<node-id>/evt/<sensor>/status`
+
+**Example:** `ul/<node-id>/evt/pir/status`
+
+Published in response to `cmd/<sensor>/status`.
+
+```json
+{
+  "enabled": true
+}
+```
+
+`enabled` is `true` when the firmware was compiled with the sensor task active (`CONFIG_UL_PIR_ENABLED=y` for the PIR sensor).
+
+---
+
+### `evt/ota` — OTA progress
+
+**Topic:** `ul/<node-id>/evt/ota`
+
+**QoS:** 1
+
+Published at each stage of an OTA update cycle. The node waits for broker acknowledgment of the `success` message before restarting.
+
+```json
+{
+  "status": "<state>",
+  "detail": "<optional string>"
+}
+```
+
+| `status` | `detail` | Meaning |
+|---|---|---|
+| `check_start` | Manifest URL | Beginning manifest download |
+| `manifest_ok` | — | Manifest parsed successfully |
+| `manifest_fail` | Error description | Manifest download or parse failed |
+| `begin` | — | Firmware transfer starting |
+| `success` | New version string | OTA complete — node will restart |
+| `begin_fail` | Error description | Could not begin OTA partition write |
+| `perform_fail` | Error description | Error during firmware transfer |
+| `finish_fail` | Error description | Error finalizing OTA partition |
+
+---
+
+## Effect Reference
+
+### WS2812 / Addressable effects
+
+Used with `cmd/ws/set`.
+
+| Effect | `params` layout | Notes |
+|--------|----------------|-------|
+| `solid` | `[r, g, b]` | Static color. Use `[0,0,0]` to turn off |
+| `rainbow` | `[wavelength]` | Color cycle length in pixels |
+| `color_swell` | `[r, g, b]` | Swells from 0 to master brightness over ~3 000 ms, then holds |
+| `triple_wave` | `[r1,g1,b1,w1,f1, r2,g2,b2,w2,f2, r3,g3,b3,w3,f3]` | Three sine waves. `w` = wavelength in pixels, `f` = speed factor |
+| `spacewaves` | `[r1,g1,b1, r2,g2,b2, r3,g3,b3]` | Three blended RGB waves |
+| `fire` | `[intensity, r1,g1,b1, r2,g2,b2]` | Hot-core gradient. Values > 10 treated as percentages. **Requires PSRAM** |
+| `black_ice` | `[shimmer, r1,g1,b1, r2,g2,b2, r3,g3,b3]` | Shimmer over three-color ice palette. Values > 10 treated as percentages. **Requires PSRAM** |
+| `flash` | `[r1,g1,b1, r2,g2,b2]` | Alternates between two colors |
+
+**Examples:**
+
+```json
+{ "effect": "triple_wave", "params": [255,0,0,30,0.20, 0,255,0,45,0.15, 0,0,255,60,0.10] }
+{ "effect": "spacewaves",  "params": [128,0,255, 0,255,255, 255,255,255] }
+{ "effect": "fire",        "params": [1.0, 255,64,0, 255,217,102] }
+{ "effect": "black_ice",   "params": [1.2, 4,18,42, 102,199,250, 255,255,255] }
+{ "effect": "flash",       "params": [255,0,0, 0,0,255] }
+```
+
+---
+
+### Analog RGB effects
+
+Used with `cmd/rgb/set`. `params` is always `[r, g, b]`.
+
+| Effect | Behavior |
+|--------|----------|
+| `solid` | Static RGB output at master brightness |
+| `color_swell` | Ramps from 0 to master brightness over ~3 000 ms, then holds |
+
+---
+
+### White PWM effects
+
+Used with `cmd/white/set`.
+
+| Effect | `params` layout | Behavior |
+|--------|----------------|----------|
+| `solid` | `[]` (empty) | Static output at master brightness |
+| `breathe` | `[period_ms]` (optional) | Sinusoidal cycle. Default period if omitted |
+| `swell` | `[]` (empty) | Ramps from 0 to master brightness over ~3 000 ms, then holds |
+
+---
+
+## Full Status Snapshot Schema
+
+Published on `evt/status` with `"event": "snapshot"` in response to `cmd/status` or `cmd/ota/check`.
+
+```json
+{
+  "event": "snapshot",
+  "node": "<node-id>",
+  "pir_enabled": <bool>,
+  "uptime_s": <integer>,
+
+  "ws": [
+    {
+      "strip":      <integer>,
+      "enabled":    <bool>,
+      "effect":     "<string>",
+      "brightness": <integer 0-255>,
+      "params":     <array>,
+      "pixels":     <integer>,
+      "gpio":       <integer>,
+      "fps":        <integer>,
+      "color":      [<r>, <g>, <b>]
+    }
+  ],
+
+  "rgb": [
+    {
+      "strip":      <integer>,
+      "enabled":    <bool>,
+      "effect":     "<string>",
+      "brightness": <integer 0-255>,
+      "params":     <array>,
+      "pwm_hz":     <integer>,
+      "channels": [
+        { "gpio": <integer>, "ledc_ch": <integer>, "mode": <integer> },
+        { "gpio": <integer>, "ledc_ch": <integer>, "mode": <integer> },
+        { "gpio": <integer>, "ledc_ch": <integer>, "mode": <integer> }
+      ],
+      "color": [<r>, <g>, <b>]
+    }
+  ],
+
+  "white": [
+    {
+      "channel":    <integer>,
+      "enabled":    <bool>,
+      "effect":     "<string>",
+      "brightness": <integer 0-255>,
+      "params":     <array>,
+      "gpio":       <integer>,
+      "pwm_hz":     <integer>
+    }
+  ]
+}
+```
+
+**Notes:**
+- The `ws` array contains one object per configured strip (up to 2). The `rgb` array up to 4. The `white` array up to 4.
+- `color` in `ws` and `rgb` reflects the last solid color set and is only meaningful when `effect` is `solid`.
+- `pir_enabled` mirrors the compile-time `CONFIG_UL_PIR_ENABLED` flag.
+- `params` in each strip/channel object is loaded from NVS and reflects the last persisted command.
+
+---
+
+## Wire Examples
+
+### mosquitto_pub
+
+```sh
+NODE="mynode"
+BROKER="192.168.1.50"
+
+# Solid red on WS strip 0
+mosquitto_pub -h $BROKER -t "ul/$NODE/cmd/ws/set/0" \
+  -m '{"effect":"solid","brightness":255,"params":[255,0,0]}'
+
+# Rainbow on WS strip 1
+mosquitto_pub -h $BROKER -t "ul/$NODE/cmd/ws/set/1" \
+  -m '{"effect":"rainbow","brightness":180,"params":[32]}'
+
+# Analog RGB warm white on strip 0
+mosquitto_pub -h $BROKER -t "ul/$NODE/cmd/rgb/set/0" \
+  -m '{"effect":"solid","brightness":200,"params":[255,200,120]}'
+
+# White channel 0 at 50% breathe
+mosquitto_pub -h $BROKER -t "ul/$NODE/cmd/white/set/0" \
+  -m '{"effect":"breathe","brightness":128,"params":[3000]}'
+
+# Fade all lights out over 3 seconds
+mosquitto_pub -h $BROKER -t "ul/$NODE/cmd/motion/off" \
+  -m '{"fade":{"duration_ms":3000,"steps":60}}'
+
+# Request full snapshot
+mosquitto_pub -h $BROKER -t "ul/$NODE/cmd/status" -m '{}'
+
+# Query PIR sensor status
+mosquitto_pub -h $BROKER -t "ul/$NODE/cmd/pir/status" -m '{}'
+
+# Trigger OTA check
+mosquitto_pub -h $BROKER -t "ul/$NODE/cmd/ota/check" -m '{}'
+
+# Broadcast snapshot request to all nodes
+mosquitto_pub -h $BROKER -t "ul/+/cmd/status" -m '{}'
+```
+
+### Python (paho-mqtt)
 
 ```python
-import json, paho.mqtt.client as mqtt
+import json
+import paho.mqtt.client as mqtt
 
-NODE = "node123"
+NODE = "mynode"
 client = mqtt.Client()
-client.connect("broker.local")
+client.username_pw_set("user", "pass")
+client.connect("192.168.1.50", 1883)
 
-payload = {
-    "strip": 0,
-    "effect": "rainbow",
-    "brightness": 180,
-    "params": [32]
-}
-client.publish(f"ul/{NODE}/cmd/ws/set/{payload['strip']}", json.dumps(payload), qos=1)
+def pub(path, payload):
+    client.publish(f"ul/{NODE}/cmd/{path}", json.dumps(payload), qos=1)
 
-solid = {
-    "strip": 1,
-    "effect": "solid",
+# Addressable strip — triple wave
+pub("ws/set/0", {
+    "effect": "triple_wave",
+    "brightness": 200,
+    "params": [255,0,0,30,0.20, 0,255,0,45,0.15, 0,0,255,60,0.10]
+})
+
+# White channel — swell on connect
+pub("white/set/0", {
+    "effect": "swell",
     "brightness": 255,
-    "params": [255, 0, 0]
-}
-client.publish(f"ul/{NODE}/cmd/ws/set/{solid['strip']}", json.dumps(solid), qos=1)
+    "params": []
+})
+
+# Subscribe to motion and status events
+def on_message(client, userdata, msg):
+    print(msg.topic, msg.payload.decode())
+
+client.on_message = on_message
+client.subscribe(f"ul/{NODE}/evt/#", qos=1)
+client.loop_forever()
 ```
 
-Always include the global fields; tailor the `params` array to the selected effect.
+### Subscribing to all node events
 
-Example – fire with a hot red core and yellow embers:
+```sh
+# All events from a specific node
+mosquitto_sub -h $BROKER -t "ul/$NODE/evt/#" -v
 
-```json
-{
-  "strip": 0,
-  "effect": "fire",
-  "brightness": 220,
-  "params": [1.0, 255, 64, 0, 255, 217, 102]
-}
+# Events from all nodes on the network
+mosquitto_sub -h $BROKER -t "ul/+/evt/#" -v
 ```
-
-Example – Black Ice with a dark blue base, icy cracks, and bright white sparkles:
-
-```json
-{
-  "strip": 0,
-  "effect": "black_ice",
-  "brightness": 210,
-  "params": [1.2, 4, 18, 42, 102, 199, 250, 255, 255, 255]
-}
-```
-

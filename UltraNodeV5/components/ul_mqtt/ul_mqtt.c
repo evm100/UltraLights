@@ -905,7 +905,12 @@ static void on_message(esp_mqtt_event_handle_t event) {
       }
     } else if (starts_with(sub, "ota/check")) {
       ul_mqtt_publish_status();
-      ul_ota_check_now(true);
+      const char *manifest_url_override = NULL;
+      const cJSON *manifest_url_json = root ? cJSON_GetObjectItem(root, "manifest_url") : NULL;
+      if (cJSON_IsString(manifest_url_json) && manifest_url_json->valuestring && manifest_url_json->valuestring[0]) {
+        manifest_url_override = manifest_url_json->valuestring;
+      }
+      ul_ota_check_now(true, manifest_url_override);
       publish_status_snapshot();
     }
     else if (starts_with(sub, "white/set")) {
@@ -950,6 +955,36 @@ static void on_message(esp_mqtt_event_handle_t event) {
   cJSON_Delete(root);
 }
 
+static void publish_account_credentials_if_secure(void) {
+  if (s_account_credentials_sent)
+    return;
+  ul_wifi_credentials_t creds;
+  if (!ul_wifi_credentials_load(&creds))
+    return;
+  if (creds.user[0] == '\0')
+    return;
+  const char *node_id = ul_core_get_node_id();
+  if (!node_id || node_id[0] == '\0')
+    return;
+  cJSON *root = cJSON_CreateObject();
+  if (!root)
+    return;
+  cJSON_AddStringToObject(root, "event", "account_credentials");
+  cJSON_AddStringToObject(root, "username", creds.user);
+  char *json = cJSON_PrintUnformatted(root);
+  cJSON_Delete(root);
+  if (!json)
+    return;
+  char topic[128];
+  snprintf(topic, sizeof(topic), "ul/%s/evt/account", node_id);
+  int ret = publish_json(topic, json);
+  cJSON_free(json);
+  if (ret >= 0) {
+    s_account_credentials_sent = true;
+    ESP_LOGI(TAG, "Published account credentials for user '%s'", creds.user);
+  }
+}
+
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
                                int32_t event_id, void *event_data) {
   esp_mqtt_event_handle_t event = event_data;
@@ -974,7 +1009,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
       esp_mqtt_client_subscribe(s_client, topic, 1);
       esp_mqtt_client_subscribe(s_client, "ul/+/cmd/#", 0);
     }
-    // REMOVED: publish_account_credentials_if_secure();
+    publish_account_credentials_if_secure();
     break;
   }
 #ifndef UL_MQTT_TESTING
@@ -1135,9 +1170,41 @@ void ul_mqtt_start(void) {
   }
 #endif
 
-  // Hardcode or pull simple credentials from menuconfig
+  // Build the URI to dial. When CONFIG_UL_MQTT_DIAL_HOST is set the node
+  // connects to that address instead of the hostname embedded in the URI.
+  // This lets the broker live on the LAN while the URI carries the public
+  // hostname (used for TLS SNI / certificate validation in future).
+  const char *mqtt_uri = CONFIG_UL_MQTT_URI;
+  char dial_uri[256];
+#if defined(CONFIG_UL_MQTT_DIAL_HOST)
+  if (CONFIG_UL_MQTT_DIAL_HOST[0] != '\0') {
+    const char *orig = CONFIG_UL_MQTT_URI;
+    const char *scheme = "mqtt://";
+    if (strncmp(orig, "mqtts://", 8) == 0)      scheme = "mqtts://";
+    else if (strncmp(orig, "wss://", 6) == 0)   scheme = "wss://";
+    else if (strncmp(orig, "ws://", 5) == 0)    scheme = "ws://";
+
+    int port = CONFIG_UL_MQTT_DIAL_PORT;
+    if (port == 0) {
+      const char *p = strstr(orig, "://");
+      if (p) {
+        const char *colon = strrchr(p + 3, ':');
+        if (colon) port = (int)strtol(colon + 1, NULL, 10);
+      }
+    }
+
+    if (port > 0)
+      snprintf(dial_uri, sizeof(dial_uri), "%s%s:%d", scheme, CONFIG_UL_MQTT_DIAL_HOST, port);
+    else
+      snprintf(dial_uri, sizeof(dial_uri), "%s%s", scheme, CONFIG_UL_MQTT_DIAL_HOST);
+
+    mqtt_uri = dial_uri;
+    ESP_LOGI(TAG, "Dialing MQTT via override: %s", mqtt_uri);
+  }
+#endif
+
   esp_mqtt_client_config_t cfg = {
-      .broker.address.uri = CONFIG_UL_MQTT_URI, // e.g., "mqtt://192.168.1.100:1883"
+      .broker.address.uri = mqtt_uri,
       .task.priority = 5,
       .task.stack_size = 6144,
   };

@@ -125,7 +125,6 @@ typedef struct {
   char ssid[33];
   char password[65];
   char user[65];
-  char user_password[129];
   char wifi_username[65];
   char wifi_user_password[129];
   unsigned char mqtt_client_cert[CONFIG_UL_MQTT_CLIENT_CERT_MAX_LEN];

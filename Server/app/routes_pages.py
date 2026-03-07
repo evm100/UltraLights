@@ -44,6 +44,7 @@ from .effects import (
     WS_EFFECT_TIER_LABELS,
     WS_EFFECT_TIER_ORDER,
 )
+from .brightness_curve import brightness_curve_store, DEFAULT_POINTS, NODE_COLORS
 from .presets import get_room_presets
 from .motion import motion_manager
 from .motion_schedule import motion_schedule
@@ -698,7 +699,7 @@ def server_admin_panel(
     user_lookup = {user.id: user.username for user in user_rows if user.id is not None}
     for user in user_rows:
         assignments = memberships_by_user.get(user.id or -1, [])
-        assignments.sort(key=lambda item: item["house_name"].lower())
+        assignments.sort(key=lambda item: (item["house_name"] or "").lower())
         accounts_summary.append(
             {
                 "id": user.id,
@@ -739,18 +740,30 @@ def server_admin_panel(
             "displayName": registration.display_name,
             "board": board,
             "assigned": registration.assigned_at is not None,
-            "house": registration.house_slug,
-            "room": registration.room_id,
-            "certificateFingerprint": registration.certificate_fingerprint,
-            "certificatePath": registration.certificate_pem_path,
-            "privateKeyAvailable": bool(registration.private_key_pem_path),
-            "certificateBundlePath": registration.certificate_bundle_path,
+            "houseSlug": registration.house_slug,
+            "roomId": registration.room_id,
         }
+
+    factory_houses = []
+    for house in settings.DEVICE_REGISTRY:
+        if not isinstance(house, dict):
+            continue
+        h_slug = registry.get_house_slug(house)
+        h_name = str(house.get("name") or h_slug)
+        h_rooms = [
+            {"id": str(r.get("id") or ""), "name": str(r.get("name") or r.get("id") or "")}
+            for r in (house.get("rooms") or [])
+            if isinstance(r, dict) and r.get("id")
+        ]
+        factory_houses.append({"slug": h_slug, "name": h_name, "rooms": h_rooms})
 
     node_factory_context = {
         "board_options": sorted(node_builder.SUPPORTED_TARGETS.keys()),
+        "houses": factory_houses,
         "available": [_factory_summary(reg) for reg in available_regs],
         "assigned": [_factory_summary(reg) for reg in assigned_regs],
+        "default_port": settings.FLASH_DEFAULT_PORT or "/dev/ttyUSB0",
+        "flash_servers": list(settings.FLASH_SERVERS.keys()) if settings.FLASH_SERVERS else ["optiplex"],
     }
 
     return templates.TemplateResponse(
@@ -1039,6 +1052,29 @@ def room_page(
     presets = get_room_presets(house_slug, room_id)
     motion_config = _build_motion_config(house_slug, room_id, presets)
     can_manage = room_ctx.house.access.can_manage(current_user)
+    pending_nodes: List[Dict[str, Any]] = []
+    if can_manage:
+        pending_regs = node_credentials.list_pending_registrations_for_user(
+            session, current_user.id
+        )
+        for registration in pending_regs:
+            pending_nodes.append(
+                {
+                    "id": registration.node_id,
+                    "name": registration.display_name or registration.node_id,
+                }
+            )
+    curve = brightness_curve_store.get_curve(house_slug, room_id)
+    if curve is None:
+        curve = {"enabled": False, "points": list(DEFAULT_POINTS)}
+    room_nodes = room_ctx.filtered_room.get("nodes") or []
+    curve_nodes = []
+    for idx, n in enumerate(room_nodes):
+        if not isinstance(n, dict):
+            continue
+        kind = str(n.get("kind") or "").lower()
+        color = "#ffffff" if kind in ("white", "ultranode", "") else NODE_COLORS[idx % len(NODE_COLORS)]
+        curve_nodes.append({"id": n.get("id", ""), "name": n.get("name", ""), "color": color})
     return templates.TemplateResponse(
         request,
         "room.html",
@@ -1052,6 +1088,9 @@ def room_page(
             "presets": presets,
             "motion_config": motion_config,
             "can_manage_room": can_manage,
+            "pending_nodes": pending_nodes,
+            "brightness_curve": curve,
+            "brightness_curve_nodes": curve_nodes,
             **nav_context,
         },
     )

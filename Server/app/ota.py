@@ -20,7 +20,7 @@ from .config import settings
 router = APIRouter()
 
 FIRMWARE_DIR = settings.FIRMWARE_DIR
-LAN_PUBLIC_BASE = os.getenv("LAN_PUBLIC_BASE", "")
+LAN_PUBLIC_BASE = settings.LAN_PUBLIC_BASE
 
 def latest_symlink_for(dev_id: str) -> Path:
     return settings.FIRMWARE_DIR / f"{dev_id}_latest.bin"
@@ -228,6 +228,14 @@ def api_manifest_by_download(
         download_id=download_id,
     )
     return _build_manifest_response(resolved_device_id, resolved_download_id)
+
+@router.get("/firmware/{download_id}/manifest.json")
+def api_manifest_by_download_json(
+    download_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    """Alias for /manifest without the .json suffix (backward compatibility)."""
+    return api_manifest_by_download(download_id, authorization)
 
 def _serve_file(path: Path, request: Request) -> Response:
     stat = path.stat()

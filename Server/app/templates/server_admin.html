@@ -116,6 +116,23 @@
             {% endfor %}
           </select>
         </label>
+        <div class="grid gap-4 md:grid-cols-2">
+          <label class="block text-sm font-semibold">
+            <span>Assign to house <span class="font-normal opacity-60">(optional)</span></span>
+            <select name="assignHouseSlug" data-house-select class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2">
+              <option value="">— Unassigned —</option>
+              {% for house in node_factory.houses %}
+              <option value="{{ house.slug }}">{{ house.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="block text-sm font-semibold">
+            <span>Room</span>
+            <select name="assignRoomId" data-room-select class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" disabled>
+              <option value="">— Select house first —</option>
+            </select>
+          </label>
+        </div>
         <div class="grid gap-4" data-channel-group="ws" data-channel-type="ws2812">
           <div class="text-sm font-semibold">WS2812 strips</div>
           {% for idx in range(2) %}
@@ -204,15 +221,64 @@
         </div>
         <div class="space-y-2 text-xs max-h-72 overflow-y-auto pr-1" data-node-factory-list></div>
       </div>
-      <div class="glass rounded-xl p-4 space-y-4">
+      <div class="glass rounded-xl p-4 space-y-4" id="flashConsolePanel">
         <div>
-          <h4 class="text-xl font-semibold">Firmware tooling</h4>
-          <p class="text-xs opacity-70">Use the standalone command line utility to build or flash firmware with the saved hardware profiles.</p>
+          <h4 class="text-xl font-semibold">Flash console</h4>
+          <p class="text-xs opacity-70">Build firmware on this server, then flash via the selected target.</p>
         </div>
-        <p class="text-xs opacity-70">
-          Run <code>python tools/firmware_cli/cli.py --help</code> from the repository root for instructions on generating artifacts or flashing hardware using the stored registrations.
-        </p>
+        <div class="flex items-center gap-3">
+          <label class="text-xs font-semibold flex items-center gap-2">
+            Flash target
+            <select id="flashTargetSelect" class="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs"></select>
+          </label>
+        </div>
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-xs opacity-70" id="flashStatus">Idle — select a node to flash.</div>
+          <button type="button" id="flashCancelBtn" class="hidden px-3 py-1 pill text-xs font-semibold bg-amber-600 hover:bg-amber-500">Cancel</button>
+        </div>
+        <pre class="bg-slate-950 border border-slate-800 rounded p-3 text-xs font-mono overflow-y-auto h-64 whitespace-pre-wrap" id="flashConsoleOutput">Ready.</pre>
       </div>
+    </div>
+  </div>
+</section>
+
+<section class="mt-12 space-y-4" aria-labelledby="externalNodeHeading">
+  <div>
+    <h3 id="externalNodeHeading" class="text-2xl font-semibold">External nodes</h3>
+    <p class="text-sm opacity-70">Register non-ESP32 devices (e.g. OpenRGB PCs) that speak the UltraLights MQTT protocol.</p>
+  </div>
+  <div class="glass rounded-xl p-4 space-y-4 max-w-lg">
+    <form class="space-y-4" data-external-node-form>
+      <label class="block text-sm font-semibold">
+        <span>Display name</span>
+        <input type="text" name="displayName" required class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2">
+      </label>
+      <div class="grid gap-4 md:grid-cols-2">
+        <label class="block text-sm font-semibold">
+          <span>House</span>
+          <select name="assignHouseSlug" data-ext-house-select class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" required>
+            <option value="">— Select —</option>
+            {% for house in node_factory.houses %}
+            <option value="{{ house.slug }}">{{ house.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="block text-sm font-semibold">
+          <span>Room</span>
+          <select name="assignRoomId" data-ext-room-select class="mt-1 w-full bg-slate-900/60 border border-slate-700 rounded px-3 py-2" required disabled>
+            <option value="">— Select house first —</option>
+          </select>
+        </label>
+      </div>
+      <div class="flex items-center gap-3">
+        <button type="submit" class="px-4 py-2 pill bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold">Register external node</button>
+        <span class="text-xs opacity-70" data-ext-node-status></span>
+      </div>
+    </form>
+    <div class="hidden rounded bg-slate-900/60 border border-emerald-500/60 px-3 py-2 text-xs space-y-1" data-ext-node-result>
+      <div class="text-emerald-400 font-semibold">Node registered</div>
+      <div>Configure your MQTT bridge with this node ID:</div>
+      <div class="font-mono break-words" data-ext-node-id></div>
     </div>
   </div>
 </section>
@@ -607,6 +673,8 @@ function renderNodeList(container, available, assigned) {
     const metaParts = [];
     if (entry.board) {
       metaParts.push(entry.board.toUpperCase());
+    } else {
+      metaParts.push('External');
     }
     if (isAssigned) {
       const location = [entry.houseSlug, entry.roomId].filter(Boolean).join(' / ') || 'Assigned';
@@ -619,12 +687,26 @@ function renderNodeList(container, available, assigned) {
     meta.textContent = metaParts.join(' • ');
     wrapper.appendChild(meta);
 
+    const buttonRow = document.createElement('div');
+    buttonRow.className = 'mt-2 flex gap-2';
+
+    if (entry.board) {
+      const flashButton = document.createElement('button');
+      flashButton.type = 'button';
+      flashButton.className = 'px-3 py-1 pill text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-500 transition';
+      flashButton.setAttribute('data-node-flash', entry.nodeId);
+      flashButton.textContent = 'Flash';
+      buttonRow.appendChild(flashButton);
+    }
+
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
-    deleteButton.className = 'mt-2 px-3 py-1 pill text-[11px] font-semibold bg-rose-600 hover:bg-rose-500 transition';
+    deleteButton.className = 'px-3 py-1 pill text-[11px] font-semibold bg-rose-600 hover:bg-rose-500 transition';
     deleteButton.setAttribute('data-node-delete', entry.nodeId);
     deleteButton.textContent = 'Delete';
-    wrapper.appendChild(deleteButton);
+    buttonRow.appendChild(deleteButton);
+
+    wrapper.appendChild(buttonRow);
 
     container.appendChild(wrapper);
   };
@@ -657,8 +739,89 @@ if (nodeListContainer) {
   renderNodeList(nodeListContainer, nodeFactoryData.available || [], nodeFactoryData.assigned || []);
 }
 
+const flashTargetSelect = document.getElementById('flashTargetSelect');
+if (flashTargetSelect && nodeFactoryData.flash_servers) {
+  nodeFactoryData.flash_servers.forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name.charAt(0).toUpperCase() + name.slice(1).replace(/-/g, ' ');
+    flashTargetSelect.appendChild(opt);
+  });
+}
+
+let _activeFlashSource = null;
+
+function startFlash(nodeId) {
+  const consoleEl = document.getElementById('flashConsoleOutput');
+  const statusEl = document.getElementById('flashStatus');
+  const cancelBtn = document.getElementById('flashCancelBtn');
+
+  if (_activeFlashSource) {
+    _activeFlashSource.close();
+    _activeFlashSource = null;
+  }
+
+  if (consoleEl) consoleEl.textContent = `Starting flash for ${nodeId}...\n`;
+  if (statusEl) statusEl.textContent = `Flashing ${nodeId}...`;
+  if (cancelBtn) cancelBtn.classList.remove('hidden');
+
+  const panel = document.getElementById('flashConsolePanel');
+  if (panel) panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+
+  const flashTarget = document.getElementById('flashTargetSelect')?.value || '';
+  const url = `/api/server-admin/node-factory/flash/stream?node_id=${encodeURIComponent(nodeId)}&flash_target=${encodeURIComponent(flashTarget)}`;
+  const evtSource = new EventSource(url);
+  _activeFlashSource = evtSource;
+
+  evtSource.onmessage = (event) => {
+    if (consoleEl) {
+      consoleEl.textContent += event.data + '\n';
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+  };
+
+  evtSource.addEventListener('done', (event) => {
+    evtSource.close();
+    _activeFlashSource = null;
+    if (cancelBtn) cancelBtn.classList.add('hidden');
+    if (event.data === 'success') {
+      if (statusEl) statusEl.textContent = 'Flash complete!';
+    } else {
+      if (statusEl) statusEl.textContent = 'Flash failed — see console output.';
+    }
+  });
+
+  evtSource.onerror = () => {
+    evtSource.close();
+    _activeFlashSource = null;
+    if (cancelBtn) cancelBtn.classList.add('hidden');
+    if (statusEl) statusEl.textContent = 'Connection error.';
+    if (consoleEl) consoleEl.textContent += '\n[Connection lost]\n';
+  };
+}
+
+const flashCancelBtn = document.getElementById('flashCancelBtn');
+if (flashCancelBtn) {
+  flashCancelBtn.addEventListener('click', () => {
+    if (_activeFlashSource) {
+      _activeFlashSource.close();
+      _activeFlashSource = null;
+    }
+    flashCancelBtn.classList.add('hidden');
+    const statusEl = document.getElementById('flashStatus');
+    if (statusEl) statusEl.textContent = 'Cancelled.';
+  });
+}
+
 if (nodeListContainer) {
   nodeListContainer.addEventListener('click', async (event) => {
+    const flashBtn = event.target.closest('[data-node-flash]');
+    if (flashBtn) {
+      const nodeId = flashBtn.getAttribute('data-node-flash');
+      if (nodeId) startFlash(nodeId);
+      return;
+    }
+
     const button = event.target.closest('[data-node-delete]');
     if (!button) return;
     const nodeId = button.getAttribute('data-node-delete');
@@ -699,6 +862,39 @@ async function refreshNodeFactory() {
   }
 }
 
+const houseSelect = document.querySelector('[data-house-select]');
+const roomSelect = document.querySelector('[data-room-select]');
+if (houseSelect && roomSelect) {
+  houseSelect.addEventListener('change', () => {
+    const slug = houseSelect.value;
+    roomSelect.innerHTML = '';
+    if (!slug) {
+      roomSelect.disabled = true;
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '— Select house first —';
+      roomSelect.appendChild(opt);
+      return;
+    }
+    const house = (nodeFactoryData.houses || []).find((h) => h.slug === slug);
+    if (!house || !house.rooms || !house.rooms.length) {
+      roomSelect.disabled = true;
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '— No rooms —';
+      roomSelect.appendChild(opt);
+      return;
+    }
+    house.rooms.forEach((room) => {
+      const opt = document.createElement('option');
+      opt.value = room.id;
+      opt.textContent = room.name;
+      roomSelect.appendChild(opt);
+    });
+    roomSelect.disabled = false;
+  });
+}
+
 const nodeFactoryForm = document.querySelector('[data-node-factory-form]');
 if (nodeFactoryForm) {
   const outputEl = document.querySelector('[data-node-factory-output]');
@@ -708,10 +904,14 @@ if (nodeFactoryForm) {
       const hardware = collectHardwarePayload(nodeFactoryForm);
       const count = Number(nodeFactoryForm.querySelector('input[name="count"]').value) || 1;
       const displayName = nodeFactoryForm.querySelector('input[name="displayName"]').value;
+      const assignHouseSlug = nodeFactoryForm.querySelector('select[name="assignHouseSlug"]')?.value || '';
+      const assignRoomId = nodeFactoryForm.querySelector('select[name="assignRoomId"]')?.value || '';
       const payload = {
         count,
         displayName: displayName || undefined,
         hardware,
+        assignHouseSlug: assignHouseSlug || undefined,
+        assignRoomId: assignRoomId || undefined,
       };
       const res = await fetch('/api/server-admin/node-factory/registrations', {
         method: 'POST',
@@ -726,16 +926,86 @@ if (nodeFactoryForm) {
       const data = await res.json();
       const lines = [];
       (data.nodes || []).forEach((node) => {
-        lines.push(`Node ${node.nodeId}`);
-        lines.push(`  Download: ${node.downloadId}`);
-        lines.push(`  Manifest: ${node.manifestUrl}`);
-        lines.push(`  Token: ${node.otaToken}`);
+        lines.push(`# Node: ${node.nodeId}`);
+        lines.push(`CONFIG_UL_NODE_ID="${node.nodeId}"`);
+        lines.push(`CONFIG_UL_OTA_MANIFEST_URL="${node.manifestUrl}"`);
+        lines.push(`CONFIG_UL_OTA_BEARER_TOKEN="${node.otaToken}"`);
         lines.push('');
       });
       outputEl.textContent = lines.join('\n') || 'No nodes generated yet.';
       await refreshNodeFactory();
     } catch (err) {
       outputEl.textContent = `Error generating nodes: ${err}`;
+    }
+  });
+}
+
+const extHouseSelect = document.querySelector('[data-ext-house-select]');
+const extRoomSelect = document.querySelector('[data-ext-room-select]');
+if (extHouseSelect && extRoomSelect) {
+  extHouseSelect.addEventListener('change', () => {
+    const slug = extHouseSelect.value;
+    extRoomSelect.innerHTML = '';
+    if (!slug) {
+      extRoomSelect.disabled = true;
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '— Select house first —';
+      extRoomSelect.appendChild(opt);
+      return;
+    }
+    const house = (nodeFactoryData.houses || []).find((h) => h.slug === slug);
+    if (!house || !house.rooms || !house.rooms.length) {
+      extRoomSelect.disabled = true;
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '— No rooms —';
+      extRoomSelect.appendChild(opt);
+      return;
+    }
+    house.rooms.forEach((room) => {
+      const opt = document.createElement('option');
+      opt.value = room.id;
+      opt.textContent = room.name;
+      extRoomSelect.appendChild(opt);
+    });
+    extRoomSelect.disabled = false;
+  });
+}
+
+const extForm = document.querySelector('[data-external-node-form]');
+if (extForm) {
+  const extStatus = extForm.querySelector('[data-ext-node-status]');
+  const extResult = document.querySelector('[data-ext-node-result]');
+  const extNodeId = document.querySelector('[data-ext-node-id]');
+  extForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const fd = new FormData(extForm);
+    const displayName = fd.get('displayName');
+    const assignHouseSlug = fd.get('assignHouseSlug');
+    const assignRoomId = fd.get('assignRoomId');
+    if (!displayName || !assignHouseSlug || !assignRoomId) return;
+    if (extStatus) extStatus.textContent = 'Registering…';
+    try {
+      const res = await fetch('/api/server-admin/external-nodes', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'same-origin',
+        body: JSON.stringify({displayName, assignHouseSlug, assignRoomId}),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (extStatus) extStatus.textContent = '';
+      if (extResult) extResult.classList.remove('hidden');
+      if (extNodeId) extNodeId.textContent = data.nodeId;
+      extForm.reset();
+      await refreshNodeFactory();
+    } catch (err) {
+      console.error('Failed to register external node', err);
+      if (extStatus) extStatus.textContent = 'Failed — ' + err.message;
     }
   });
 }

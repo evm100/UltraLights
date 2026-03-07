@@ -19,6 +19,7 @@ __all__ = [
     "get_preset",
     "get_room_presets",
     "list_custom_presets",
+    "remove_node_actions",
     "reorder_custom_presets",
     "save_custom_preset",
     "snapshot_to_actions",
@@ -54,6 +55,12 @@ def delete_custom_preset(house_id: str, room_id: str, preset_id: str) -> bool:
     """Remove the custom preset ``preset_id`` from ``house_id``/``room_id``."""
 
     return _custom_presets.delete_preset(str(house_id), str(room_id), str(preset_id))
+
+
+def remove_node_actions(node_id: str) -> None:
+    """Remove all preset actions referencing ``node_id`` from every room."""
+
+    _custom_presets.remove_node(node_id)
 
 
 def reorder_custom_presets(

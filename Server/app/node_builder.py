@@ -77,6 +77,19 @@ def _sanitize_node_for_path(node_id: str) -> str:
     safe = [ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in node_id]
     return "".join(safe).strip() or "node"
 
+def delete_node_sdkconfig(node_id: str) -> bool:
+    """Remove the per-node sdkconfig file from the work directory.
+
+    Returns True if the file was deleted, False if it did not exist.
+    """
+    target = _sanitize_node_for_path(node_id)
+    sdkconfig_path = SDKCONFIG_WORK_DIR / f"sdkconfig.{target}"
+    if sdkconfig_path.exists():
+        sdkconfig_path.unlink()
+        return True
+    return False
+
+
 def clean_build_dir() -> None:
     """Remove the ``build`` directory inside the firmware tree."""
     build_dir = FIRMWARE_ROOT / "build"
@@ -87,6 +100,18 @@ def clean_build_dir() -> None:
     if build_dir.resolve().parent != FIRMWARE_ROOT.resolve():
         raise NodeBuilderError("refusing to remove unexpected build directory")
     shutil.rmtree(build_dir)
+
+
+def activate_sdkconfig(sdkconfig_path: Path) -> None:
+    """Copy a node-specific sdkconfig into the firmware project root.
+
+    ESP-IDF cmake defaults to ``$PROJECT_DIR/sdkconfig`` regardless of the
+    ``SDKCONFIG`` environment variable in some versions.  Placing the
+    node-specific file at that canonical path ensures the build always picks up
+    the correct per-node configuration.
+    """
+    dest = FIRMWARE_ROOT / "sdkconfig"
+    shutil.copy2(sdkconfig_path, dest)
 
 def _sanitize_version(version: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", version.strip())
@@ -324,11 +349,14 @@ def _next_ledc_channel(used: set[int]) -> int:
 def _board_overrides(board: str) -> Dict[str, Tuple[Any, bool]]:
     board = board.lower()
     target = SUPPORTED_TARGETS.get(board, "esp32")
-    return {
+    overrides: Dict[str, Tuple[Any, bool]] = {
         "CONFIG_UL_TARGET_CHIP": _config_value(target, quoted=True),
         "CONFIG_UL_IS_ESP32C3": _bool_flag(board == "esp32c3"),
         "CONFIG_UL_IS_ESP32S3": _bool_flag(board == "esp32s3"),
     }
+    if board == "esp32c3":
+        overrides["CONFIG_UL_WIFI_RESET_BUTTON_GPIO"] = _config_value(9)
+    return overrides
 
 def normalize_hardware_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(metadata, dict):
@@ -753,6 +781,29 @@ def first_time_flash(
         sdkconfig_values=build_result.sdkconfig_values,
         project_configs=build_result.project_configs,
     )
+
+def collect_flash_artifacts(build_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """Read flasher_args.json and resolve binary file paths.
+
+    Returns a dict with:
+      - ``flasher_args``: the parsed JSON from the build
+      - ``files``: dict mapping flash address → absolute Path to binary
+    """
+    build_dir = build_dir or (FIRMWARE_ROOT / "build")
+    args_path = build_dir / "flasher_args.json"
+    if not args_path.exists():
+        raise NodeBuilderError("flasher_args.json not found in build directory")
+
+    flasher_args = json.loads(args_path.read_text(encoding="utf-8"))
+    files: Dict[str, Path] = {}
+    for address, rel_path in flasher_args.get("flash_files", {}).items():
+        abs_path = (build_dir / rel_path).resolve()
+        if not abs_path.exists():
+            raise NodeBuilderError(f"Flash file not found: {abs_path}")
+        files[address] = abs_path
+
+    return {"flasher_args": flasher_args, "files": files}
+
 
 def ensure_test_registration(
     session: Session,

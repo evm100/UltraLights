@@ -24,7 +24,7 @@ class _NoopBus:
     def white_set(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - noop
         pass
 
-    def sensor_motion_program(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - noop
+    def motion_on(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - noop
         pass
 
     def status_request(self, *args: object, **kwargs: object) -> None:  # pragma: no cover - noop

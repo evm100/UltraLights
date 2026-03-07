@@ -13,7 +13,7 @@
 </style>
 <body>
   <h1>Connect UltraLights to Wi-Fi</h1>
-  <p>Choose your home network, enter the password, and provide your UltraLights account credentials to finish setup.</p>
+  <p>Choose your home network, enter the password, and provide your UltraLights username to finish setup.</p>
   <div class="row">
     <label for="ssid">Network</label>
     <select id="ssid"></select>
@@ -31,17 +31,10 @@
     <input id="wifiUser" type="text" autocomplete="off" />
   </div>
   <h2 style="font-size: 1.2rem; margin-top: 32px;">UltraLights Account</h2>
-  <p>These credentials are sent securely to UltraLights to associate this device with your account.</p>
+  <p>Your username is sent to UltraLights to associate this device with your account.</p>
   <div class="row">
     <label for="user">Username</label>
     <input id="user" type="text" autocomplete="username" />
-  </div>
-  <div class="row">
-    <label for="accountPassword">Account Password</label>
-    <input id="accountPassword" type="password" autocomplete="current-password" />
-    <label style="font-weight: normal; margin-top: 8px;">
-      <input id="showAccountPassword" type="checkbox" /> Show account password
-    </label>
   </div>
   <div class="row">
     <button id="provision">Connect</button>
@@ -54,7 +47,6 @@ const pwd = document.getElementById('pwd');
 const wifiUserRow = document.getElementById('wifiUserRow');
 const wifiUser = document.getElementById('wifiUser');
 const user = document.getElementById('user');
-const accountPassword = document.getElementById('accountPassword');
 const log = document.getElementById('log');
 let scannedAps = [];
 
@@ -64,10 +56,6 @@ function setLog(message) {
 
 document.getElementById('showWifi').addEventListener('change', (ev) => {
   pwd.type = ev.target.checked ? 'text' : 'password';
-});
-
-document.getElementById('showAccountPassword').addEventListener('change', (ev) => {
-  accountPassword.type = ev.target.checked ? 'text' : 'password';
 });
 
 document.getElementById('rescan').addEventListener('click', () => scan());
@@ -147,17 +135,12 @@ async function provision() {
     }
   }
   const username = user.value.trim();
-  const passwordValue = accountPassword.value;
   if (!username) {
     setLog('Enter your UltraLights username.');
     return;
   }
-  if (!passwordValue) {
-    setLog('Enter your UltraLights password.');
-    return;
-  }
   setLog('Sending credentials...');
-  const body = { ssid, password: pwd.value, username, account_password: passwordValue };
+  const body = { ssid, password: pwd.value, username };
   if (requiresUsername) {
     body.wifi_username = wifiUser.value.trim();
     body.wifi_user_password = pwd.value;

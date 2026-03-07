@@ -25,6 +25,7 @@ from .motion_schedule import motion_schedule
 from .motion_prefs import motion_preferences
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
+from .brightness_curve import brightness_curve_store, DEFAULT_POINTS
 from .channel_names import channel_names
 from .config import settings
 from .database import get_session
@@ -1118,6 +1119,50 @@ def api_set_motion_schedule_color(
         "house_id": room_ctx.house.external_id,
     }
 
+
+# ---- Brightness curve APIs -----------------------------------------------
+
+
+@router.get("/api/house/{house_id}/room/{room_id}/brightness-curve")
+def api_get_brightness_curve(
+    house_id: str,
+    room_id: str,
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
+    curve = brightness_curve_store.get_curve(room_ctx.house.slug, room_id)
+    if curve is None:
+        curve = {"enabled": False, "points": list(DEFAULT_POINTS)}
+    return curve
+
+
+@router.post("/api/house/{house_id}/room/{room_id}/brightness-curve")
+def api_set_brightness_curve(
+    house_id: str,
+    room_id: str,
+    payload: Dict[str, Any],
+    *,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    policy = _build_policy(session, current_user)
+    room_ctx = _require_room(policy, house_id, room_id)
+    points = payload.get("points")
+    if not isinstance(points, list) or not points:
+        raise HTTPException(400, "points must be a non-empty list")
+    enabled = bool(payload.get("enabled", False))
+    try:
+        saved = brightness_curve_store.set_curve(
+            room_ctx.house.slug, room_id, points, enabled
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return saved
+
+
 # ---- Node command APIs -------------------------------------------------
 
 @router.post("/api/node/{node_id}/ws/set")
@@ -1345,7 +1390,12 @@ def api_ota_check(
     policy = _build_policy(session, current_user)
     node_ctx = _require_node(policy, node_id)
     _ensure_can_manage_house(node_ctx.room.house, current_user)
-    get_bus().ota_check(node_id)
+    manifest_url = ""
+    if settings.LAN_PUBLIC_BASE:
+        registration = node_credentials.get_registration_by_node_id(session, node_id)
+        download_id = registration.download_id if registration else node_id
+        manifest_url = f"{settings.LAN_PUBLIC_BASE}/firmware/{download_id}/manifest"
+    get_bus().ota_check(node_id, manifest_url)
     return {"ok": True}
 
 

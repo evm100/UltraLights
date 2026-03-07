@@ -381,26 +381,45 @@ static void begin_connect(const char *ssid, const char *password, bool requires_
 
 static esp_err_t provision_handler(httpd_req_t *req) {
   reset_idle_timer();
-  char body[4096];
+  esp_err_t ret;
+  char *body = NULL;
+  ul_wifi_credentials_t *creds = NULL;
+  cJSON *root = NULL;
+  bool network_requires_username = false;
+  bool do_connect = false;
+
+  body = malloc(4096);
+  if (!body) {
+    ret = httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "alloc failed");
+    goto done;
+  }
+
   size_t len = 0;
-  if (!parse_body(req, body, sizeof(body), &len)) {
-    return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
+  if (!parse_body(req, body, 4096, &len)) {
+    ret = httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid body");
+    goto done;
   }
-  cJSON *root = cJSON_Parse(body);
+  root = cJSON_Parse(body);
   if (!root) {
-    return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+    ret = httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "invalid json");
+    goto done;
   }
+
   const cJSON *ssid = cJSON_GetObjectItem(root, "ssid");
-  const cJSON *account_password_json =
-      cJSON_GetObjectItem(root, "account_password");
   const cJSON *username = cJSON_GetObjectItem(root, "username");
   const cJSON *wifi_password_json = cJSON_GetObjectItem(root, "password");
   const cJSON *wifi_user_json = cJSON_GetObjectItem(root, "wifi_username");
   const cJSON *wifi_user_password_json =
       cJSON_GetObjectItem(root, "wifi_user_password");
+#if CONFIG_UL_MQTT_PROVISION_CERTS
+  const cJSON *client_cert_json =
+      cJSON_GetObjectItem(root, "mqtt_client_certificate");
+  const cJSON *client_key_json =
+      cJSON_GetObjectItem(root, "mqtt_client_key");
+#endif
   if (!ssid || !cJSON_IsString(ssid) || ssid->valuestring[0] == '\0') {
-    cJSON_Delete(root);
-    return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing ssid");
+    ret = httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing ssid");
+    goto done;
   }
   const char *wifi_pass_str =
       (wifi_password_json && cJSON_IsString(wifi_password_json))
@@ -411,16 +430,8 @@ static esp_err_t provision_handler(httpd_req_t *req) {
   bool scan_indicated_enterprise =
       authmode_found && authmode_requires_username(authmode);
   if (!username || !cJSON_IsString(username) || username->valuestring[0] == '\0') {
-    cJSON_Delete(root);
-    return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing username");
-  }
-  const char *account_password_str =
-      (account_password_json && cJSON_IsString(account_password_json))
-          ? account_password_json->valuestring
-          : "";
-  if (account_password_str[0] == '\0') {
-    cJSON_Delete(root);
-    return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing password");
+    ret = httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing username");
+    goto done;
   }
 
   const char *wifi_user_str =
@@ -432,15 +443,15 @@ static esp_err_t provision_handler(httpd_req_t *req) {
 
   bool client_requested_enterprise =
       wifi_user_str[0] != '\0' || wifi_user_pass_str[0] != '\0';
-  bool network_requires_username = scan_indicated_enterprise || client_requested_enterprise;
+  network_requires_username = scan_indicated_enterprise || client_requested_enterprise;
 
   if (network_requires_username) {
     if (wifi_user_str[0] == '\0' || wifi_user_pass_str[0] == '\0') {
       if (client_requested_enterprise) {
-        cJSON_Delete(root);
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                                   wifi_user_str[0] == '\0' ? "missing wifi username"
-                                                            : "missing wifi user password");
+        ret = httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                  wifi_user_str[0] == '\0' ? "missing wifi username"
+                                                           : "missing wifi user password");
+        goto done;
       }
       ESP_LOGW(TAG,
                "Enterprise network '%s' missing Wi-Fi user credentials; treating as PSK",
@@ -449,16 +460,18 @@ static esp_err_t provision_handler(httpd_req_t *req) {
     }
   }
 
-  ul_wifi_credentials_t creds = {0};
-  strlcpy(creds.ssid, ssid->valuestring, sizeof(creds.ssid));
-  strlcpy(creds.password, wifi_pass_str, sizeof(creds.password));
-  copy_username_lowercase(creds.user, sizeof(creds.user),
+  creds = calloc(1, sizeof(*creds));
+  if (!creds) {
+    ret = httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "alloc failed");
+    goto done;
+  }
+  strlcpy(creds->ssid, ssid->valuestring, sizeof(creds->ssid));
+  strlcpy(creds->password, wifi_pass_str, sizeof(creds->password));
+  copy_username_lowercase(creds->user, sizeof(creds->user),
                           username->valuestring);
-  strlcpy(creds.user_password, account_password_str,
-          sizeof(creds.user_password));
-  strlcpy(creds.wifi_username, wifi_user_str, sizeof(creds.wifi_username));
-  strlcpy(creds.wifi_user_password, wifi_user_pass_str,
-          sizeof(creds.wifi_user_password));
+  strlcpy(creds->wifi_username, wifi_user_str, sizeof(creds->wifi_username));
+  strlcpy(creds->wifi_user_password, wifi_user_pass_str,
+          sizeof(creds->wifi_user_password));
 #if CONFIG_UL_MQTT_PROVISION_CERTS
   if (client_cert_json && cJSON_IsString(client_cert_json) &&
       client_cert_json->valuestring && client_cert_json->valuestring[0] != '\0') {
@@ -468,26 +481,26 @@ static esp_err_t provision_handler(httpd_req_t *req) {
     size_t decoded_len = 0;
     int rc = mbedtls_base64_decode(NULL, 0, &decoded_len, encoded, encoded_len);
     if (rc != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL && rc != 0) {
-      cJSON_Delete(root);
-      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                                 "invalid client certificate");
+      ret = httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                "invalid client certificate");
+      goto done;
     }
-    if (decoded_len > sizeof(creds.mqtt_client_cert)) {
-      cJSON_Delete(root);
-      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                                 "client certificate too large");
+    if (decoded_len > sizeof(creds->mqtt_client_cert)) {
+      ret = httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                "client certificate too large");
+      goto done;
     }
-    rc = mbedtls_base64_decode(creds.mqtt_client_cert,
-                               sizeof(creds.mqtt_client_cert), &decoded_len,
+    rc = mbedtls_base64_decode(creds->mqtt_client_cert,
+                               sizeof(creds->mqtt_client_cert), &decoded_len,
                                encoded, encoded_len);
     if (rc != 0) {
-      cJSON_Delete(root);
-      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                                 "invalid client certificate");
+      ret = httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                "invalid client certificate");
+      goto done;
     }
-    creds.mqtt_client_cert_len = decoded_len;
+    creds->mqtt_client_cert_len = decoded_len;
   } else {
-    creds.mqtt_client_cert_len = 0;
+    creds->mqtt_client_cert_len = 0;
   }
 
   if (client_key_json && cJSON_IsString(client_key_json) &&
@@ -498,46 +511,53 @@ static esp_err_t provision_handler(httpd_req_t *req) {
     size_t decoded_len = 0;
     int rc = mbedtls_base64_decode(NULL, 0, &decoded_len, encoded, encoded_len);
     if (rc != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL && rc != 0) {
-      cJSON_Delete(root);
-      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                                 "invalid client key");
+      ret = httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                "invalid client key");
+      goto done;
     }
-    if (decoded_len > sizeof(creds.mqtt_client_key)) {
-      cJSON_Delete(root);
-      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                                 "client key too large");
+    if (decoded_len > sizeof(creds->mqtt_client_key)) {
+      ret = httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                "client key too large");
+      goto done;
     }
-    rc = mbedtls_base64_decode(creds.mqtt_client_key,
-                               sizeof(creds.mqtt_client_key), &decoded_len,
+    rc = mbedtls_base64_decode(creds->mqtt_client_key,
+                               sizeof(creds->mqtt_client_key), &decoded_len,
                                encoded, encoded_len);
     if (rc != 0) {
-      cJSON_Delete(root);
-      return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                                 "invalid client key");
+      ret = httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                "invalid client key");
+      goto done;
     }
-    creds.mqtt_client_key_len = decoded_len;
+    creds->mqtt_client_key_len = decoded_len;
   } else {
-    creds.mqtt_client_key_len = 0;
+    creds->mqtt_client_key_len = 0;
   }
 
 #if CONFIG_UL_MQTT_REQUIRE_CLIENT_CERT
-  if (creds.mqtt_client_cert_len == 0 || creds.mqtt_client_key_len == 0) {
-    cJSON_Delete(root);
-    return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                               "missing client certificate bundle");
+  if (creds->mqtt_client_cert_len == 0 || creds->mqtt_client_key_len == 0) {
+    ret = httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                              "missing client certificate bundle");
+    goto done;
   }
 #endif
 #endif
-  esp_err_t err = ul_wifi_credentials_save(&creds);
+  esp_err_t err = ul_wifi_credentials_save(creds);
   if (err != ESP_OK) {
-    cJSON_Delete(root);
-    return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "persist failed");
+    ret = httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "persist failed");
+    goto done;
+  }
+  httpd_resp_set_type(req, "application/json");
+  ret = httpd_resp_sendstr(req, "{\"ok\":true}");
+  do_connect = true;
+
+done:
+  if (do_connect) {
+    begin_connect(creds->ssid, creds->password, network_requires_username);
   }
   cJSON_Delete(root);
-  httpd_resp_set_type(req, "application/json");
-  esp_err_t send_err = httpd_resp_sendstr(req, "{\"ok\":true}");
-  begin_connect(creds.ssid, creds.password, network_requires_username);
-  return send_err;
+  free(creds);
+  free(body);
+  return ret;
 }
 
 static void idle_timer_cb(void *arg) {

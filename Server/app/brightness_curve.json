@@ -1,0 +1,56 @@
+{
+  "del-sur": {
+    "kitchen": {
+      "enabled": false,
+      "points": [
+        {
+          "hour": 0.0,
+          "brightness": 9
+        },
+        {
+          "hour": 7.5,
+          "brightness": 2
+        },
+        {
+          "hour": 12.0,
+          "brightness": 72
+        },
+        {
+          "hour": 18.0,
+          "brightness": 255
+        },
+        {
+          "hour": 22.0,
+          "brightness": 50
+        }
+      ]
+    }
+  },
+  "exampleHouse": {
+    "example-room": {
+      "enabled": false,
+      "points": [
+        {
+          "hour": 0.0,
+          "brightness": 0
+        },
+        {
+          "hour": 6.5,
+          "brightness": 0
+        },
+        {
+          "hour": 11.5,
+          "brightness": 83
+        },
+        {
+          "hour": 18.0,
+          "brightness": 0
+        },
+        {
+          "hour": 22.0,
+          "brightness": 0
+        }
+      ]
+    }
+  }
+}

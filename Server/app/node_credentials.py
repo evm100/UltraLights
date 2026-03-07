@@ -17,7 +17,7 @@ from .auth.models import (
     NodeRegistration,
     User,
 )
-from .auth.security import hash_password, normalize_username, verify_password
+from .auth.security import normalize_username
 
 
 @dataclass
@@ -544,6 +544,7 @@ def assign_registration_to_room(
             room_id,
             name=normalized_name,
             modules=modules_meta,
+            download_id=registration.download_id,
         )
     except Exception:
         if previous_house_slug is not None and previous_room_id is not None:
@@ -656,13 +657,12 @@ def rotate_token(
 
 
 def record_account_credentials(
-    session: Session, node_id: str, username: str, password: str
+    session: Session, node_id: str, username: str
 ) -> Optional[NodeRegistration]:
-    """Persist account credentials observed from firmware."""
+    """Persist account username observed from firmware."""
     username = normalize_username(username)
-    password = password or ""
-    if not username or not password:
-        raise ValueError("username and password are required")
+    if not username:
+        raise ValueError("username is required")
 
     credential = _get_by_node_id(session, node_id)
     registration = _get_registration_by_node_id(session, node_id)
@@ -692,10 +692,6 @@ def record_account_credentials(
     user = _first_result(session.exec(select(User).where(User.username == username)))
     if user is None:
         logging.warning("Received credentials for unknown user '%s' on node '%s'", username, node_id)
-        return None
-
-    if not verify_password(password, user.hashed_password):
-        logging.warning("Credential verification failed for user '%s' on node '%s'", username, node_id)
         return None
 
     membership_candidates = session.exec(
@@ -768,15 +764,11 @@ def record_account_credentials(
     if target_external_id and existing_external and existing_external != target_external_id:
         should_clear_assignment = True
 
-    hashed = hash_password(password)
     now = _now()
     changed = False
 
     if registration.account_username != username:
         registration.account_username = username
-        changed = True
-    if registration.account_password_hash != hashed:
-        registration.account_password_hash = hashed
         changed = True
     registration.account_credentials_received_at = now
     changed = True
@@ -1020,9 +1012,6 @@ def delete_credentials(session: Session, node_id: str) -> None:
             cleared = True
         if registration.account_username is not None:
             registration.account_username = None
-            cleared = True
-        if registration.account_password_hash is not None:
-            registration.account_password_hash = None
             cleared = True
         if registration.account_credentials_received_at is not None:
             registration.account_credentials_received_at = None

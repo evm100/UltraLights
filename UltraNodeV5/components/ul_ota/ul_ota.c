@@ -376,6 +376,10 @@ static esp_err_t ul_ota_fetch_manifest(const esp_http_client_config_t *base_cfg,
         return ESP_ERR_NO_MEM;
     }
 
+    if (strlen(CONFIG_UL_OTA_BEARER_TOKEN)) {
+        esp_http_client_set_header(client, "Authorization", "Bearer " CONFIG_UL_OTA_BEARER_TOKEN);
+    }
+
     esp_err_t err = esp_http_client_perform(client);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Manifest download failed: %s", esp_err_to_name(err));
@@ -535,18 +539,29 @@ static esp_err_t _http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
-void ul_ota_check_now(bool force)
+static esp_err_t _ota_http_client_init_cb(esp_http_client_handle_t client)
+{
+    if (strlen(CONFIG_UL_OTA_BEARER_TOKEN)) {
+        esp_http_client_set_header(client, "Authorization", "Bearer " CONFIG_UL_OTA_BEARER_TOKEN);
+    }
+    return ESP_OK;
+}
+
+void ul_ota_check_now(bool force, const char *manifest_url_override)
 {
     if (!ul_core_is_connected()) {
         ESP_LOGW(TAG, "Network not connected, skipping OTA check");
         ul_mqtt_publish_ota_event("skipped", "network_down");
         return;
     }
-    ESP_LOGI(TAG, "OTA check (force=%d): %s", force, CONFIG_UL_OTA_MANIFEST_URL);
-    ul_mqtt_publish_ota_event("check_start", CONFIG_UL_OTA_MANIFEST_URL);
+    const char *manifest_url = (manifest_url_override && manifest_url_override[0])
+        ? manifest_url_override
+        : CONFIG_UL_OTA_MANIFEST_URL;
+    ESP_LOGI(TAG, "OTA check (force=%d): %s", force, manifest_url);
+    ul_mqtt_publish_ota_event("check_start", manifest_url);
 
     esp_http_client_config_t http_cfg = {
-        .url = CONFIG_UL_OTA_MANIFEST_URL,
+        .url = manifest_url,
         .timeout_ms = 10000,
         .crt_bundle_attach = esp_crt_bundle_attach,
         .event_handler = _http_event_handler,
@@ -618,7 +633,8 @@ void ul_ota_check_now(bool force)
     ota_http_cfg.user_data = NULL;
 
     esp_https_ota_config_t ota_cfg = {
-        .http_config = &ota_http_cfg
+        .http_config = &ota_http_cfg,
+        .http_client_init_cb = _ota_http_client_init_cb,
     };
     esp_https_ota_handle_t handle = NULL;
     ESP_LOGD(TAG, "Starting HTTPS OTA");

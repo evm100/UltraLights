@@ -84,7 +84,7 @@ def test_handle_credentials_links_user(account_env):
         # ensure registration persisted for assertions later
         session.refresh(registration)
         user_id = user.id
-    result = linker.handle_credentials(node_id, "alice", "wonderland")
+    result = linker.handle_credentials(node_id, "alice")
     assert result is not None
     with database.SessionLocal() as session:
         refreshed = node_credentials.get_registration_by_node_id(session, node_id)
@@ -92,26 +92,8 @@ def test_handle_credentials_links_user(account_env):
         assert refreshed.assigned_user_id == user_id
         assert refreshed.assigned_house_id == house_id
         assert refreshed.account_username == "alice"
-        assert refreshed.account_password_hash is not None
         assert refreshed.account_credentials_received_at is not None
-        assert refreshed.account_password_hash != "wonderland"
 
-
-def test_handle_credentials_rejects_invalid_password(account_env):
-    linker = AccountLinker()
-    with database.SessionLocal() as session:
-        user = create_user(session, "bob", "builder", server_admin=False)
-        _create_membership(session, user.id)
-        registration = _create_registration(session)
-        node_id = registration.node_id
-        session.refresh(registration)
-    result = linker.handle_credentials(node_id, "bob", "wrongpass")
-    assert result is None
-    with database.SessionLocal() as session:
-        refreshed = node_credentials.get_registration_by_node_id(session, node_id)
-        assert refreshed is not None
-        assert refreshed.account_username is None
-        assert refreshed.assigned_user_id is None
 
 
 def test_handle_credentials_migrates_between_users(account_env):
@@ -176,7 +158,7 @@ def test_handle_credentials_migrates_between_users(account_env):
         }
     )
 
-    result = linker.handle_credentials(node_id, "new-owner", "newpass")
+    result = linker.handle_credentials(node_id, "new-owner")
     assert result is not None
 
     with database.SessionLocal() as session:
@@ -242,7 +224,7 @@ def test_handle_credentials_recreates_missing_registration(account_env):
         }
     ]
 
-    result = linker.handle_credentials(node_id, "recover", "secret")
+    result = linker.handle_credentials(node_id, "recover")
     assert result is not None
 
     with database.SessionLocal() as session:
@@ -315,12 +297,11 @@ def test_handle_credentials_after_deletion(account_env):
         assert refreshed.house_slug is None
         assert refreshed.room_id is None
         assert refreshed.account_username is None
-        assert refreshed.account_password_hash is None
         assert refreshed.account_credentials_received_at is None
         assert refreshed.assigned_at is None
         assert node_credentials.get_by_node_id(session, node_id) is None
 
-    result = linker.handle_credentials(node_id, "return", "newpass")
+    result = linker.handle_credentials(node_id, "return")
     assert result is not None
 
     with database.SessionLocal() as session:

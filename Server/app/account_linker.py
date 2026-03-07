@@ -83,25 +83,24 @@ class AccountLinker:
         if event and event != "account_credentials":
             return
         username = payload.get("username")
-        password = payload.get("password")
-        if not isinstance(username, str) or not isinstance(password, str):
+        if not isinstance(username, str):
             _LOGGER.warning(
-                "Malformed account payload for node '%s': missing username/password",
+                "Malformed account payload for node '%s': missing username",
                 node_id,
             )
             return
-        self.handle_credentials(node_id, username, password)
+        self.handle_credentials(node_id, username)
 
     # Persistence helpers -------------------------------------------
     def handle_credentials(
-        self, node_id: str, username: str, password: str
+        self, node_id: str, username: str
     ) -> Optional[Any]:
         """Record credentials for ``node_id``. Separated for tests."""
 
         try:
             with database.SessionLocal() as session:
                 return node_credentials.record_account_credentials(
-                    session, node_id, username, password
+                    session, node_id, username
                 )
         except ValueError:
             _LOGGER.warning(

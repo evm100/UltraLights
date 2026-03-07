@@ -225,17 +225,22 @@ class MqttBus:
         )
 
     # ---- Sensor commands ----
-    def sensor_motion_program(self, node_id: str, states: Dict[str, object]):
-        """Program motion state commands on the node."""
-        self.pub(topic_cmd(node_id, "sensor/motion"), states)
-
     def motion_status_request(self, node_id: str, *, rate_limited: bool = False) -> None:
-        """Request the motion module status from ``node_id``."""
+        """Request the PIR sensor status from ``node_id``."""
         self.pub(
-            topic_cmd(node_id, "motion/status"),
+            topic_cmd(node_id, "pir/status"),
             {},
             retain=False,
             rate_limited=rate_limited,
+        )
+
+    def motion_on(self, node_id: str) -> None:
+        """Cancel any in-progress motion fade on ``node_id``."""
+        self.pub(
+            topic_cmd(node_id, "motion/on"),
+            {},
+            retain=False,
+            rate_limited=False,
         )
 
     def motion_off(self, node_id: str, payload: Dict[str, object]) -> None:
@@ -253,9 +258,12 @@ class MqttBus:
         self.pub(topic_cmd(node_id, "status"), {}, retain=False)
 
     # ---- OTA ----
-    def ota_check(self, node_id: str):
+    def ota_check(self, node_id: str, manifest_url: str = "") -> None:
         """Trigger an OTA update check without retaining the command."""
-        self.pub(topic_cmd(node_id, "ota/check"), {}, retain=False)
+        payload: dict = {}
+        if manifest_url:
+            payload["manifest_url"] = manifest_url
+        self.pub(topic_cmd(node_id, "ota/check"), payload, retain=False)
 
     def wipe_nvs(self, node_id: str) -> None:
         """Request that ``node_id`` erase its NVS flash storage."""

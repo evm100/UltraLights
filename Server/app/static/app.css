@@ -409,3 +409,40 @@ button.motion-legend-item {
   opacity: 0;
   pointer-events: none;
 }
+
+/* Brightness curve */
+
+.brightness-curve-canvas-wrap {
+  position: relative;
+  width: 100%;
+  touch-action: none;
+}
+
+.brightness-curve-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+}
+
+.brightness-curve-toggle {
+  width: 18px;
+  height: 18px;
+  accent-color: #7c3aed;
+}
+
+.brightness-curve-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .3rem .7rem;
+  border-radius: 9999px;
+  background: rgba(15,23,42,.55);
+  border: 1px solid rgba(148,163,184,.2);
+}
+
+.brightness-curve-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+}

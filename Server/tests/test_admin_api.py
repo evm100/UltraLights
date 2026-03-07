@@ -27,7 +27,7 @@ class _NoopBus:
     def white_set(self, *args, **kwargs):  # pragma: no cover - noop
         pass
 
-    def sensor_motion_program(self, *args, **kwargs):  # pragma: no cover - noop
+    def motion_on(self, *args, **kwargs):  # pragma: no cover - noop
         pass
 
     def status_request(self, *args, **kwargs):  # pragma: no cover - noop
@@ -555,3 +555,118 @@ def test_api_reorder_room_presets(monkeypatch, tmp_path, admin_user_session):
     finally:
         for module_name in ["app.routes_api", "app.presets", "app.config", "app.registry"]:
             sys.modules.pop(module_name, None)
+
+
+def test_delete_node_registration_cascades(monkeypatch, tmp_path, admin_user_session):
+    """Deleting a node registration also removes it from registry and presets."""
+    from copy import deepcopy
+
+    import app.routes_server_admin as server_admin
+    from app import registry as reg
+    from app.auth.models import NodeRegistration
+    from app.config import settings
+    from app.presets.custom_store import CustomPresetStore
+
+    node_id = "testnode123"
+    download_id = "dl-abc"
+
+    test_registry = [
+        {
+            "id": "house",
+            "name": "House",
+            "rooms": [
+                {
+                    "id": "room-a",
+                    "name": "Room A",
+                    "nodes": [
+                        {"id": node_id, "name": "Test Node", "kind": "ultranode"},
+                    ],
+                }
+            ],
+        }
+    ]
+    registry_path = tmp_path / "registry.json"
+    monkeypatch.setattr(settings, "REGISTRY_FILE", registry_path)
+    monkeypatch.setattr(settings, "DEVICE_REGISTRY", deepcopy(test_registry))
+
+    preset_path = tmp_path / "presets.json"
+    preset_store = CustomPresetStore(preset_path)
+    preset_store.save_preset(
+        "house",
+        "room-a",
+        {
+            "id": "p1",
+            "name": "Preset 1",
+            "actions": [
+                {"module": "white", "node": node_id, "channel": 0, "effect": "", "params": []},
+                {"module": "white", "node": "other-node", "channel": 0, "effect": "", "params": []},
+            ],
+        },
+    )
+    monkeypatch.setattr(server_admin, "remove_node_actions", preset_store.remove_node)
+
+    motion_calls: List[str] = []
+
+    class MotionPrefsStub:
+        def remove_node(self, nid: str) -> None:
+            motion_calls.append(nid)
+
+    monkeypatch.setattr(server_admin, "motion_preferences", MotionPrefsStub())
+
+    user, session = admin_user_session
+
+    registration = NodeRegistration(
+        node_id=node_id,
+        download_id=download_id,
+        token_hash="aabbcc",
+        house_slug="house",
+        room_id="room-a",
+    )
+    session.add(registration)
+    session.commit()
+
+    response = server_admin.delete_node_factory_registration(
+        node_id, current_user=user, session=session
+    )
+    assert response.status_code == 204
+
+    # Node should be gone from the in-memory registry.
+    _, _, found = reg.find_node(node_id)
+    assert found is None
+
+    # Only the other node's actions should remain in the preset.
+    remaining = preset_store.list_presets("house", "room-a")
+    actions = remaining[0]["actions"]
+    assert all(a["node"] != node_id for a in actions)
+    assert any(a["node"] == "other-node" for a in actions)
+
+    # Motion prefs cleanup should have been called.
+    assert motion_calls == [node_id]
+
+
+def test_delete_node_registration_missing_from_registry(monkeypatch, tmp_path, admin_user_session):
+    """Deleting a registration that was never placed in the registry succeeds."""
+    import app.routes_server_admin as server_admin
+    from app.auth.models import NodeRegistration
+    from app.config import settings
+
+    node_id = "unplaced-node"
+
+    monkeypatch.setattr(settings, "REGISTRY_FILE", tmp_path / "registry.json")
+    monkeypatch.setattr(settings, "DEVICE_REGISTRY", [{"id": "house", "rooms": []}])
+
+    monkeypatch.setattr(server_admin, "remove_node_actions", lambda nid: None)
+    monkeypatch.setattr(
+        server_admin, "motion_preferences", type("M", (), {"remove_node": lambda self, n: None})()
+    )
+
+    user, session = admin_user_session
+
+    registration = NodeRegistration(node_id=node_id, download_id="dl-xyz", token_hash="aabbcc")
+    session.add(registration)
+    session.commit()
+
+    response = server_admin.delete_node_factory_registration(
+        node_id, current_user=user, session=session
+    )
+    assert response.status_code == 204

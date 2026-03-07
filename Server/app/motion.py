@@ -197,7 +197,7 @@ class MotionManager:
 
         client.subscribe("ul/+/evt/+/motion")
         client.subscribe("ul/+/evt/status")
-        client.subscribe("ul/+/evt/motion/status")
+        client.subscribe("ul/+/evt/pir/status")
         self._request_status_for_registry(force=True)
         self._mqtt_connected = True
         logger.info("MotionManager MQTT connected: %s", reason_code)
@@ -232,7 +232,7 @@ class MotionManager:
         if len(parts) < 4 or parts[0] != "ul" or parts[2] != "evt":
             return
         node_id = parts[1]
-        if len(parts) >= 5 and parts[3] == "motion" and parts[4] == "status":
+        if len(parts) >= 5 and parts[3] == "pir" and parts[4] == "status":
             self._handle_motion_status_message(node_id, msg)
             return
         if len(parts) == 4 and parts[3] == "status":
@@ -254,6 +254,11 @@ class MotionManager:
         if not room or not house:
             return
         room_id = room["id"]
+        if room_id not in self.active:
+            # Room is not currently active — a fade may be in progress from a
+            # previous motion/off command.  Cancel it on all room nodes now.
+            for nid in self._room_node_ids(house["id"], room_id):
+                self.bus.motion_on(nid)
         entry = self.active.setdefault(
             room_id,
             {
@@ -543,7 +548,8 @@ class MotionManager:
         payload = self._decode_json(msg.payload)
         if not isinstance(payload, dict):
             return
-        pir_enabled = payload.get("pir_enabled")
+        # New firmware publishes {"enabled": bool} on evt/pir/status
+        pir_enabled = payload.get("enabled")
         if isinstance(pir_enabled, bool):
             entry = self.config.setdefault(node_id, {"enabled": True, "duration": 30})
             entry["pir_enabled"] = pir_enabled

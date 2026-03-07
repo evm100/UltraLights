@@ -67,24 +67,6 @@ bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
     return false;
   }
 
-  size_t user_pass_len = sizeof(out->user_password);
-  err = nvs_get_str(handle, "user_password", out->user_password, &user_pass_len);
-  if (err == ESP_ERR_NVS_NOT_FOUND) {
-    // Fall back to legacy key name "secret" for compatibility.
-    user_pass_len = sizeof(out->user_password);
-    err = nvs_get_str(handle, "secret", out->user_password, &user_pass_len);
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
-      out->user_password[0] = '\0';
-      err = ESP_OK;
-    }
-  }
-  if (err != ESP_OK) {
-    ESP_LOGW(TAG, "Failed to read stored account password: %s",
-             esp_err_to_name(err));
-    nvs_close(handle);
-    return false;
-  }
-
   size_t wifi_user_len = sizeof(out->wifi_username);
   err = nvs_get_str(handle, "wifi_user", out->wifi_username, &wifi_user_len);
   if (err == ESP_ERR_NVS_NOT_FOUND) {
@@ -99,7 +81,7 @@ bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
   }
 
   size_t wifi_user_pass_len = sizeof(out->wifi_user_password);
-  err = nvs_get_str(handle, "wifi_user_password", out->wifi_user_password,
+  err = nvs_get_str(handle, "wifi_user_pass", out->wifi_user_password,
                     &wifi_user_pass_len);
   if (err == ESP_ERR_NVS_NOT_FOUND) {
     out->wifi_user_password[0] = '\0';
@@ -111,6 +93,21 @@ bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
     nvs_close(handle);
     return false;
   }
+
+#if CONFIG_UL_MQTT_PROVISION_CERTS
+  size_t cert_len = sizeof(out->mqtt_client_cert);
+  err = nvs_get_blob(handle, "mqtt_cli_cert", out->mqtt_client_cert, &cert_len);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    out->mqtt_client_cert_len = 0;
+    err = ESP_OK;
+  }
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "Failed to read stored MQTT client certificate: %s",
+             esp_err_to_name(err));
+    nvs_close(handle);
+    return false;
+  }
+  out->mqtt_client_cert_len = cert_len;
 
   size_t key_len = sizeof(out->mqtt_client_key);
   err = nvs_get_blob(handle, "mqtt_client_key", out->mqtt_client_key, &key_len);
@@ -125,6 +122,7 @@ bool ul_wifi_credentials_load(ul_wifi_credentials_t *out) {
     return false;
   }
   out->mqtt_client_key_len = key_len;
+#endif
 
   nvs_close(handle);
   return have_ssid;
@@ -167,13 +165,6 @@ esp_err_t ul_wifi_credentials_save(const ul_wifi_credentials_t *creds) {
     return err;
   }
 
-  err = nvs_set_str(handle, "user_password", creds->user_password);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to save account password: %s", esp_err_to_name(err));
-    nvs_close(handle);
-    return err;
-  }
-
   err = nvs_set_str(handle, "wifi_user", creds->wifi_username);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to save Wi-Fi username: %s", esp_err_to_name(err));
@@ -181,7 +172,7 @@ esp_err_t ul_wifi_credentials_save(const ul_wifi_credentials_t *creds) {
     return err;
   }
 
-  err = nvs_set_str(handle, "wifi_user_password", creds->wifi_user_password);
+  err = nvs_set_str(handle, "wifi_user_pass", creds->wifi_user_password);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to save Wi-Fi user password: %s",
              esp_err_to_name(err));
@@ -189,8 +180,9 @@ esp_err_t ul_wifi_credentials_save(const ul_wifi_credentials_t *creds) {
     return err;
   }
 
+#if CONFIG_UL_MQTT_PROVISION_CERTS
   if (creds->mqtt_client_cert_len > 0) {
-    err = nvs_set_blob(handle, "mqtt_client_cert", creds->mqtt_client_cert,
+    err = nvs_set_blob(handle, "mqtt_cli_cert", creds->mqtt_client_cert,
                        creds->mqtt_client_cert_len);
     if (err != ESP_OK) {
       ESP_LOGE(TAG, "Failed to save MQTT client certificate: %s",
@@ -199,7 +191,7 @@ esp_err_t ul_wifi_credentials_save(const ul_wifi_credentials_t *creds) {
       return err;
     }
   } else {
-    esp_err_t erase_cert = nvs_erase_key(handle, "mqtt_client_cert");
+    esp_err_t erase_cert = nvs_erase_key(handle, "mqtt_cli_cert");
     if (erase_cert != ESP_OK && erase_cert != ESP_ERR_NVS_NOT_FOUND) {
       ESP_LOGW(TAG, "Failed to erase MQTT client certificate: %s",
                esp_err_to_name(erase_cert));
@@ -222,6 +214,7 @@ esp_err_t ul_wifi_credentials_save(const ul_wifi_credentials_t *creds) {
                esp_err_to_name(erase_key));
     }
   }
+#endif
 
   // Remove legacy key if it exists so future reads use the new name.
   esp_err_t erase_legacy = nvs_erase_key(handle, "secret");
@@ -270,12 +263,12 @@ esp_err_t ul_wifi_credentials_clear(void) {
     ESP_LOGW(TAG, "Failed to erase Wi-Fi username key: %s",
              esp_err_to_name(erase_err));
   }
-  erase_err = nvs_erase_key(handle, "wifi_user_password");
+  erase_err = nvs_erase_key(handle, "wifi_user_pass");
   if (erase_err != ESP_OK && erase_err != ESP_ERR_NVS_NOT_FOUND) {
     ESP_LOGW(TAG, "Failed to erase Wi-Fi user password key: %s",
              esp_err_to_name(erase_err));
   }
-  erase_err = nvs_erase_key(handle, "mqtt_client_cert");
+  erase_err = nvs_erase_key(handle, "mqtt_cli_cert");
   if (erase_err != ESP_OK && erase_err != ESP_ERR_NVS_NOT_FOUND) {
     ESP_LOGW(TAG, "Failed to erase MQTT client certificate key: %s",
              esp_err_to_name(erase_err));

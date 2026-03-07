@@ -148,6 +148,31 @@ class CustomPresetStore:
                     return True
             return False
 
+    def remove_node(self, node_id: str) -> None:
+        """Remove all actions referencing ``node_id`` from every stored preset."""
+        node_key = str(node_id).strip()
+        if not node_key:
+            return
+        changed = False
+        with self._lock:
+            for house_id in list(self._data.keys()):
+                rooms = self._data[house_id]
+                for room_id in list(rooms.keys()):
+                    presets = rooms[room_id]
+                    for preset in presets:
+                        actions = preset.get("actions")
+                        if not isinstance(actions, list):
+                            continue
+                        filtered = [
+                            a for a in actions
+                            if not (isinstance(a, dict) and str(a.get("node", "")).strip() == node_key)
+                        ]
+                        if len(filtered) != len(actions):
+                            preset["actions"] = filtered
+                            changed = True
+            if changed:
+                self._persist()
+
     def reorder_presets(
         self, house_id: str, room_id: str, preset_order: Iterable[Any]
     ) -> PresetList:

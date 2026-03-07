@@ -79,7 +79,6 @@ def _ensure_node_registration_columns() -> None:
     required: Dict[str, Dict[str, str]] = {
         "node_registrations": {
             "account_username": "ALTER TABLE node_registrations ADD COLUMN account_username VARCHAR(64)",
-            "account_password_hash": "ALTER TABLE node_registrations ADD COLUMN account_password_hash VARCHAR(255)",
             "account_credentials_received_at": "ALTER TABLE node_registrations ADD COLUMN account_credentials_received_at TIMESTAMP",
             "certificate_fingerprint": "ALTER TABLE node_registrations ADD COLUMN certificate_fingerprint VARCHAR(128)",
             "certificate_pem_path": "ALTER TABLE node_registrations ADD COLUMN certificate_pem_path VARCHAR(255)",
