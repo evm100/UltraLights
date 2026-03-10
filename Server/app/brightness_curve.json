@@ -1,56 +1,216 @@
 {
   "del-sur": {
     "kitchen": {
-      "enabled": false,
-      "points": [
-        {
-          "hour": 0.0,
-          "brightness": 9
-        },
-        {
-          "hour": 7.5,
-          "brightness": 2
-        },
-        {
-          "hour": 12.0,
-          "brightness": 72
-        },
-        {
-          "hour": 18.0,
-          "brightness": 255
-        },
-        {
-          "hour": 22.0,
-          "brightness": 50
+      "enabled": true,
+      "mode": "sync",
+      "channels": {
+        "_sync": {
+          "points": [
+            {
+              "hour": 0.0,
+              "brightness": 9
+            },
+            {
+              "hour": 5.5,
+              "brightness": 8
+            },
+            {
+              "hour": 10.5,
+              "brightness": 74
+            },
+            {
+              "hour": 18.0,
+              "brightness": 255
+            },
+            {
+              "hour": 22.0,
+              "brightness": 50
+            }
+          ]
         }
-      ]
+      }
+    },
+    "edgar": {
+      "enabled": false,
+      "mode": "per_channel",
+      "channels": {
+        "_sync": {
+          "points": [
+            {
+              "hour": 0.0,
+              "brightness": 66
+            },
+            {
+              "hour": 7.0,
+              "brightness": 119
+            },
+            {
+              "hour": 12.0,
+              "brightness": 91
+            },
+            {
+              "hour": 18.0,
+              "brightness": 154
+            },
+            {
+              "hour": 21.0,
+              "brightness": 191
+            }
+          ]
+        },
+        "n9d11y72ohy53h5fif3x3pbmwjcn6sk:rgb:0": {
+          "points": [
+            {
+              "hour": 1.0,
+              "brightness": 255
+            },
+            {
+              "hour": 2.5,
+              "brightness": 0
+            },
+            {
+              "hour": 12.0,
+              "brightness": 0
+            },
+            {
+              "hour": 15.5,
+              "brightness": 60
+            },
+            {
+              "hour": 19.5,
+              "brightness": 255
+            }
+          ]
+        },
+        "jhbox21w1lwi6aktvzs9t234w17q51d:ws:0": {
+          "points": [
+            {
+              "hour": 0.0,
+              "brightness": 255
+            },
+            {
+              "hour": 2.5,
+              "brightness": 0
+            },
+            {
+              "hour": 12.5,
+              "brightness": 0
+            },
+            {
+              "hour": 20.0,
+              "brightness": 0
+            },
+            {
+              "hour": 20.5,
+              "brightness": 255
+            }
+          ]
+        },
+        "jhbox21w1lwi6aktvzs9t234w17q51d:rgb:0": {
+          "points": [
+            {
+              "hour": 0.0,
+              "brightness": 0
+            },
+            {
+              "hour": 6.0,
+              "brightness": 0
+            },
+            {
+              "hour": 12.0,
+              "brightness": 0
+            },
+            {
+              "hour": 18.0,
+              "brightness": 0
+            },
+            {
+              "hour": 22.5,
+              "brightness": 0
+            }
+          ]
+        },
+        "jhbox21w1lwi6aktvzs9t234w17q51d:white:0": {
+          "points": [
+            {
+              "hour": 0.0,
+              "brightness": 0
+            },
+            {
+              "hour": 5.5,
+              "brightness": 0
+            },
+            {
+              "hour": 12.0,
+              "brightness": 0
+            },
+            {
+              "hour": 20.0,
+              "brightness": 255
+            },
+            {
+              "hour": 20.5,
+              "brightness": 0
+            }
+          ]
+        },
+        "jhbox21w1lwi6aktvzs9t234w17q51d:white:1": {
+          "points": [
+            {
+              "hour": 0.0,
+              "brightness": 20
+            },
+            {
+              "hour": 3.0,
+              "brightness": 0
+            },
+            {
+              "hour": 12.0,
+              "brightness": 0
+            },
+            {
+              "hour": 20.0,
+              "brightness": 255
+            },
+            {
+              "hour": 20.5,
+              "brightness": 0
+            }
+          ]
+        }
+      }
     }
   },
   "exampleHouse": {
     "example-room": {
       "enabled": false,
-      "points": [
-        {
-          "hour": 0.0,
-          "brightness": 0
-        },
-        {
-          "hour": 6.5,
-          "brightness": 0
-        },
-        {
-          "hour": 11.5,
-          "brightness": 83
-        },
-        {
-          "hour": 18.0,
-          "brightness": 0
-        },
-        {
-          "hour": 22.0,
-          "brightness": 0
+      "mode": "sync",
+      "channels": {
+        "_sync": {
+          "points": [
+            {
+              "hour": 0.0,
+              "brightness": 0
+            },
+            {
+              "hour": 6.5,
+              "brightness": 0
+            },
+            {
+              "hour": 11.5,
+              "brightness": 83
+            },
+            {
+              "hour": 18.0,
+              "brightness": 0
+            },
+            {
+              "hour": 22.0,
+              "brightness": 0
+            }
+          ]
         }
-      ]
+      }
     }
   }
 }

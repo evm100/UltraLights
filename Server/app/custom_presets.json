@@ -1,25 +1,5 @@
 {
   "del-sur": {
-    "edgar": [
-      {
-        "source": "custom",
-        "id": "purple",
-        "name": "Purple",
-        "actions": []
-      },
-      {
-        "source": "custom",
-        "id": "off",
-        "name": "Off \ud83d\udd34",
-        "actions": []
-      },
-      {
-        "source": "custom",
-        "id": "full-white",
-        "name": "Full White",
-        "actions": []
-      }
-    ],
     "master": [
       {
         "source": "custom",
@@ -118,6 +98,261 @@
             "channel": 0,
             "node": "o9byoq8arkqdvrb6cfe6xv9acn0mu1i",
             "module": "white"
+          }
+        ]
+      }
+    ],
+    "edgar": [
+      {
+        "source": "custom",
+        "id": "uv",
+        "name": "UV",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              48.0,
+              41.0,
+              255.0
+            ],
+            "color": [
+              48,
+              41,
+              255
+            ],
+            "name": "PC",
+            "strip": 0,
+            "node": "n9d11y72ohy53h5fif3x3pbmwjcn6sk",
+            "module": "rgb"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "color_swell",
+            "brightness": 255,
+            "params": [
+              0.0,
+              72.0,
+              255.0
+            ],
+            "color": [
+              17,
+              0,
+              255
+            ],
+            "strip": 0,
+            "node": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "module": "ws"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "off",
+        "name": "Off",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "name": "PC",
+            "strip": 0,
+            "node": "n9d11y72ohy53h5fif3x3pbmwjcn6sk",
+            "module": "rgb"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 0,
+            "node": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "channel": 1,
+            "node": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "module": "ws"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "white",
+        "name": "White",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              255.0,
+              192.0,
+              115.0
+            ],
+            "color": [
+              255,
+              192,
+              115
+            ],
+            "name": "PC",
+            "strip": 0,
+            "node": "n9d11y72ohy53h5fif3x3pbmwjcn6sk",
+            "module": "rgb"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "name": "Cool White",
+            "channel": 0,
+            "node": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "name": "Warm White",
+            "channel": 1,
+            "node": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "strip": 0,
+            "node": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "module": "ws"
+          }
+        ]
+      },
+      {
+        "source": "custom",
+        "id": "artic",
+        "name": "Artic",
+        "actions": [
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 255,
+            "params": [
+              255.0,
+              255.0,
+              255.0
+            ],
+            "color": [
+              255,
+              255,
+              255
+            ],
+            "name": "PC",
+            "strip": 0,
+            "node": "n9d11y72ohy53h5fif3x3pbmwjcn6sk",
+            "module": "rgb"
+          },
+          {
+            "enabled": true,
+            "effect": "swell",
+            "brightness": 255,
+            "params": [],
+            "name": "Cool White",
+            "channel": 0,
+            "node": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "solid",
+            "brightness": 0,
+            "params": [],
+            "name": "Warm White",
+            "channel": 1,
+            "node": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "module": "white"
+          },
+          {
+            "enabled": true,
+            "effect": "color_swell",
+            "brightness": 255,
+            "params": [
+              255.0,
+              255.0,
+              255.0
+            ],
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "name": "RGB",
+            "strip": 0,
+            "node": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "module": "ws"
           }
         ]
       }

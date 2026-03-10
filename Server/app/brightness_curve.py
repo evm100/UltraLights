@@ -10,7 +10,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import paho.mqtt.client as mqtt
+
 from .config import settings
+from .mqtt_tls import connect_mqtt_client
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +35,13 @@ NODE_COLORS = [
     "#fb923c",
     "#f87171",
 ]
+
+# Swell/breathing effects that restart from 0 each command — replace with solid
+SWELL_TO_SOLID = {
+    "color_swell": "solid",  # ws, rgb — keep color params
+    "swell": "solid",        # white — clear params
+    "breathe": "solid",      # white — clear params
+}
 
 
 def _catmull_rom(p0: float, p1: float, p2: float, p3: float, t: float) -> float:
@@ -103,7 +113,7 @@ class BrightnessCurveStore:
                 continue
             house_entry: Dict[str, Dict[str, Any]] = {}
             for room_id, curve in rooms.items():
-                clean = self._normalize_curve(curve)
+                clean = self._normalize_room_data(curve)
                 if clean is not None:
                     house_entry[str(room_id)] = clean
             if house_entry:
@@ -111,11 +121,8 @@ class BrightnessCurveStore:
         return data
 
     @staticmethod
-    def _normalize_curve(curve: Any) -> Optional[Dict[str, Any]]:
-        if not isinstance(curve, dict):
-            return None
-        enabled = bool(curve.get("enabled", False))
-        raw_points = curve.get("points")
+    def _normalize_points(raw_points: Any) -> Optional[List[Dict[str, Any]]]:
+        """Validate and normalize a list of curve points."""
         if not isinstance(raw_points, list):
             return None
         points: List[Dict[str, Any]] = []
@@ -133,7 +140,46 @@ class BrightnessCurveStore:
         if not points:
             return None
         points.sort(key=lambda p: p["hour"])
-        return {"enabled": enabled, "points": points}
+        return points
+
+    @staticmethod
+    def _normalize_room_data(curve: Any) -> Optional[Dict[str, Any]]:
+        """Normalize room curve data, handling both legacy and new formats."""
+        if not isinstance(curve, dict):
+            return None
+        enabled = bool(curve.get("enabled", False))
+
+        # Legacy format: top-level "points" without "channels"
+        if "points" in curve and "channels" not in curve:
+            pts = BrightnessCurveStore._normalize_points(curve.get("points"))
+            if pts is None:
+                return None
+            return {
+                "enabled": enabled,
+                "mode": "sync",
+                "channels": {"_sync": {"points": pts}},
+            }
+
+        # New format
+        channels_raw = curve.get("channels")
+        if not isinstance(channels_raw, dict):
+            return None
+        mode = curve.get("mode", "sync")
+        if mode not in ("sync", "per_channel"):
+            mode = "sync"
+
+        channels: Dict[str, Dict[str, Any]] = {}
+        for ch_key, ch_data in channels_raw.items():
+            if not isinstance(ch_data, dict):
+                continue
+            pts = BrightnessCurveStore._normalize_points(ch_data.get("points"))
+            if pts is not None:
+                channels[str(ch_key)] = {"points": pts}
+
+        if "_sync" not in channels:
+            return None
+
+        return {"enabled": enabled, "mode": mode, "channels": channels}
 
     def _save(self) -> None:
         serialized = json.dumps(self._data, indent=2)
@@ -150,33 +196,57 @@ class BrightnessCurveStore:
             curve = house.get(str(room_id))
             if curve is None:
                 return None
-            return {"enabled": curve["enabled"], "points": list(curve["points"])}
+            return {
+                "enabled": curve["enabled"],
+                "mode": curve.get("mode", "sync"),
+                "channels": {
+                    k: {"points": list(v["points"])}
+                    for k, v in curve.get("channels", {}).items()
+                },
+            }
 
     def set_curve(
         self,
         house_id: str,
         room_id: str,
-        points: List[Dict[str, Any]],
+        channels: Any,
         enabled: bool,
+        mode: str = "sync",
     ) -> Dict[str, Any]:
-        clean = self._normalize_curve({"enabled": enabled, "points": points})
+        # Backward compat: if called with a plain points list, wrap as sync
+        if isinstance(channels, list):
+            channels = {"_sync": {"points": channels}}
+            mode = "sync"
+
+        clean = self._normalize_room_data(
+            {"enabled": enabled, "mode": mode, "channels": channels}
+        )
         if clean is None:
             raise ValueError("invalid curve data")
         with self._lock:
             house = self._data.setdefault(str(house_id), {})
             house[str(room_id)] = clean
             self._save()
-            return {"enabled": clean["enabled"], "points": list(clean["points"])}
+            return {
+                "enabled": clean["enabled"],
+                "mode": clean["mode"],
+                "channels": {
+                    k: {"points": list(v["points"])}
+                    for k, v in clean["channels"].items()
+                },
+            }
 
     def get_brightness(
         self, house_id: str, room_id: str, when: Optional[datetime] = None
     ) -> Optional[int]:
+        """Return _sync channel brightness for backward compat."""
         curve = self.get_curve(house_id, room_id)
         if curve is None or not curve["enabled"]:
             return None
         if when is None:
             when = datetime.now()
-        return interpolate_brightness(curve["points"], when.hour + when.minute / 60.0)
+        sync_pts = curve.get("channels", {}).get("_sync", {}).get("points", [])
+        return interpolate_brightness(sync_pts, when.hour + when.minute / 60.0)
 
     def iter_enabled(self) -> List[Tuple[str, str, Dict[str, Any]]]:
         with self._lock:
@@ -185,7 +255,18 @@ class BrightnessCurveStore:
                 for room_id, curve in rooms.items():
                     if curve.get("enabled"):
                         result.append(
-                            (house_id, room_id, {"enabled": True, "points": list(curve["points"])})
+                            (
+                                house_id,
+                                room_id,
+                                {
+                                    "enabled": True,
+                                    "mode": curve.get("mode", "sync"),
+                                    "channels": {
+                                        k: {"points": list(v["points"])}
+                                        for k, v in curve.get("channels", {}).items()
+                                    },
+                                },
+                            )
                         )
             return result
 
@@ -200,16 +281,95 @@ class BrightnessCurveStore:
                 self._save()
 
 
+# Key: (node_id, module, strip_or_channel)
+_StateKey = Tuple[str, str, int]
+
+
 class BrightnessCurveApplicator:
-    TICK_INTERVAL = 60
+    TICK_INTERVAL = 30
 
     def __init__(self, store: BrightnessCurveStore) -> None:
         self.store = store
-        self._last: Dict[Tuple[str, str], int] = {}
+        self._last: Dict[Tuple[str, str], Dict[str, int]] = {}
+        self._last_sent: Dict[_StateKey, Dict[str, Any]] = {}
         self._shutdown = False
         self._thread: Optional[threading.Thread] = None
 
+        # MQTT state tracker — learns current effect state from retained cmd topics
+        self._state_lock = threading.Lock()
+        self._node_state: Dict[_StateKey, Dict[str, Any]] = {}
+        self._state_client: Optional[mqtt.Client] = None
+
+    # ------------------------------------------------------------------
+    # MQTT state tracker
+    # ------------------------------------------------------------------
+
+    def _start_state_tracker(self) -> None:
+        client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2, client_id="brightness-curve-state"
+        )
+        enable_logger = getattr(client, "enable_logger", None)
+        if callable(enable_logger):
+            enable_logger()
+        client.on_connect = self._state_on_connect
+        client.on_message = self._state_on_message
+        connect_mqtt_client(
+            client, keepalive=30, start_async=True, raise_on_failure=False
+        )
+        loop_start = getattr(client, "loop_start", None)
+        if callable(loop_start):
+            loop_start()
+        self._state_client = client
+
+    def _stop_state_tracker(self) -> None:
+        if self._state_client is None:
+            return
+        loop_stop = getattr(self._state_client, "loop_stop", None)
+        if callable(loop_stop):
+            loop_stop()
+        self._state_client.disconnect()
+        self._state_client = None
+
+    def _state_on_connect(
+        self, client: mqtt.Client, userdata, flags, reason_code, properties=None
+    ) -> None:
+        client.subscribe("ul/+/cmd/ws/set/+")
+        client.subscribe("ul/+/cmd/rgb/set/+")
+        client.subscribe("ul/+/cmd/white/set/+")
+
+    def _state_on_message(
+        self, client: mqtt.Client, userdata, msg: mqtt.MQTTMessage
+    ) -> None:
+        # Topic format: ul/<node_id>/cmd/<module>/set/<strip>
+        parts = (msg.topic or "").split("/")
+        if len(parts) < 6 or parts[0] != "ul" or parts[2] != "cmd" or parts[4] != "set":
+            return
+        node_id = parts[1]
+        module = parts[3]  # ws, rgb, or white
+        try:
+            strip = int(parts[5])
+        except (ValueError, IndexError):
+            return
+        try:
+            payload = json.loads(msg.payload.decode("utf-8"))
+        except Exception:
+            return
+        if not isinstance(payload, dict):
+            return
+        key: _StateKey = (node_id, module, strip)
+        with self._state_lock:
+            self._node_state[key] = payload
+
+    def get_node_state(self, node_id: str, module: str, strip: int) -> Optional[Dict[str, Any]]:
+        with self._state_lock:
+            return self._node_state.get((node_id, module, strip))
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
     def start(self) -> None:
+        self._start_state_tracker()
         self._thread = threading.Thread(target=self._worker, daemon=True, name="brightness-curve")
         self._thread.start()
 
@@ -217,6 +377,7 @@ class BrightnessCurveApplicator:
         self._shutdown = True
         if self._thread is not None:
             self._thread.join(timeout=5.0)
+        self._stop_state_tracker()
 
     def _worker(self) -> None:
         while not self._shutdown:
@@ -229,8 +390,42 @@ class BrightnessCurveApplicator:
                     return
                 time.sleep(1)
 
-    def _tick(self) -> None:
-        from . import registry
+    # ------------------------------------------------------------------
+    # Core logic — apply brightness to a room's nodes
+    # ------------------------------------------------------------------
+
+    def _build_command(
+        self, module: str, state: Optional[Dict[str, Any]], brightness: int
+    ) -> Dict[str, Any]:
+        """Build a command payload preserving current effect/params."""
+        if state:
+            effect = state.get("effect", "solid")
+            params = state.get("params", [])
+            # Replace swell effects with solid equivalents
+            if effect in SWELL_TO_SOLID:
+                solid = SWELL_TO_SOLID[effect]
+                # For white swell/breathe, clear params
+                if module == "white" and effect in ("swell", "breathe"):
+                    params = []
+                effect = solid
+            return {"effect": effect, "brightness": brightness, "params": params}
+        # No state — default fallback
+        if module == "white":
+            return {"effect": "solid", "brightness": brightness, "params": []}
+        # ws/rgb default to warm white
+        return {"effect": "solid", "brightness": brightness, "params": [255, 200, 150]}
+
+    def _known_strips(self, node_id: str, module: str) -> List[int]:
+        """Return all strip/channel indices we've seen for this node+module."""
+        strips = []
+        with self._state_lock:
+            for key in self._node_state:
+                if key[0] == node_id and key[1] == module:
+                    strips.append(key[2])
+        return sorted(strips) if strips else [0]
+
+    def _send_command(self, node_id: str, module: str, strip: int, brightness: int) -> None:
+        """Build and send a brightness command for a single strip."""
         from .routes_api import get_bus
 
         try:
@@ -238,20 +433,53 @@ class BrightnessCurveApplicator:
         except Exception:
             return
 
-        now = datetime.now()
-        enabled = self.store.iter_enabled()
-        active_keys: set[Tuple[str, str]] = set()
+        state = self.get_node_state(node_id, module, strip)
+        cmd = self._build_command(module, state, brightness)
+        cache_key: _StateKey = (node_id, module, strip)
+        if self._last_sent.get(cache_key) == cmd:
+            return
+        self._last_sent[cache_key] = cmd
+        if module == "white":
+            bus.white_set(
+                node_id, strip, cmd["effect"], cmd["brightness"],
+                cmd["params"] or None,
+            )
+        elif module == "ws":
+            bus.ws_set(
+                node_id, strip, cmd["effect"], cmd["brightness"],
+                cmd["params"] or None,
+            )
+        elif module == "rgb":
+            bus.rgb_set(
+                node_id, strip, cmd["effect"], cmd["brightness"],
+                cmd["params"] or None,
+            )
 
-        for house_id, room_id, curve in enabled:
-            brightness = interpolate_brightness(curve["points"], now.hour + now.minute / 60.0)
-            key = (house_id, room_id)
-            active_keys.add(key)
-            if self._last.get(key) == brightness:
-                continue
-            self._last[key] = brightness
-            house, room = registry.find_room(house_id, room_id)
-            if not room:
-                continue
+    def apply_brightness_to_room(
+        self, house_id: str, room_id: str, brightnesses: Any, mode: str = "sync"
+    ) -> None:
+        """Apply brightness values to nodes in a room.
+
+        brightnesses: Dict[str, int] — channel_key -> brightness value
+          sync mode: {"_sync": N} -> apply N to all nodes
+          per_channel mode: {"nodeId:mod:strip": N, ...} -> apply per strip
+        Also accepts a plain int for backward compat (treated as sync).
+        """
+        # Backward compat: plain int
+        if isinstance(brightnesses, int):
+            brightnesses = {"_sync": brightnesses}
+            mode = "sync"
+
+        self._last[(house_id, room_id)] = dict(brightnesses)
+
+        from . import registry
+
+        house, room = registry.find_room(house_id, room_id)
+        if not room:
+            return
+
+        if mode == "sync":
+            brightness = brightnesses.get("_sync", 0)
             for node in room.get("nodes", []):
                 if not isinstance(node, dict):
                     continue
@@ -259,16 +487,82 @@ class BrightnessCurveApplicator:
                 if not node_id:
                     continue
                 modules = node.get("modules") or []
-                if "white" in modules:
-                    bus.white_set(node_id, 0, "solid", brightness)
-                if "ws" in modules:
-                    bus.ws_set(node_id, 0, "solid", brightness, [255, 200, 150])
-                if "rgb" in modules:
-                    bus.rgb_set(node_id, 0, "solid", brightness, [255, 200, 150])
+                for module in ("ws", "rgb", "white"):
+                    if module not in modules:
+                        continue
+                    for strip in self._known_strips(node_id, module):
+                        self._send_command(node_id, module, strip, brightness)
+        else:
+            # per_channel mode
+            sync_brightness = brightnesses.get("_sync")
+            for node in room.get("nodes", []):
+                if not isinstance(node, dict):
+                    continue
+                node_id = node.get("id")
+                if not node_id:
+                    continue
+                modules = node.get("modules") or []
+                for module in ("ws", "rgb", "white"):
+                    if module not in modules:
+                        continue
+                    for strip in self._known_strips(node_id, module):
+                        ch_key = f"{node_id}:{module}:{strip}"
+                        brightness = brightnesses.get(ch_key)
+                        if brightness is None and sync_brightness is not None:
+                            brightness = sync_brightness
+                        if brightness is None:
+                            continue
+                        self._send_command(node_id, module, strip, brightness)
+
+    def _tick(self) -> None:
+        now = datetime.now()
+        hour = now.hour + now.minute / 60.0
+        enabled = self.store.iter_enabled()
+        active_keys: set[Tuple[str, str]] = set()
+
+        for house_id, room_id, room_data in enabled:
+            key = (house_id, room_id)
+            active_keys.add(key)
+            mode = room_data.get("mode", "sync")
+            channels = room_data.get("channels", {})
+            brightnesses: Dict[str, int] = {}
+
+            if mode == "sync":
+                pts = channels.get("_sync", {}).get("points", [])
+                brightnesses["_sync"] = interpolate_brightness(pts, hour)
+            else:
+                for ch_key, ch_data in channels.items():
+                    if ch_key == "_sync":
+                        continue
+                    brightnesses[ch_key] = interpolate_brightness(
+                        ch_data.get("points", []), hour
+                    )
+                # Keep _sync for fallback
+                sync_pts = channels.get("_sync", {}).get("points", [])
+                if sync_pts:
+                    brightnesses["_sync"] = interpolate_brightness(sync_pts, hour)
+
+            if self._last.get(key) == brightnesses:
+                continue
+            self._last[key] = dict(brightnesses)
+            self.apply_brightness_to_room(house_id, room_id, brightnesses, mode)
 
         for stale_key in list(self._last.keys()):
             if stale_key not in active_keys:
                 self._last.pop(stale_key, None)
+
+        # Clean stale sent-command cache for rooms no longer enabled
+        stale_nodes: set[str] = set()
+        for house_id, room_id, _ in enabled:
+            from . import registry
+            _, room = registry.find_room(house_id, room_id)
+            if room:
+                for node in room.get("nodes", []):
+                    if isinstance(node, dict) and node.get("id"):
+                        stale_nodes.add(node["id"])
+        for cache_key in list(self._last_sent.keys()):
+            if cache_key[0] not in stale_nodes:
+                self._last_sent.pop(cache_key, None)
 
 
 brightness_curve_store = BrightnessCurveStore(settings.BRIGHTNESS_CURVE_FILE)

@@ -44,7 +44,8 @@ from .effects import (
     WS_EFFECT_TIER_LABELS,
     WS_EFFECT_TIER_ORDER,
 )
-from .brightness_curve import brightness_curve_store, DEFAULT_POINTS, NODE_COLORS
+from .brightness_curve import brightness_curve_store, brightness_curve_applicator, DEFAULT_POINTS, NODE_COLORS
+from .channel_names import channel_names
 from .presets import get_room_presets
 from .motion import motion_manager
 from .motion_schedule import motion_schedule
@@ -1066,15 +1067,43 @@ def room_page(
             )
     curve = brightness_curve_store.get_curve(house_slug, room_id)
     if curve is None:
-        curve = {"enabled": False, "points": list(DEFAULT_POINTS)}
+        curve = {
+            "enabled": False,
+            "mode": "sync",
+            "channels": {"_sync": {"points": list(DEFAULT_POINTS)}},
+        }
     room_nodes = room_ctx.filtered_room.get("nodes") or []
-    curve_nodes = []
-    for idx, n in enumerate(room_nodes):
+
+    MODULE_LABEL_PREFIX = {"ws": "Strip", "rgb": "Strip", "white": "Channel"}
+    CHANNEL_COLORS = [
+        "#38bdf8", "#a78bfa", "#f472b6", "#34d399",
+        "#fbbf24", "#fb923c", "#f87171", "#818cf8",
+        "#2dd4bf", "#e879f9", "#22d3ee", "#a3e635",
+    ]
+    curve_channels = []
+    color_idx = 0
+    for n in room_nodes:
         if not isinstance(n, dict):
             continue
-        kind = str(n.get("kind") or "").lower()
-        color = "#ffffff" if kind in ("white", "ultranode", "") else NODE_COLORS[idx % len(NODE_COLORS)]
-        curve_nodes.append({"id": n.get("id", ""), "name": n.get("name", ""), "color": color})
+        node_id = n.get("id", "")
+        node_name = n.get("name", "")
+        for module in ("ws", "rgb", "white"):
+            if module not in (n.get("modules") or []):
+                continue
+            strips = brightness_curve_applicator._known_strips(node_id, module)
+            for strip in strips:
+                custom = channel_names.get_name(node_id, module, strip)
+                if custom:
+                    label = f"{node_name} {custom}"
+                else:
+                    label = f"{node_name} {MODULE_LABEL_PREFIX[module]} {strip}"
+                curve_channels.append({
+                    "key": f"{node_id}:{module}:{strip}",
+                    "label": label,
+                    "color": CHANNEL_COLORS[color_idx % len(CHANNEL_COLORS)],
+                })
+                color_idx += 1
+
     return templates.TemplateResponse(
         request,
         "room.html",
@@ -1090,7 +1119,7 @@ def room_page(
             "can_manage_room": can_manage,
             "pending_nodes": pending_nodes,
             "brightness_curve": curve,
-            "brightness_curve_nodes": curve_nodes,
+            "brightness_curve_channels": curve_channels,
             **nav_context,
         },
     )

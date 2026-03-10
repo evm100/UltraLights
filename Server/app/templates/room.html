@@ -40,36 +40,33 @@
 <div class="mt-8" id="brightnessCurve"
      data-api-base="/api/house/{{ house_public_id }}/room/{{ room.id }}"
      data-curve='{{ brightness_curve|tojson }}'
-     data-nodes='{{ brightness_curve_nodes|tojson }}'>
+     data-channels='{{ brightness_curve_channels|tojson }}'>
   <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-    <h2 class="text-2xl font-semibold">Brightness Curve</h2>
-    <div class="flex items-center gap-3">
-      <label class="flex items-center gap-2 text-sm cursor-pointer">
-        <input type="checkbox" id="brightnessCurveEnabled" class="brightness-curve-toggle" />
-        <span class="font-semibold uppercase tracking-wide text-xs opacity-80">Auto</span>
-      </label>
-      <button id="brightnessCurveReset" type="button" class="glass px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide uppercase hover:ring-2 hover:ring-indigo-400">Reset</button>
-      <button id="brightnessCurveSave" type="button" class="motion-button motion-button--primary" disabled>Save</button>
-    </div>
+    <label class="bc-toggle" for="brightnessCurveEnabled">
+      <input type="checkbox" id="brightnessCurveEnabled" class="bc-toggle__input" />
+      <span class="bc-toggle__track"><span class="bc-toggle__knob"></span></span>
+      <h2 class="text-2xl font-semibold" style="margin:0">Brightness Curve</h2>
+    </label>
   </div>
   <div class="glass rounded-xl p-4">
     <div class="brightness-curve-canvas-wrap">
       <canvas id="brightnessCurveCanvas"></canvas>
     </div>
-    <div id="brightnessCurveStatus" class="text-sm mt-3 opacity-80" role="status" aria-live="polite"></div>
-    {% if brightness_curve_nodes %}
-    <div class="flex flex-wrap gap-2 mt-3">
-      {% for n in brightness_curve_nodes %}
-      <div class="brightness-curve-legend-item">
-        <span class="brightness-curve-legend-swatch" style="background: {{ n.color }}"></span>
-        <span class="text-xs font-semibold opacity-80">{{ n.name }}</span>
-      </div>
+    <div class="flex flex-wrap gap-2 mt-3" id="brightnessCurveChannels">
+      <button type="button" class="bc-channel-btn bc-channel-btn--active" data-channel-key="_sync">
+        <span class="brightness-curve-legend-swatch" style="background: #e2e8f0"></span>
+        <span class="text-xs font-semibold">Sync All</span>
+      </button>
+      {% for ch in brightness_curve_channels %}
+      <button type="button" class="bc-channel-btn" data-channel-key="{{ ch.key }}">
+        <span class="brightness-curve-legend-swatch" style="background: {{ ch.color }}"></span>
+        <span class="text-xs font-semibold opacity-80">{{ ch.label }}</span>
+      </button>
       {% endfor %}
     </div>
-    {% endif %}
   </div>
 </div>
-<script src="/static/brightness_curve.js"></script>
+<script src="/static/brightness_curve.js?v=3"></script>
 {% if motion_config %}
 <div class="mt-8" id="motionSchedule" data-save-url="/api/house/{{ house_public_id }}/room/{{ room.id }}/motion-schedule" data-slot-minutes="{{ motion_config.slot_minutes|default(60) }}" data-color-url="/api/house/{{ house_public_id }}/room/{{ room.id }}/motion-schedule/color">
   <h2 class="text-2xl font-semibold mb-4">Motion Schedule</h2>

@@ -25,7 +25,7 @@ from .motion_schedule import motion_schedule
 from .motion_prefs import motion_preferences
 from .status_monitor import status_monitor
 from .brightness_limits import brightness_limits
-from .brightness_curve import brightness_curve_store, DEFAULT_POINTS
+from .brightness_curve import brightness_curve_store, brightness_curve_applicator, DEFAULT_POINTS
 from .channel_names import channel_names
 from .config import settings
 from .database import get_session
@@ -1135,7 +1135,11 @@ def api_get_brightness_curve(
     room_ctx = _require_room(policy, house_id, room_id)
     curve = brightness_curve_store.get_curve(room_ctx.house.slug, room_id)
     if curve is None:
-        curve = {"enabled": False, "points": list(DEFAULT_POINTS)}
+        curve = {
+            "enabled": False,
+            "mode": "sync",
+            "channels": {"_sync": {"points": list(DEFAULT_POINTS)}},
+        }
     return curve
 
 
@@ -1150,16 +1154,46 @@ def api_set_brightness_curve(
 ):
     policy = _build_policy(session, current_user)
     room_ctx = _require_room(policy, house_id, room_id)
-    points = payload.get("points")
-    if not isinstance(points, list) or not points:
-        raise HTTPException(400, "points must be a non-empty list")
     enabled = bool(payload.get("enabled", False))
+
+    # Backward compat: legacy payload with top-level "points"
+    if "points" in payload and "channels" not in payload:
+        channels = {"_sync": {"points": payload["points"]}}
+        mode = "sync"
+    else:
+        channels = payload.get("channels")
+        if not isinstance(channels, dict) or "_sync" not in channels:
+            raise HTTPException(400, "channels must include _sync")
+        mode = payload.get("mode", "sync")
+
     try:
         saved = brightness_curve_store.set_curve(
-            room_ctx.house.slug, room_id, points, enabled
+            room_ctx.house.slug, room_id, channels, enabled, mode
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+
+    # When the curve is enabled, apply brightness immediately so nodes
+    # update in real time while the user edits.
+    if enabled:
+        # New format: dict of channel_key -> brightness
+        apply_brightnesses = payload.get("apply_brightnesses")
+        if isinstance(apply_brightnesses, dict):
+            clean = {}
+            for k, v in apply_brightnesses.items():
+                if isinstance(v, (int, float)) and 0 <= int(v) <= 255:
+                    clean[str(k)] = int(v)
+            if clean:
+                brightness_curve_applicator.apply_brightness_to_room(
+                    room_ctx.house.slug, room_id, clean, mode
+                )
+        else:
+            # Legacy: single int
+            apply_brightness = payload.get("apply_brightness")
+            if isinstance(apply_brightness, int) and 0 <= apply_brightness <= 255:
+                brightness_curve_applicator.apply_brightness_to_room(
+                    room_ctx.house.slug, room_id, apply_brightness
+                )
     return saved
 
 

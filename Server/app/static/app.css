@@ -424,10 +424,60 @@ button.motion-legend-item {
   border-radius: 12px;
 }
 
-.brightness-curve-toggle {
+/* Toggle switch */
+.bc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bc-toggle__input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.bc-toggle__track {
+  position: relative;
+  flex-shrink: 0;
+  width: 52px;
+  height: 28px;
+  border-radius: 9999px;
+  background: rgba(100, 116, 139, 0.5);
+  border: 2px solid rgba(148, 163, 184, 0.3);
+  transition: background .2s, border-color .2s, box-shadow .2s;
+}
+
+.bc-toggle__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
   width: 18px;
   height: 18px;
-  accent-color: #7c3aed;
+  border-radius: 50%;
+  background: #94a3b8;
+  transition: transform .2s, background .2s, box-shadow .2s;
+}
+
+.bc-toggle__input:checked + .bc-toggle__track {
+  background: rgba(124, 58, 237, 0.75);
+  border-color: rgba(167, 139, 250, 0.7);
+  box-shadow: 0 0 16px rgba(124, 58, 237, 0.45);
+}
+
+.bc-toggle__input:checked + .bc-toggle__track .bc-toggle__knob {
+  transform: translateX(24px);
+  background: #fff;
+  box-shadow: 0 0 8px rgba(124, 58, 237, 0.6);
+}
+
+.bc-toggle__input:focus-visible + .bc-toggle__track {
+  outline: 2px solid rgba(167, 139, 250, 0.8);
+  outline-offset: 2px;
 }
 
 .brightness-curve-legend-item {
@@ -445,4 +495,29 @@ button.motion-legend-item {
   height: 10px;
   border-radius: 50%;
   box-shadow: 0 0 6px currentColor;
+}
+
+/* Channel selector buttons */
+.bc-channel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .3rem .7rem;
+  border-radius: 9999px;
+  background: rgba(15,23,42,.55);
+  border: 1px solid rgba(148,163,184,.2);
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+  font: inherit;
+}
+
+.bc-channel-btn:hover {
+  border-color: rgba(148,163,184,.5);
+}
+
+.bc-channel-btn--active {
+  border-color: rgba(167,139,250,.7);
+  background: rgba(124,58,237,.18);
+  box-shadow: 0 0 12px rgba(124,58,237,.35);
 }

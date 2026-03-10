@@ -50,6 +50,18 @@
               "rgb"
             ],
             "download_id": "RWeFaFO5WBysE54QSN3QNgJNPT6pIKeGsm4QQeuIxH85yNS1"
+          },
+          {
+            "id": "jhbox21w1lwi6aktvzs9t234w17q51d",
+            "name": "evmDesk",
+            "kind": "ultranode",
+            "modules": [
+              "ws",
+              "rgb",
+              "white",
+              "ota"
+            ],
+            "download_id": "Vtk4p5N8jdNh2dXUfE2ATFHuyzGqcxFq23f7k9AhYQLSkJsA"
           }
         ]
       }
@@ -84,6 +96,11 @@
             "download_id": "dv6UW072KFFQMseZSRGSAKPmR3tyyFgqnDwdZnPfYQmO0l9u"
           }
         ]
+      },
+      {
+        "id": "asdf",
+        "name": "asdf",
+        "nodes": []
       }
     ],
     "external_id": "Nbsw0Ag8pZhZeKv6S3x8vYogkFp12ZGlgBulNEa3NeNEBTuwGzfhV87pXSApI7nI",

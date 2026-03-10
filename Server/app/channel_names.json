@@ -37,5 +37,25 @@
     "rgb": {
       "0": "PC"
     }
+  },
+  "jhbox21w1lwi6aktvzs9t234w17q51d": {
+    "white": {
+      "0": "Cool White",
+      "1": "Warm White"
+    },
+    "ws": {
+      "0": "RGB"
+    }
+  },
+  "t40ew08fcz50se4sm7ll4fh1c2huuk1": {
+    "white": {
+      "0": "⬆️",
+      "1": "⬇️"
+    }
+  },
+  "o9byoq8arkqdvrb6cfe6xv9acn0mu1i": {
+    "white": {
+      "0": "Sala"
+    }
   }
 }
