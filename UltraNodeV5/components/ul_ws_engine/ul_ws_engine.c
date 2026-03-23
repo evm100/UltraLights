@@ -88,7 +88,7 @@ typedef struct {
     const ws_effect_t* eff;
     uint8_t solid_r, solid_g, solid_b;
     uint8_t brightness; // 0..255
-    float frame_pos;
+    uint32_t frame_idx;
     int pixels;
     led_strip_handle_t handle;
     uint8_t* frame; // rgb * pixels

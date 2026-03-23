@@ -13,13 +13,52 @@
   .glass { backdrop-filter: blur(12px); background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.04)); border: 1px solid rgba(255,255,255,.10); box-shadow: var(--glow);}
   .neon { text-shadow: 0 0 12px rgba(130, 90, 255, .9), 0 0 32px rgba(130, 90, 255, .5); }
   .pill { border-radius: 9999px; }
+  /* Mobile menu bubble */
+  .mobile-menu-bubble {
+    display: flex; flex-direction: column; align-items: flex-end;
+    gap: 3px; padding: .7rem 1.15rem; border-radius: 18px;
+    background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.04));
+    border: 1px solid rgba(255,255,255,.10);
+    box-shadow: var(--glow); cursor: pointer;
+    transition: border-color .15s ease, box-shadow .15s ease;
+    max-width: 160px; position: relative;
+  }
+  .mobile-menu-bubble:active { transform: translateY(1px); }
+  .mobile-menu-bubble:hover,
+  .mobile-menu-bubble[aria-expanded="true"] {
+    border-color: rgba(130,90,255,.5);
+    box-shadow: 0 0 20px rgba(125,80,255,.45);
+  }
+  .mobile-menu-chevron {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    color: rgba(148,163,184,.7); transition: transform .2s ease;
+  }
+  .mobile-menu-bubble[aria-expanded="true"] .mobile-menu-chevron {
+    transform: translateY(-50%) rotate(180deg);
+  }
+  /* Mobile dropdown */
+  .mobile-menu-dropdown {
+    position: absolute; top: calc(100% + 8px); right: 0;
+    width: max(280px, 85vw); max-width: 360px;
+    background: linear-gradient(180deg, rgba(15,20,35,.97), rgba(10,14,26,.98));
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,.10); border-radius: 18px;
+    box-shadow: 0 0 30px rgba(120,70,255,.3), 0 20px 60px rgba(0,0,0,.5);
+    z-index: 50; overflow: hidden;
+    animation: mobileMenuIn .2s ease;
+  }
+  @keyframes mobileMenuIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 </style>
 </head>
 {% set has_nav = nav is defined and nav %}
 <body class="min-h-screen bg-slate-950 text-slate-100">
   <div class="min-h-screen flex flex-col lg:flex-row">
     {% if has_nav %}
-    <aside class="w-full lg:w-80 xl:w-96 bg-slate-950/70 border-b lg:border-b-0 lg:border-r border-slate-800/60" aria-label="Primary navigation">
+    {# ── Desktop sidebar (hidden on mobile) ── #}
+    <aside class="hidden lg:block w-80 xl:w-96 bg-slate-950/70 border-r border-slate-800/60" aria-label="Primary navigation">
       <div class="h-full flex flex-col gap-6 px-6 py-8">
         <div>
           <div class="text-xs uppercase tracking-wide text-slate-500">Signed in</div>
@@ -89,13 +128,91 @@
     {% endif %}
     <div class="flex-1 flex flex-col min-h-screen">
       <header class="px-6 py-8 border-b border-slate-800/60">
-        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
             <h1 class="text-4xl md:text-5xl font-extrabold neon">UltraLights</h1>
             {% if subtitle or title %}
             <p class="opacity-70 mt-1 text-sm md:text-base">{{ subtitle or title }}</p>
             {% endif %}
           </div>
+          {% if has_nav %}
+          {# ── Mobile menu bubble (hidden on desktop) ── #}
+          <div class="lg:hidden relative" id="mobileMenuWrap">
+            <button id="mobileMenuBtn" type="button" class="mobile-menu-bubble" aria-expanded="false" aria-controls="mobileMenuDropdown">
+              <span class="text-sm font-semibold text-slate-100 leading-tight truncate">{{ nav.username }}</span>
+              <span class="text-xs text-slate-400 leading-tight truncate">{{ nav.active_house.name if nav.active_house else 'No house' }}</span>
+              <svg class="mobile-menu-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            {# ── Mobile dropdown nav ── #}
+            <div id="mobileMenuDropdown" class="mobile-menu-dropdown" hidden>
+              <div class="flex flex-col gap-4 p-5">
+                <div>
+                  <div class="text-xs uppercase tracking-wide text-slate-500">Signed in</div>
+                  <div class="mt-1 text-base font-semibold">{{ nav.username }}</div>
+                  {% if nav.active_house %}
+                  <div class="mt-3">
+                    <div class="text-xs uppercase tracking-wide text-slate-500">Active house</div>
+                    <a href="{{ nav.active_house.url }}" class="mt-1 block text-lg font-semibold text-slate-100 hover:text-indigo-100">
+                      {{ nav.active_house.name }}
+                    </a>
+                  </div>
+                  {% else %}
+                  <p class="mt-3 text-sm text-slate-400">Select a house below to begin.</p>
+                  {% endif %}
+                </div>
+                <nav class="max-h-[50vh] overflow-y-auto pr-1">
+                  <div class="text-xs uppercase tracking-wide text-slate-500 mb-3">Houses</div>
+                  {% if nav.houses %}
+                  <ul class="space-y-3">
+                    {% for house in nav.houses %}
+                    <li class="space-y-2">
+                      <a href="{{ house.url }}" class="block rounded-2xl border px-4 py-3 transition {{ 'border-indigo-500/70 bg-indigo-600/15 text-indigo-100 shadow-lg shadow-indigo-600/20' if house.is_active else 'border-slate-800/80 bg-slate-900/60 hover:border-indigo-500/50 hover:bg-slate-900/80' }}">
+                        <div class="text-sm font-semibold leading-tight">{{ house.name }}</div>
+                      </a>
+                      {% if house.rooms %}
+                      <ul class="ml-3 border-l border-slate-800/60 pl-3 space-y-1">
+                        {% for room in house.rooms %}
+                        <li>
+                          <a href="{{ room.url }}" class="block rounded-xl px-3 py-1 text-sm transition {{ 'bg-indigo-500/20 text-indigo-100' if room.is_active else 'text-slate-300 hover:bg-slate-800/60 hover:text-slate-100' }}">
+                            {{ room.name }}
+                          </a>
+                        </li>
+                        {% endfor %}
+                      </ul>
+                      {% else %}
+                      <div class="ml-3 text-xs text-slate-500">No rooms assigned</div>
+                      {% endif %}
+                      {% if house.admin_url %}
+                      <a href="{{ house.admin_url }}" class="inline-flex items-center gap-2 rounded-xl border border-slate-800/70 bg-slate-900/60 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-indigo-400 hover:text-indigo-100">
+                        Manage house
+                      </a>
+                      {% endif %}
+                    </li>
+                    {% endfor %}
+                  </ul>
+                  {% else %}
+                  <p class="text-sm text-slate-400">No houses assigned to your account.</p>
+                  {% endif %}
+                </nav>
+                <div class="flex flex-col gap-2 pt-2 border-t border-slate-800/60">
+                  {% if nav.show_admin %}
+                  <a href="/admin" class="w-full text-center rounded-xl border border-slate-800/70 bg-slate-900/70 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-indigo-100">
+                    Admin Panel
+                  </a>
+                  {% endif %}
+                  {% if nav.show_server_admin %}
+                  <a href="/server-admin" class="w-full text-center rounded-xl border border-amber-400/60 bg-amber-500/20 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/30">
+                    Server Admin
+                  </a>
+                  {% endif %}
+                  <a href="{{ nav.logout_url }}" class="w-full text-center rounded-xl border border-slate-800/70 bg-slate-950/70 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-indigo-400 hover:text-indigo-100">
+                    Sign out
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
           {% if not has_nav %}
           <a href="/login" class="self-start rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-indigo-500">Sign in</a>
           {% endif %}
@@ -107,5 +224,24 @@
       <footer class="text-center text-xs opacity-60 py-6">Made with ✨ FastAPI • MQTT • HTTPS</footer>
     </div>
   </div>
+  <script>
+  (function() {
+    var btn = document.getElementById('mobileMenuBtn');
+    var dd = document.getElementById('mobileMenuDropdown');
+    if (!btn || !dd) return;
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var open = dd.hidden;
+      dd.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    document.addEventListener('click', function(e) {
+      if (!dd.hidden && !document.getElementById('mobileMenuWrap').contains(e.target)) {
+        dd.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  })();
+  </script>
 </body>
 </html>

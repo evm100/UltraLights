@@ -94,6 +94,18 @@
               "ota"
             ],
             "download_id": "dv6UW072KFFQMseZSRGSAKPmR3tyyFgqnDwdZnPfYQmO0l9u"
+          },
+          {
+            "id": "j2ojr7v8dua85msi4i2z4eej97ee8ew",
+            "name": "caca",
+            "kind": "ultranode",
+            "modules": [
+              "ws",
+              "rgb",
+              "white",
+              "ota"
+            ],
+            "download_id": "T5wjhxWfhnJLv2KYO8kBtQkDRFfdvLuQvMBJCAk2pxQmeiUF"
           }
         ]
       },

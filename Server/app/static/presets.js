@@ -398,8 +398,12 @@ if (container) {
     try {
       if (button) button.disabled = true;
       setStatus('Applying preset...', 'info');
-      await fetchJson(applyUrlFor(id), { method: 'POST' });
+      const result = await fetchJson(applyUrlFor(id), { method: 'POST' });
       setStatus('Preset applied ✓', 'success', true);
+      // Notify the brightness curve UI that a preset was applied
+      if (result && result.brightness_curve_disabled) {
+        document.dispatchEvent(new CustomEvent('ultralights:preset-applied'));
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to apply preset.';
       setStatus(`Failed to apply preset: ${message}`, 'error');

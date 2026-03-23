@@ -168,11 +168,11 @@
       if (key === '_sync') {
         mode = 'sync';
         activeChannel = '_sync';
-      } else {
+      } else if (channelList.length > 0) {
         if (mode === 'sync') {
           // Switching to per_channel — copy _sync points to channels missing custom points
           channelList.forEach(ch => {
-            if (!channels[ch.key] || channels[ch.key] === channels._sync) {
+            if (!channels[ch.key]) {
               channels[ch.key] = { points: channels._sync.points.map(p => ({ ...p })) };
             }
           });
@@ -201,11 +201,13 @@
     const body = { enabled, mode, channels: {} };
     body.channels._sync = { points: channels._sync.points };
     if (mode === 'per_channel') {
-      channelList.forEach(ch => {
-        if (channels[ch.key]) {
-          body.channels[ch.key] = { points: channels[ch.key].points };
+      // Send ALL per-channel data (not just channelList) to preserve
+      // stored curves for strips not yet observed in this session.
+      for (const [k, v] of Object.entries(channels)) {
+        if (k !== '_sync' && v && Array.isArray(v.points)) {
+          body.channels[k] = { points: v.points };
         }
-      });
+      }
     }
 
     if (enabled) {
@@ -460,6 +462,13 @@
       syncCurve(true);
     });
   }
+
+  // When a preset is applied, the backend disables the curve — sync the UI.
+  document.addEventListener('ultralights:preset-applied', () => {
+    enabled = false;
+    if (enableToggle) enableToggle.checked = false;
+    draw();
+  });
 
   window.addEventListener('resize', resize);
   resize();

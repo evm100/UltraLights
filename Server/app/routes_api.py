@@ -965,8 +965,15 @@ def api_apply_preset(
     preset = get_preset(room_ctx.house.slug, room_id, preset_id)
     if not preset:
         raise HTTPException(404, "Unknown preset")
+
+    # Disable the brightness curve when a preset is applied so the
+    # curve doesn't fight back with its own retained commands.
+    curve_was_enabled = brightness_curve_applicator.disable_for_room(
+        room_ctx.house.slug, room_id
+    )
+
     apply_preset(get_bus(), preset)
-    return {"ok": True}
+    return {"ok": True, "brightness_curve_disabled": curve_was_enabled}
 
 
 @router.get("/api/house/{house_id}/room/{room_id}/motion-immune")
@@ -1172,6 +1179,13 @@ def api_set_brightness_curve(
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+
+    # When the curve is enabled, clear dedup caches so the first
+    # command actually goes through even if values haven't changed.
+    if enabled:
+        brightness_curve_applicator.clear_room_cache(
+            room_ctx.house.slug, room_id
+        )
 
     # When the curve is enabled, apply brightness immediately so nodes
     # update in real time while the user edits.

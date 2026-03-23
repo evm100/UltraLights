@@ -36,14 +36,6 @@ NODE_COLORS = [
     "#f87171",
 ]
 
-# Swell/breathing effects that restart from 0 each command — replace with solid
-SWELL_TO_SOLID = {
-    "color_swell": "solid",  # ws, rgb — keep color params
-    "swell": "solid",        # white — clear params
-    "breathe": "solid",      # white — clear params
-}
-
-
 def _catmull_rom(p0: float, p1: float, p2: float, p3: float, t: float) -> float:
     t2 = t * t
     t3 = t2 * t
@@ -397,32 +389,104 @@ class BrightnessCurveApplicator:
     def _build_command(
         self, module: str, state: Optional[Dict[str, Any]], brightness: int
     ) -> Dict[str, Any]:
-        """Build a command payload preserving current effect/params."""
-        if state:
-            effect = state.get("effect", "solid")
-            params = state.get("params", [])
-            # Replace swell effects with solid equivalents
-            if effect in SWELL_TO_SOLID:
-                solid = SWELL_TO_SOLID[effect]
-                # For white swell/breathe, clear params
-                if module == "white" and effect in ("swell", "breathe"):
-                    params = []
-                effect = solid
-            return {"effect": effect, "brightness": brightness, "params": params}
-        # No state — default fallback
+        """Build a solid command for the brightness curve.
+
+        White channels always get ``solid`` with no params.
+        RGB/WS channels get ``solid`` preserving the current color from state.
+        """
         if module == "white":
             return {"effect": "solid", "brightness": brightness, "params": []}
-        # ws/rgb default to warm white
-        return {"effect": "solid", "brightness": brightness, "params": [255, 200, 150]}
+        # RGB / WS — extract current color or fall back to warm white
+        color = [255, 200, 150]
+        if state:
+            params = state.get("params", [])
+            if isinstance(params, list) and len(params) >= 3:
+                try:
+                    rgb = [int(params[0]), int(params[1]), int(params[2])]
+                    if all(0 <= c <= 255 for c in rgb):
+                        color = rgb
+                except (TypeError, ValueError):
+                    pass
+        return {"effect": "solid", "brightness": brightness, "params": color}
 
     def _known_strips(self, node_id: str, module: str) -> List[int]:
-        """Return all strip/channel indices we've seen for this node+module."""
+        """Return all strip/channel indices known for this node+module.
+
+        Merges two sources:
+        1. channel_names config (explicitly named channels)
+        2. MQTT state tracker (observed traffic)
+        Falls back to [0] when neither source has data.
+        """
+        from .channel_names import channel_names
+
+        strips: set = set()
+
+        # Source 1: channel_names (user-configured, most reliable)
+        node_channels = channel_names.get_names_for_node(node_id)
+        for ch_str in node_channels.get(module, {}):
+            try:
+                strips.add(int(ch_str))
+            except (TypeError, ValueError):
+                pass
+
+        # Source 2: MQTT state tracker (observed traffic)
+        with self._state_lock:
+            for key in self._node_state:
+                if key[0] == node_id and key[1] == module:
+                    strips.add(key[2])
+
+        return sorted(strips) if strips else [0]
+
+    def _observed_strips(self, node_id: str, module: str) -> List[int]:
+        """Return strip indices with actual MQTT state (no fallback).
+
+        Used for the UI channel list — only shows channels we've actually
+        seen traffic for, avoiding phantom entries.
+        """
         strips = []
         with self._state_lock:
             for key in self._node_state:
                 if key[0] == node_id and key[1] == module:
                     strips.append(key[2])
-        return sorted(strips) if strips else [0]
+        return sorted(strips)
+
+    def clear_room_cache(self, house_id: str, room_id: str) -> None:
+        """Clear sent-command and tick caches for a room.
+
+        Call this when the curve is enabled or disabled so the next tick
+        (or immediate apply) sends fresh commands instead of being
+        suppressed by the dedup cache.
+        """
+        from . import registry
+
+        key = (house_id, room_id)
+        self._last.pop(key, None)
+
+        _, room = registry.find_room(house_id, room_id)
+        if not room:
+            return
+        node_ids = set()
+        for node in room.get("nodes", []):
+            if isinstance(node, dict) and node.get("id"):
+                node_ids.add(node["id"])
+        for cache_key in list(self._last_sent.keys()):
+            if cache_key[0] in node_ids:
+                self._last_sent.pop(cache_key, None)
+
+    def disable_for_room(self, house_id: str, room_id: str) -> bool:
+        """Disable the brightness curve for a room and clear caches.
+
+        Returns True if the curve was previously enabled.
+        """
+        curve = self.store.get_curve(house_id, room_id)
+        if not curve or not curve.get("enabled"):
+            return False
+        self.store.set_curve(
+            house_id, room_id,
+            curve["channels"], False, curve.get("mode", "sync"),
+        )
+        self.clear_room_cache(house_id, room_id)
+        return True
 
     def _send_command(self, node_id: str, module: str, strip: int, brightness: int) -> None:
         """Build and send a brightness command for a single strip."""
@@ -464,13 +528,14 @@ class BrightnessCurveApplicator:
           sync mode: {"_sync": N} -> apply N to all nodes
           per_channel mode: {"nodeId:mod:strip": N, ...} -> apply per strip
         Also accepts a plain int for backward compat (treated as sync).
+
+        Note: does NOT update ``_last`` — only ``_tick`` manages that cache
+        so the comparison format stays consistent.
         """
         # Backward compat: plain int
         if isinstance(brightnesses, int):
             brightnesses = {"_sync": brightnesses}
             mode = "sync"
-
-        self._last[(house_id, room_id)] = dict(brightnesses)
 
         from . import registry
 
@@ -519,6 +584,9 @@ class BrightnessCurveApplicator:
         hour = now.hour + now.minute / 60.0
         enabled = self.store.iter_enabled()
         active_keys: set[Tuple[str, str]] = set()
+        active_node_ids: set[str] = set()
+
+        from . import registry
 
         for house_id, room_id, room_data in enabled:
             key = (house_id, room_id)
@@ -531,37 +599,50 @@ class BrightnessCurveApplicator:
                 pts = channels.get("_sync", {}).get("points", [])
                 brightnesses["_sync"] = interpolate_brightness(pts, hour)
             else:
-                for ch_key, ch_data in channels.items():
-                    if ch_key == "_sync":
-                        continue
-                    brightnesses[ch_key] = interpolate_brightness(
-                        ch_data.get("points", []), hour
-                    )
-                # Keep _sync for fallback
+                # per_channel: resolve every actual strip to a concrete
+                # brightness so the cache dict is stable and complete.
                 sync_pts = channels.get("_sync", {}).get("points", [])
-                if sync_pts:
-                    brightnesses["_sync"] = interpolate_brightness(sync_pts, hour)
+                sync_b = interpolate_brightness(sync_pts, hour) if sync_pts else 0
+                _, room_entry = registry.find_room(house_id, room_id)
+                if room_entry:
+                    for node in room_entry.get("nodes", []):
+                        if not isinstance(node, dict):
+                            continue
+                        node_id = node.get("id")
+                        if not node_id:
+                            continue
+                        for module in ("ws", "rgb", "white"):
+                            if module not in (node.get("modules") or []):
+                                continue
+                            for strip in self._known_strips(node_id, module):
+                                ch_key = f"{node_id}:{module}:{strip}"
+                                ch_data = channels.get(ch_key)
+                                if ch_data:
+                                    brightnesses[ch_key] = interpolate_brightness(
+                                        ch_data.get("points", []), hour
+                                    )
+                                else:
+                                    brightnesses[ch_key] = sync_b
 
             if self._last.get(key) == brightnesses:
                 continue
             self._last[key] = dict(brightnesses)
             self.apply_brightness_to_room(house_id, room_id, brightnesses, mode)
 
+            # Track active node IDs for stale cache cleanup
+            _, room_entry = registry.find_room(house_id, room_id)
+            if room_entry:
+                for node in room_entry.get("nodes", []):
+                    if isinstance(node, dict) and node.get("id"):
+                        active_node_ids.add(node["id"])
+
         for stale_key in list(self._last.keys()):
             if stale_key not in active_keys:
                 self._last.pop(stale_key, None)
 
         # Clean stale sent-command cache for rooms no longer enabled
-        stale_nodes: set[str] = set()
-        for house_id, room_id, _ in enabled:
-            from . import registry
-            _, room = registry.find_room(house_id, room_id)
-            if room:
-                for node in room.get("nodes", []):
-                    if isinstance(node, dict) and node.get("id"):
-                        stale_nodes.add(node["id"])
         for cache_key in list(self._last_sent.keys()):
-            if cache_key[0] not in stale_nodes:
+            if cache_key[0] not in active_node_ids:
                 self._last_sent.pop(cache_key, None)
 
 

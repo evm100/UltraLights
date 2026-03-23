@@ -1090,7 +1090,7 @@ def room_page(
         for module in ("ws", "rgb", "white"):
             if module not in (n.get("modules") or []):
                 continue
-            strips = brightness_curve_applicator._known_strips(node_id, module)
+            strips = brightness_curve_applicator._observed_strips(node_id, module)
             for strip in strips:
                 custom = channel_names.get_name(node_id, module, strip)
                 if custom:
