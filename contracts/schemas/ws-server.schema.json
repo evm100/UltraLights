@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/ws-server.schema.json",
+  "title": "Server to browser WebSocket message (/api/ws)",
+  "description": "snapshot first, then incremental updates. health and evt go to admins only; device views carry an admin block only for admins.",
+  "type": "object",
+  "required": ["t"],
+  "oneOf": [
+    { "required": ["devices"], "properties": { "t": { "const": "snapshot" }, "devices": { "type": "array", "items": { "$ref": "#/$defs/device" } }, "broker": { "type": "boolean" } }, "additionalProperties": false },
+    { "required": ["device"], "properties": { "t": { "const": "device" }, "device": { "$ref": "#/$defs/device" } }, "additionalProperties": false },
+    { "required": ["dev", "out", "state"], "properties": { "t": { "const": "state" }, "dev": { "$ref": "common.schema.json#/$defs/device_id" }, "out": { "$ref": "common.schema.json#/$defs/key" }, "state": { "$ref": "state.schema.json" } }, "additionalProperties": false },
+    { "required": ["dev", "health"], "properties": { "t": { "const": "health" }, "dev": { "$ref": "common.schema.json#/$defs/device_id" }, "health": { "$ref": "health.schema.json" } }, "additionalProperties": false },
+    { "required": ["dev", "evt"], "properties": { "t": { "const": "evt" }, "dev": { "$ref": "common.schema.json#/$defs/device_id" }, "evt": { "$ref": "evt.schema.json" } }, "additionalProperties": false },
+    { "required": ["error"], "properties": { "t": { "const": "error" }, "error": { "enum": ["invalid", "no_such_output", "broker_offline", "forbidden"] }, "detail": { "type": "string" }, "dev": { "$ref": "common.schema.json#/$defs/device_id" }, "out": { "$ref": "common.schema.json#/$defs/key" } }, "additionalProperties": false },
+    { "properties": { "t": { "const": "pong" } }, "additionalProperties": false }
+  ],
+  "$defs": {
+    "device": {
+      "type": "object",
+      "required": ["id", "name", "chip", "home_id", "online", "outputs"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/device_id" },
+        "name": { "type": "string" },
+        "chip": { "$ref": "common.schema.json#/$defs/chip" },
+        "home_id": { "type": ["integer", "null"] },
+        "online": { "type": "boolean" },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["key", "kind", "name", "caps", "room_id", "meta", "state", "desired"],
+            "additionalProperties": false,
+            "properties": {
+              "key": { "$ref": "common.schema.json#/$defs/key" },
+              "kind": { "$ref": "common.schema.json#/$defs/kind" },
+              "name": { "type": "string" },
+              "caps": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/cap" } },
+              "room_id": { "type": ["integer", "null"] },
+              "meta": { "type": "object", "description": "cct_range, pixels, max_level, channels from info." },
+              "state": { "oneOf": [ { "type": "null" }, { "$ref": "state.schema.json" } ] },
+              "desired": { "oneOf": [ { "type": "null" }, { "$ref": "set.schema.json" } ] }
+            }
+          }
+        },
+        "admin": {
+          "type": "object",
+          "description": "Admins only.",
+          "properties": {
+            "board": { "type": ["string", "null"] },
+            "fw": { "type": ["string", "null"] },
+            "profile": { "type": ["string", "null"] },
+            "board_crc": { "type": ["string", "null"] },
+            "running_crc": { "type": ["string", "null"] },
+            "config_rev": { "type": "integer" },
+            "running_config_rev": { "type": ["integer", "null"] },
+            "config_error": { "type": ["string", "null"] },
+            "enrolled": { "type": "boolean" },
+            "last_seen": { "type": ["string", "null"] },
+            "health": { "oneOf": [ { "type": "null" }, { "$ref": "health.schema.json" } ] }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/ws-client.schema.json",
+  "title": "Browser to server WebSocket message (/api/ws)",
+  "description": "live: sent at most every 50 ms per output while a control is held; set: the final value when it is released (always sent). The server fills in src and seq. Fields the output lacks a capability for are dropped.",
+  "type": "object",
+  "required": ["t"],
+  "oneOf": [
+    {
+      "required": ["dev", "out", "state"],
+      "properties": {
+        "t": { "const": "live" },
+        "dev": { "$ref": "common.schema.json#/$defs/device_id" },
+        "out": { "$ref": "common.schema.json#/$defs/key" },
+        "state": {
+          "type": "object", "minProperties": 1, "additionalProperties": false,
+          "properties": {
+            "on": { "type": "boolean" },
+            "level": { "$ref": "common.schema.json#/$defs/level" },
+            "cct": { "$ref": "common.schema.json#/$defs/kelvin" },
+            "color": { "$ref": "common.schema.json#/$defs/rgb" },
+            "white": { "$ref": "common.schema.json#/$defs/level" },
+            "fade_ms": { "$ref": "common.schema.json#/$defs/fade_ms" }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "required": ["dev", "out", "state"],
+      "properties": {
+        "t": { "const": "set" },
+        "dev": { "$ref": "common.schema.json#/$defs/device_id" },
+        "out": { "$ref": "common.schema.json#/$defs/key" },
+        "state": {
+          "type": "object", "minProperties": 1, "additionalProperties": false,
+          "properties": {
+            "on": { "type": "boolean" },
+            "level": { "$ref": "common.schema.json#/$defs/level" },
+            "cct": { "$ref": "common.schema.json#/$defs/kelvin" },
+            "color": { "$ref": "common.schema.json#/$defs/rgb" },
+            "white": { "$ref": "common.schema.json#/$defs/level" },
+            "effect": { "$ref": "set.schema.json#/$defs/effect" },
+            "fade_ms": { "$ref": "common.schema.json#/$defs/fade_ms" }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "properties": { "t": { "const": "ping" } },
+      "additionalProperties": false
+    }
+  ]
+}

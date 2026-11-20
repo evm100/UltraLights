@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lights.evm100.org/contracts/v1/enroll-response.schema.json",
   "title": "Enrollment response",
-  "description": "200: the signed certificate. Errors use {error, detail} with HTTP 400 csr_invalid | device_mismatch | chip_mismatch, 401 token_invalid | token_expired, 409 token_used, 429 rate_limited. Retrying with the same token and the same public key within 24 h returns the same certificate (200), so a lost response is safe to retry.",
+  "description": "200: the signed certificate. Errors use {error, detail} with HTTP 400 bad_request (body fails the request schema) | csr_invalid | device_mismatch | chip_mismatch, 401 token_invalid | token_expired, 409 token_used, 429 rate_limited. Retrying with the same token and the same public key within 24 h returns the same certificate (200), so a lost response is safe to retry.",
   "oneOf": [
     {
       "type": "object",
@@ -20,7 +20,7 @@
       "required": ["error"],
       "additionalProperties": false,
       "properties": {
-        "error": { "enum": ["csr_invalid", "device_mismatch", "chip_mismatch", "token_invalid", "token_expired", "token_used", "rate_limited"] },
+        "error": { "enum": ["bad_request", "csr_invalid", "device_mismatch", "chip_mismatch", "token_invalid", "token_expired", "token_used", "rate_limited"] },
         "detail": { "type": "string", "maxLength": 200 }
       }
     }
