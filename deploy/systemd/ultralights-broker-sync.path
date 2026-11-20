@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch the UltraLights device CA chain and CRL
+
+[Path]
+PathChanged=/etc/ultralights/pki/crl.pem
+PathChanged=/etc/ultralights/pki/ca-chain.crt
+Unit=ultralights-broker-sync.service
+
+[Install]
+WantedBy=multi-user.target

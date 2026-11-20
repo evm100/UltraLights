@@ -1,0 +1,27 @@
+[Unit]
+Description=UltraLights API, WebSocket and MQTT bridge
+After=network-online.target postgresql.service mosquitto.service
+Wants=network-online.target postgresql.service mosquitto.service
+
+[Service]
+Type=simple
+User=ultralights
+Group=ultralights
+EnvironmentFile=/etc/ultralights/ultralights.env
+WorkingDirectory=__REPO__/server
+ExecStart=__VENV__/bin/uvicorn ulserver.main:app --host 127.0.0.1 --port __API_PORT__ --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header
+Restart=on-failure
+RestartSec=3
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/ultralights /etc/ultralights/pki
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=Copy UltraLights broker certificates and CRL to Mosquitto
+After=mosquitto.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ultralights-broker-sync

@@ -1,0 +1,23 @@
+[Unit]
+Description=UltraLights scheduler
+After=network-online.target postgresql.service ultralights-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ultralights
+Group=ultralights
+EnvironmentFile=/etc/ultralights/ultralights.env
+WorkingDirectory=__REPO__/server
+ExecStart=__VENV__/bin/python -m ulserver.scheduler
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/ultralights
+
+[Install]
+WantedBy=multi-user.target
