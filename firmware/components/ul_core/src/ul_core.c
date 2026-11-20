@@ -371,8 +371,9 @@ static void identify_tick(void *arg)
         if (s_identify_idx != -1 && s_identify_idx != i) {
             continue;
         }
-        if (s_cfg.out[i].kind == UL_KIND_SOLENOID || s_cfg.out[i].kind == UL_KIND_MOTION) {
-            continue; /* never pulse valves to identify */
+        ul_kind_t k = s_cfg.out[i].kind;
+        if (k == UL_KIND_RELAY || k == UL_KIND_SOLENOID || k == UL_KIND_MOTION) {
+            continue; /* identify blinks lights only: never cycle relays or valves */
         }
         if (done) {
             drive(i, &s_rt[i].st.cur, 0);
