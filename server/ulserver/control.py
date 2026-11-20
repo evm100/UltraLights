@@ -177,10 +177,12 @@ class Control:
             await self.publish(topic(node.device_id, "config"), node.config, schema="config", qos=1, retain=True)
 
     async def clear_device(self, dev: str, keys: list[str]) -> None:
-        """Remove every retained server-to-device message for a deleted node."""
-        await self.publish(topic(dev, "config"), None, schema=None, qos=1, retain=True)
+        """Remove every retained message for a deleted node, in both directions."""
+        for t in ("config", "status", "info"):
+            await self.publish(topic(dev, t), None, schema=None, qos=1, retain=True)
         for k in keys:
             await self.publish(topic(dev, "set", k), None, schema=None, qos=1, retain=True)
+            await self.publish(topic(dev, "state", k), None, schema=None, qos=1, retain=True)
         for k in [k for k in self.outputs if k[0] == dev]:
             del self.outputs[k]
 
