@@ -1,0 +1,10 @@
+# UltraLights, 8 MB flash (ESP32-C6). Same first partitions as 4mb.csv (see there).
+# ul_clips (data 0x41) is reserved for effect clips in the Color and ARGB phase.
+# Name,    Type, SubType,  Offset,   Size
+nvs,       data, nvs,      0xD000,   0x6000
+otadata,   data, ota,      0x13000,  0x2000
+ul_board,  data, 0x40,     0x15000,  0x1000
+ota_0,     app,  ota_0,    0x20000,  0x300000
+ota_1,     app,  ota_1,    0x320000, 0x300000
+coredump,  data, coredump, 0x620000, 0x10000
+ul_clips,  data, 0x41,     0x630000, 0x1D0000

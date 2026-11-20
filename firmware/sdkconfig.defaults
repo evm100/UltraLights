@@ -1,0 +1,36 @@
+# Shared by every profile. Chip, flash size and partition table come from profiles/.
+
+# Partitions: custom tables, table at 0xC000 for bootloader headroom
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_OFFSET=0xC000
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# OTA: a new image must prove itself (reach the broker) or the bootloader rolls back
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Size over speed; the CPU is mostly idle
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# Core dumps to flash for ul_health
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+
+# TLS: public CA bundle (Let's Encrypt is in the common set), CSR writing for enrollment
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
+CONFIG_MBEDTLS_X509_CREATE_C=y
+CONFIG_MBEDTLS_X509_CSR_WRITE_C=y
+CONFIG_MBEDTLS_PEM_WRITE_C=y
+CONFIG_MBEDTLS_PK_WRITE_C=y
+
+# Strips: the RMT TX interrupt keeps running while flash is written (NVS saves)
+CONFIG_RMT_TX_ISR_CACHE_SAFE=y
+
+# Setup page: phones send long headers to captive portals
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=512
+
+# ul_core_boot runs every module's init on the main task
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144

@@ -1,0 +1,4 @@
+menu "UltraLights: board descriptor (ul_board)"
+    comment "Always built: every node reads its board descriptor from the ul_board partition."
+    comment "Pin rules come from contracts/chips.json via tools/gen_chip_rules.py."
+endmenu

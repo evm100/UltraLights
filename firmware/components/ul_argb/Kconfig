@@ -1,0 +1,5 @@
+menu "UltraLights: strip driver (ul_argb)"
+    config UL_ARGB_ENABLE
+        bool "Drive argb channels with RMT"
+        default y
+endmenu

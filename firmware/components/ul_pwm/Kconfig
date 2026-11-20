@@ -1,0 +1,5 @@
+menu "UltraLights: PWM driver (ul_pwm)"
+    config UL_PWM_ENABLE
+        bool "Drive pwm channels with LEDC"
+        default y
+endmenu

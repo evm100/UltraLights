@@ -1,0 +1,5 @@
+menu "UltraLights: status LED (ul_status)"
+    config UL_STATUS_ENABLE
+        bool "Blink the status LED"
+        default y
+endmenu

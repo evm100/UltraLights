@@ -1,0 +1,7 @@
+dependencies:
+  idf:
+    version: ">=6.1"
+  # cJSON left ESP-IDF in v6; same version as the host tests.
+  espressif/cjson:
+    version: "==1.7.19~2"
+    require: public

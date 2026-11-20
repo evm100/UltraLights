@@ -1,0 +1,5 @@
+menu "UltraLights: relay and solenoid driver (ul_switch)"
+    config UL_SWITCH_ENABLE
+        bool "Drive switch channels as GPIO outputs"
+        default y
+endmenu

@@ -1,0 +1,5 @@
+# ESP32-C3 lights: legacy and hand-built nodes (4 MB flash)
+CONFIG_IDF_TARGET="esp32c3"
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/4mb.csv"
+CONFIG_UL_PROFILE="c3-lights"

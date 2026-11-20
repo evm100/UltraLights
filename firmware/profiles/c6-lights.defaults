@@ -1,0 +1,5 @@
+# ESP32-C6 lights: the PCB and new builds (8 MB flash)
+CONFIG_IDF_TARGET="esp32c6"
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/8mb.csv"
+CONFIG_UL_PROFILE="c6-lights"

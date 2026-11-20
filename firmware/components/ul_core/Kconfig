@@ -1,0 +1,8 @@
+menu "UltraLights: device model (ul_core)"
+    config UL_PROFILE
+        string "Firmware profile name"
+        default "dev"
+        help
+            Reported as `profile` in info and enrollment (c3-lights, c6-lights, ...).
+            Set by the profile fragment in profiles/.
+endmenu

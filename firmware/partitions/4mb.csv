@@ -1,0 +1,11 @@
+# UltraLights, 4 MB flash (ESP32-C3). The partition table sits at 0xC000
+# (CONFIG_PARTITION_TABLE_OFFSET), leaving 48 KB for a future secure-boot
+# bootloader. nvs, otadata and ul_board have the same offsets in every table,
+# so a descriptor can be rewritten without knowing the flash size.
+# Name,    Type, SubType,  Offset,   Size
+nvs,       data, nvs,      0xD000,   0x6000
+otadata,   data, ota,      0x13000,  0x2000
+ul_board,  data, 0x40,     0x15000,  0x1000
+ota_0,     app,  ota_0,    0x20000,  0x1E0000
+ota_1,     app,  ota_1,    0x200000, 0x1E0000
+coredump,  data, coredump, 0x3E0000, 0x10000
