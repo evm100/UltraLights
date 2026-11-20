@@ -1,0 +1,17 @@
+# UltraLights broker ACL (contracts/README.md). The username is the client
+# certificate's CN (use_identity_as_username), so a device can only touch its own topics.
+
+# The server's MQTT bridge.
+user ul-server
+topic readwrite ul/v1/#
+
+# Every device: publish its own reports, read its own commands.
+pattern write ul/v1/d/%u/info
+pattern write ul/v1/d/%u/status
+pattern write ul/v1/d/%u/state/+
+pattern write ul/v1/d/%u/evt
+pattern write ul/v1/d/%u/health
+pattern read ul/v1/d/%u/config
+pattern read ul/v1/d/%u/set/+
+pattern read ul/v1/d/%u/live/+
+pattern read ul/v1/d/%u/cmd
