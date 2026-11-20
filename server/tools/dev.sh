@@ -37,7 +37,7 @@ ensure_venv() {
     say "creating Python venv"
     python3 -m venv "$VENV"
     "$VENV/bin/pip" install -q --upgrade pip
-    "$VENV/bin/pip" install -q -e "$SERVER[dev]"
+    "$VENV/bin/pip" install -q -e "${SERVER}[dev]"
   fi
 }
 

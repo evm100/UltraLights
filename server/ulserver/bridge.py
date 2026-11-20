@@ -10,6 +10,7 @@ import datetime as dt
 import json
 import logging
 import re
+import secrets
 import ssl
 from typing import TYPE_CHECKING, Any
 
@@ -75,7 +76,9 @@ class Bridge:
                 async with aiomqtt.Client(
                     self.s.mqtt_host,
                     self.s.mqtt_port,
-                    identifier="ul-server",
+                    # The ACL keys on the certificate CN (ul-server); the client id only has to be
+                    # unique, so a second instance (tests, a restart overlap) can't kick this one off.
+                    identifier=f"ul-server-{secrets.token_hex(4)}",
                     tls_context=tls_context(self.s),
                     keepalive=30,
                     clean_session=True,
