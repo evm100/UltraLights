@@ -6,8 +6,8 @@
     { "id": "strip", "name": "Strip", "type": "argb", "gpio": 6, "pixels": 60, "order": "GRB" },
     { "id": "relay", "type": "switch", "gpio": 7 } ],
   "outputs": [
-    { "key": "warm", "kind": "white", "channels": { "w": "warm" }, "caps": ["onoff", "level"] },
-    { "key": "cool", "kind": "white", "channels": { "w": "cool" }, "caps": ["onoff", "level"] },
-    { "key": "strip", "kind": "argb", "channels": { "data": "strip" }, "pixels": 60, "caps": ["onoff", "level", "color"] },
+    { "key": "warm", "kind": "white", "name": "Warm white", "channels": { "w": "warm" }, "caps": ["onoff", "level"] },
+    { "key": "cool", "kind": "white", "name": "Cool white", "channels": { "w": "cool" }, "caps": ["onoff", "level"] },
+    { "key": "strip", "kind": "argb", "name": "Strip", "channels": { "data": "strip" }, "pixels": 60, "caps": ["onoff", "level", "color"] },
     { "key": "relay", "kind": "relay", "channels": { "coil": "relay" }, "caps": ["onoff"] } ],
   "config_rev": 0 }
