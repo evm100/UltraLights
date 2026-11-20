@@ -159,6 +159,10 @@ class SimDevice:
         async for m in c.messages:
             topic = str(m.topic)
             if not m.payload:
+                if topic == self.t("config"):  # empty config = back to the default mapping
+                    self.config_rev, self.config_error = 0, None
+                    self._apply_outputs(contracts.default_outputs(self.board))
+                    await self.pub(self.t("info"), self.info(), "info", retain=True)
                 continue
             doc = json.loads(m.payload)
             self.received.append((topic, doc))

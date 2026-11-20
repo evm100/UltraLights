@@ -46,6 +46,15 @@
   let health = $derived(lv?.admin?.health ?? n?.admin?.health);
   let events = $derived(live.events.filter((e) => e.dev === dev).slice(0, 12));
   let pkg = $derived(packages.find((p) => String(p.id) === pkgId) ?? null);
+  // Firmware reports a refused descriptor as info.config_error "board rejected: <pins.py codes>"
+  // (or "descriptor is for <chip>, this is <chip>"); the node still enrolls but drives nothing.
+  let configError = $derived(lv?.admin?.config_error ?? n?.admin?.config_error ?? null);
+  let boardRejected = $derived.by(() => {
+    if (!configError) return null;
+    if (configError.startsWith("board rejected:")) return configError.slice(15).trim().split(/\s+/).filter(Boolean);
+    if (configError.startsWith("descriptor is for")) return [configError];
+    return null;
+  });
 
   async function act(fn, ok) {
     error = ""; note = "";
@@ -117,6 +126,13 @@
   </div>
   {#if error}<div class="msg err">{error}</div>{/if}
   {#if note}<div class="msg ok">{note}</div>{/if}
+  {#if boardRejected}
+    <div class="msg err stack" style="gap:4px" role="alert">
+      <strong>The node rejected its board descriptor and drives no outputs.</strong>
+      {#each boardRejected as code}<span>• {code.includes(":") && !code.includes(" ") ? `${describe(code, n.chip)} (${code})` : code}</span>{/each}
+      <span class="small">Fix the board in the builder, then use "Write descriptor only" below.</span>
+    </div>
+  {/if}
 
   <div class="grid">
     <section class="glass panel stack">

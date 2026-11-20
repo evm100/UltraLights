@@ -45,7 +45,7 @@
           <td class="muted">{n.admin?.board}</td>
           <td>{n.admin?.fw ?? "–"}
             {#if n.admin && n.admin.board_crc && n.admin.running_crc && n.admin.board_crc !== n.admin.running_crc}<span class="tag warn" title="The node runs a different descriptor than the last one built">descriptor differs</span>{/if}
-            {#if n.admin?.config_error}<span class="tag err" title={n.admin.config_error}>config rejected</span>{/if}
+            {#if n.admin?.config_error}<span class="tag err" title={n.admin.config_error}>{n.admin.config_error.startsWith("board rejected") || n.admin.config_error.startsWith("descriptor is for") ? "board rejected" : "config rejected"}</span>{/if}
             {#if n.contract_errors}<span class="tag err">{n.contract_errors} contract errors</span>{/if}
           </td>
           <td>{h ? `${h.rssi} dBm` : "–"}</td>
