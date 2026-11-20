@@ -180,6 +180,20 @@ pre.mermaid { background: var(--surface); text-align: center; }
 .layer-arrow { font-size: 0.8rem; color: var(--muted); padding-left: 162px; }
 @media (max-width: 600px) { .layer-arrow { padding-left: 0; } }
 
+/* node builder */
+.nb { display: grid; gap: 14px; }
+.nb-rows { display: grid; gap: 6px; }
+.nb-row { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 0.9fr) 34px; gap: 6px; align-items: center; }
+.nb-row input, .nb-row select { font: inherit; font-size: 0.85rem; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%; min-width: 0; }
+.nb-row .x { font: inherit; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 6px; height: 30px; cursor: pointer; }
+.nb-head { font-size: 0.75rem; color: var(--muted); }
+@media (max-width: 640px) { .nb-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding-bottom: 8px; border-bottom: 1px solid var(--line); } .nb-head { display: none; } }
+.nb-issues { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; font-size: 0.88rem; }
+.nb-issues li { padding: 6px 10px; border-radius: 6px; border-left: 3px solid var(--muted); background: var(--sunk); }
+.nb-issues li.err { border-left-color: var(--bad); }
+.nb-issues li.warn { border-left-color: var(--warn); }
+.nb-issues li.ok { border-left-color: var(--ok); }
+
 /* ---------- phone mockups ---------- */
 .phones { display: flex; gap: 22px; overflow-x: auto; padding: 6px 2px 14px; align-items: flex-start; }
 .phone-wrap { display: grid; gap: 10px; flex: 0 0 auto; justify-items: center; }
@@ -335,7 +349,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
   <header class="hero">
     <div class="meta-row">
       <span class="label">Design document</span>
-      <span class="label">Draft 2</span>
+      <span class="label">Draft 3</span>
       <span class="label">19 Nov 2026</span>
       <span class="label">Branch: beta</span>
     </div>
@@ -344,7 +358,8 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
     <div class="decisions" aria-label="Key decisions">
       <div class="decision"><b>One device contract</b><span>Nodes, the OpenRGB bridge and future devices all describe themselves with the same capabilities.</span></div>
       <div class="decision"><b>Hardware does the dimming</b><span>LEDC fades replace the v5 software smoothing tasks.</span></div>
-      <div class="decision"><b>Lean by construction</b><span>Each board profile compiles only the drivers it uses. Effects are data, not code.</span></div>
+      <div class="decision"><b>Lean by construction</b><span>Each chip and feature profile compiles only the components it uses. Effects are data, not code.</span></div>
+      <div class="decision"><b>Any board, same firmware</b><span>Legacy C3 nodes, hand-built prototypes and the PCB all run the same components. Pins are data written when a node is flashed.</span></div>
       <div class="decision"><b>Workers connect out</b><span>The 4080 machine builds firmware and runs AI jobs without exposing a single port.</span></div>
       <div class="decision"><b>Four roles</b><span>Admin, Owner, Member and Guest, with guest access granted per room or device.</span></div>
       <div class="decision"><b>Matter later, on the server</b><span>No Matter stack in firmware. A server-side bridge can be added if wanted.</span></div>
@@ -371,6 +386,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
         </li>
         <li><a href="#hardware">Hardware and firmware</a>
           <ol>
+            <li><a href="#chips">Supported chips</a></li>
             <li><a href="#board">Board and population</a></li>
             <li><a href="#firmware">Firmware components</a></li>
           </ol>
@@ -386,11 +402,16 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
         <li><a href="#people">Accounts and permissions</a></li>
         <li><a href="#admin">Admin panel</a>
           <ol>
+            <li><a href="#builder">Node builder</a></li>
             <li><a href="#bringup">Fabrication bring-up</a></li>
           </ol>
         </li>
         <li><a href="#provisioning">Provisioning and certificates</a></li>
-        <li><a href="#builds">Builds and OTA</a></li>
+        <li><a href="#builds">Builds, deployment and OTA</a>
+          <ol>
+            <li><a href="#deploy">Deployment</a></li>
+          </ol>
+        </li>
         <li><a href="#reports">Problem reports</a></li>
         <li><a href="#ai">AI integration</a></li>
         <li><a href="#lessons">Lessons from v5</a></li>
@@ -454,7 +475,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
 
               <!-- Main VM -->
               <rect x="250" y="20" width="340" height="270" rx="12" class="d-box"/>
-              <text x="268" y="46" class="d-title">Main VM</text>
+              <text x="268" y="46" class="d-title">Server host</text>
               <text x="580" y="46" class="d-sub" text-anchor="end">only machine with open ports</text>
               <rect x="268" y="60" width="304" height="30" rx="6" class="d-item"/><text x="280" y="80" class="d-text">Reverse proxy (HTTPS)</text>
               <rect x="268" y="96" width="148" height="44" rx="6" class="d-item"/><text x="280" y="115" class="d-text">Web app + API</text><text x="280" y="131" class="d-sub">auth, homes, scenes</text>
@@ -470,12 +491,12 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
               <text x="656" y="46" class="d-title">Workstation</text>
               <text x="656" y="64" class="d-sub">RTX 4080, no open ports</text>
               <rect x="656" y="78" width="168" height="48" rx="6" class="d-item"/><text x="668" y="98" class="d-text">Build worker</text><text x="668" y="114" class="d-sub">ESP-IDF 6.x, signing</text>
-              <rect x="656" y="134" width="168" height="48" rx="6" class="d-item"/><text x="668" y="154" class="d-text">AI worker (later)</text><text x="668" y="170" class="d-sub">local LLM + vision</text>
+              <rect x="656" y="134" width="168" height="48" rx="6" class="d-item"/><text x="668" y="154" class="d-text">AI worker (later)</text><text x="668" y="170" class="d-sub">Ollama, LLM + vision</text>
 
               <!-- Home networks -->
               <rect x="20" y="340" width="820" height="145" rx="12" class="d-zone"/>
               <text x="36" y="364" class="d-title">Home networks</text>
-              <rect x="36" y="378" width="150" height="90" rx="8" class="d-box"/><text x="50" y="400" class="d-text">C6 node</text><text x="50" y="418" class="d-sub">PWM white / CCT</text><text x="50" y="434" class="d-sub">kitchen undercabinet</text>
+              <rect x="36" y="378" width="150" height="90" rx="8" class="d-box"/><text x="50" y="400" class="d-text">C3 node (legacy)</text><text x="50" y="418" class="d-sub">PWM white / CCT</text><text x="50" y="434" class="d-sub">kitchen undercabinet</text>
               <rect x="200" y="378" width="150" height="90" rx="8" class="d-box"/><text x="214" y="400" class="d-text">C6 node</text><text x="214" y="418" class="d-sub">ARGB + RGB</text><text x="214" y="434" class="d-sub">office strip</text>
               <rect x="364" y="378" width="150" height="90" rx="8" class="d-box"/><text x="378" y="400" class="d-text">C6 node</text><text x="378" y="418" class="d-sub">relays + solenoids</text><text x="378" y="434" class="d-sub">garden valves</text>
               <rect x="560" y="378" width="130" height="90" rx="8" class="d-box"/><text x="574" y="400" class="d-text">OpenRGB host</text><text x="574" y="418" class="d-sub">bridge agent</text><text x="574" y="434" class="d-sub">speaks the contract</text>
@@ -508,21 +529,22 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
         <div class="sub" id="machines">
           <h3>Machines and roles</h3>
           <div class="stack">
-            <details class="more"><summary>Main VM <span class="muted small">hub, always on</span></summary>
+            <details class="more"><summary>Server host <span class="muted small">lights.evm100.org, always on</span></summary>
               <div class="body">
-                <p>Runs the reverse proxy, web app and API, scheduler, MQTT broker, database, device CA (intermediate key only) and artifact store. Everything persistent lives here and gets backed up together.</p>
-                <p>If this VM is down, lights keep their last state and wall switches still work. Remote control, schedules and the UI stop until it returns. The scheduler runs here rather than on nodes so that schedules have one source of truth.</p>
+                <p>Runs nginx, the web app and API, scheduler, MQTT broker, database, device CA (intermediate key only) and the artifact store for firmware. Everything persistent lives here and gets backed up together. It's set up from a clone of this repo with one install script (see <a href="#deploy">Deployment</a>).</p>
+                <p>If the server is down, lights keep their last state. Remote control, schedules and the UI stop until it returns. The scheduler runs here rather than on nodes so that schedules have one source of truth.</p>
               </div>
             </details>
-            <details class="more"><summary>Workstation (RTX 4080) <span class="muted small">workers, can be off</span></summary>
+            <details class="more"><summary>This workstation (RTX 4080) <span class="muted small">workers, can be off</span></summary>
               <div class="body">
-                <p>Hosts two workers that are the same kind of program: they authenticate to the API, claim a job, do it and upload the result. The <b>build worker</b> runs ESP-IDF 6.x in a pinned container and signs the images it produces. The <b>AI worker</b> runs local models on the GPU.</p>
+                <p>Hosts two workers that are the same kind of program: they authenticate to the API, claim a job, do it and upload the result. The <b>build worker</b> runs ESP-IDF 6.1 and signs the images it produces. The <b>AI worker</b> runs models through Ollama on the GPU.</p>
                 <p>When the workstation is off, jobs wait in the queue and the admin panel shows the worker as offline. Nothing else is affected.</p>
               </div>
             </details>
-            <details class="more"><summary>C6 nodes <span class="muted small">your PCB</span></summary>
+            <details class="more"><summary>Nodes <span class="muted small">PCB, legacy C3, hand-built</span></summary>
               <div class="body">
                 <p>Each node connects out to the broker with its own certificate. It keeps its last state in flash and restores it after a power cut, so a light that was on stays on without waiting for the server.</p>
+                <p>The PCB, the dozen legacy ESP32-C3 nodes and any one-off prototype are the same kind of device to the server. They differ only in their board descriptor (see <a href="#board">Board and population</a>).</p>
               </div>
             </details>
             <details class="more"><summary>Bridge agents <span class="muted small">OpenRGB now, others later</span></summary>
@@ -545,7 +567,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
                 <tr><td>Broker</td><td>Mosquitto, rebuilt config</td><td>Mutual TLS with the certificate name as the username, so access rules can say "a device may only touch its own topics".</td></tr>
                 <tr><td>Web UI</td><td>Single-page app (Svelte suggested)</td><td>The interactive controls want a component framework; Jinja templates fought this in v5. See open questions.</td></tr>
                 <tr><td>Live updates</td><td>WebSocket from browser to API</td><td>Slider streams and state changes both ways without polling.</td></tr>
-                <tr><td>Proxy</td><td>Caddy</td><td>Automatic HTTPS certificates for the web side.</td></tr>
+                <tr><td>Proxy</td><td>nginx + certbot</td><td>Serves <code>lights.evm100.org</code>. The same Let's Encrypt certificate also secures the broker, so nodes can check the server with ESP-IDF's built-in CA bundle.</td></tr>
               </tbody>
             </table>
           </div>
@@ -663,21 +685,44 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
           </div>
         </div>
 
+        <div class="sub" id="chips">
+          <h3>Supported chips</h3>
+          <p>Two chips are supported as equals: the <b>ESP32-C6</b> for the PCB and new builds, and the <b>ESP32-C3</b> for the dozen legacy nodes and any quick prototype. Their PWM and strip peripherals are close to identical, which is what makes one set of components practical.</p>
+          <div class="tbl">
+            <table>
+              <thead><tr><th></th><th>ESP32-C3</th><th>ESP32-C6</th></tr></thead>
+              <tbody>
+                <tr><td>Used for</td><td>Legacy nodes, hand-built prototypes</td><td>The PCB, hand-built prototypes</td></tr>
+                <tr><td>CPU</td><td>1 × RISC-V, 160 MHz</td><td>1 × RISC-V, 160 MHz, plus low-power core</td></tr>
+                <tr><td>RAM</td><td>400 KB, no PSRAM</td><td>512 KB, no PSRAM</td></tr>
+                <tr><td>Radio</td><td>Wi-Fi 4, BLE 5</td><td>Wi-Fi 6, BLE 5, 802.15.4</td></tr>
+                <tr><td>PWM (LEDC)</td><td>6 channels, 4 timers</td><td>6 channels, 4 timers</td></tr>
+                <tr><td>Strips (RMT)</td><td>2 transmit channels, no DMA</td><td>2 transmit channels, no DMA</td></tr>
+                <tr><td>Strapping pins</td><td>2, 8, 9</td><td>8, 9, 15</td></tr>
+                <tr><td>Reserved pins</td><td>11–17 flash, 18/19 USB, 20/21 console</td><td>12/13 USB, 16/17 console, 14 not on module</td></tr>
+                <tr><td>BOOT button</td><td>GPIO9</td><td>GPIO9</td></tr>
+                <tr><td>Flash</td><td>Usually 4 MB: two OTA slots, no room for clips</td><td>8 or 16 MB: OTA slots plus clip partition</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="small muted">The C6 column comes from <code>docs/hardware-notes.md</code>. The C3 column is from Espressif's documentation as I know it; check it against your actual C3 boards before relying on the reserved-pin list.</p>
+          <div class="callout info"><b>Shared components, chip-specific where it matters.</b> There is one PWM driver and one strip driver, not a legacy copy and a new copy. Where the chips really differ (RMT memory layout, partition tables, radio features, reserved pins), the component includes a per-chip source file chosen at build time. A bug fixed in <code>ul_pwm</code> is fixed on every node.</div>
+        </div>
+
         <div class="sub" id="board">
           <h3>Board and population</h3>
-          <p>"Which board is this?" has four separate answers, each decided at a different time. Keeping them apart is what lets one PCB design and a handful of firmware builds cover every install.</p>
+          <p>Pins are data, not build settings. That one change lets the PCB, the legacy C3 nodes and any one-off prototype share a few firmware images. "Which board is this?" has three answers, each decided at a different time:</p>
           <div class="tbl">
             <table>
               <thead><tr><th>Layer</th><th>Decided</th><th>Stored in</th><th>Example</th></tr></thead>
               <tbody>
-                <tr><td><b>Board revision</b>: pin map</td><td>PCB design</td><td><code>firmware/boards/</code></td><td>rev A: PWM1 on GPIO4, ARGB1 on GPIO10</td></tr>
-                <tr><td><b>Feature profile</b>: which components are compiled in</td><td>Build</td><td>Profile config fragment</td><td><code>lights</code>, <code>lights-argb</code>, <code>switches</code></td></tr>
-                <tr><td><b>Fitted channels</b>: what was soldered</td><td>Bring-up</td><td>Factory partition, checked by self-test</td><td>PWM1–2 and ARGB1 fitted, the rest empty</td></tr>
-                <tr><td><b>Output mapping</b>: how channels group into outputs</td><td>Install, changeable later</td><td>Server, pushed to the node</td><td>PWM1+PWM2 = "Undercabinet" (CCT), PWM3 = relay</td></tr>
+                <tr><td><b>Firmware image</b>: chip and which components are compiled in</td><td>Build</td><td>Artifact store</td><td><code>c3-lights</code>, <code>c6-lights</code>, <code>c6-full</code></td></tr>
+                <tr><td><b>Board descriptor</b>: every fitted channel, its type and pin, plus reset button and status LED</td><td>When the node is flashed</td><td>A small descriptor partition on the node, written by the <a href="#builder">node builder</a></td><td>PCB rev A template with PWM1–2 and ARGB1 fitted; or "Legacy C3: kitchen" with PWM on GPIO4 and GPIO1</td></tr>
+                <tr><td><b>Output mapping</b>: how channels group into outputs, plus names and limits</td><td>Install, changeable any time</td><td>Server, pushed to the node</td><td>PWM1+PWM2 = "Undercabinet" (CCT), PWM3 = relay, strip = 144 px</td></tr>
               </tbody>
             </table>
           </div>
-          <p class="small muted">This replaces v5's 37 per-node config files. Names, rooms, limits, CCT range and pixel count are part of the output mapping and never need a rebuild.</p>
+          <p class="small muted">PCB revisions are just saved descriptor templates. A hand-built node is a descriptor you write once in the builder. The firmware treats them identically, and changing a legacy node's pins means reflashing a 4 KB descriptor, not rebuilding firmware. This replaces v5's 37 per-node <code>sdkconfig</code> files.</p>
         </div>
 
         <div class="sub" id="firmware">
@@ -699,6 +744,8 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
                 <li><b><code>main</code> stays tiny.</b> It starts the core and the services in order and contains no feature logic or <code>#ifdef</code>s. Adding or removing a component never touches it.</li>
                 <li><b>Every component has the same shape:</b> <code>CMakeLists.txt</code>, a <code>Kconfig</code> with an enable switch and its options, a public header in <code>include/</code>, private code in <code>src/</code>, and tests in <code>test/</code>.</li>
                 <li><b>Dependencies point at the core.</b> Drivers implement the core's channel interface (set, fade, read, safe state) and register what's fitted. Services talk to outputs through the core. MQTT never knows about LEDC, and the PWM driver never knows about MQTT.</li>
+                <li><b>Both chips build in CI.</b> Every component compiles for <code>esp32c3</code> and <code>esp32c6</code>. Chip differences live in per-chip source files inside the component, never in <code>#ifdef</code>s scattered through shared code.</li>
+                <li><b>Pins come from the board descriptor at boot.</b> No component hard-codes a GPIO. The PWM and strip peripherals can be routed to any free pin on both chips.</li>
                 <li><b>Logic that can run off-chip is tested off-chip.</b> Effect math, the contract encoder and state handling are plain C and run as host unit tests on the build machine.</li>
                 <li><b>Prefix everything <code>ul_</code></b> so our components never clash with ESP-IDF or managed components.</li>
               </ul>
@@ -706,11 +753,11 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
           </details>
 <pre><code>firmware/
 ├── main/app_main.c         boot order only
-├── boards/                 pin maps per board revision
-├── profiles/               config fragments per feature profile
+├── profiles/               config fragments: c3-lights, c6-lights, c6-full
+├── partitions/             partition tables for 4, 8 and 16 MB flash
 └── components/
     ├── ul_core/            device model, channels, outputs, state, events
-    ├── ul_board/           loads pin map + fitted-channel data
+    ├── ul_board/           reads and checks the board descriptor
     ├── ul_pwm/             LEDC channels and hardware fades
     ├── ul_argb/            RMT strip driver, RGB and RGBW pixels
     ├── ul_switch/          relays, solenoid pulses with limits
@@ -1028,7 +1075,8 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
                 <tbody>
                   <tr><td>Fleet and health</td><td>Live status, signal, heap, reset reasons, logs, remote actions</td></tr>
                   <tr><td>Homes and people</td><td>Create homes, assign owners, reset sign-ins, view as owner</td></tr>
-                  <tr><td>Hardware and bring-up</td><td>Flash, test and register new boards from the browser; serials and revisions</td></tr>
+                  <tr><td>Node builder</td><td>Pick C3 or C6, start from a PCB template or a blank custom board, assign pins with live checks, flash over USB</td></tr>
+                  <tr><td>Hardware and bring-up</td><td>Self-test and register new PCBs; serials and revisions</td></tr>
                   <tr><td>Board profiles</td><td>Which outputs and drivers a board type has; replaces <code>node_configs/</code> and hand-edited sdkconfig</td></tr>
                   <tr><td>Builds</td><td>Queue builds, watch logs, keep artifacts with IDF version and commit</td></tr>
                   <tr><td>Updates (OTA)</td><td>Staged rollouts, progress, pause, automatic rollback</td></tr>
@@ -1043,13 +1091,37 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
           </div>
         </div>
 
+        <div class="sub" id="builder">
+          <h3>Node builder</h3>
+          <p>The builder is where every node gets its board descriptor. It applies to the PCB, the legacy C3 nodes and anything you solder together on the bench. You choose the chip first, because the checks depend on it. Then you list what's connected to which pin, and the builder checks the result against that chip's rules before anything is flashed. Try the presets: the first one is a real v5 layout that put a light and the reset button on the same pin.</p>
+          <div class="panel nb" aria-label="Node builder demo">
+            <div class="ctrls">
+              <div class="ctrl"><label for="nb-chip">Chip</label><select id="nb-chip"><option value="esp32c3">ESP32-C3</option><option value="esp32c6">ESP32-C6</option></select></div>
+              <div class="ctrl"><label for="nb-preset">Start from</label><select id="nb-preset">
+                <option value="legacy1">Legacy C3: two whites (v5 config)</option>
+                <option value="legacy2">Legacy C3: strip, white and RGB (v5 config)</option>
+                <option value="pcb">PCB rev A template (example pins)</option>
+                <option value="blank">Blank custom board</option>
+              </select></div>
+            </div>
+            <div class="nb-row nb-head" aria-hidden="true"><span>Name</span><span>Type</span><span>GPIO</span><span>PWM Hz / pixels</span><span></span></div>
+            <div class="nb-rows" id="nb-rows"></div>
+            <div><button class="btn" id="nb-add" type="button">Add channel</button></div>
+            <div class="grid2">
+              <div><span class="label">Checks</span><ul class="nb-issues" id="nb-issues" aria-live="polite"></ul><p class="small muted" id="nb-res"></p></div>
+              <div class="stack"><span class="label">Board descriptor</span><pre><code id="nb-json"></code></pre></div>
+            </div>
+          </div>
+          <p class="small muted">After the checks pass, <b>Flash</b> writes the matching firmware image and this descriptor over USB from the browser, together with a one-time enrollment token. Optionally it also writes Wi-Fi and DNS settings, so a bench node needs no setup page.</p>
+        </div>
+
         <div class="sub" id="bringup">
           <h3>Fabrication bring-up</h3>
           <p>You plug a freshly assembled board into the computer running the admin panel, open <b>Bring-up</b>, and press one button. Flashing happens in the browser over Web Serial (Espressif's esptool-js, Chrome and Edge only), so no terminal is needed.</p>
           <ol class="steps">
             <li><div><b>Flash the factory image</b> for the chosen board profile over USB.</div></li>
             <li><div><b>Self-test</b>: walk each PWM channel, pulse each relay, run the ARGB line, read the temperature sensor and the hardware revision ID. With test points or current sense on the PCB, every result is measured rather than eyeballed.</div></li>
-            <li><div><b>Create identity</b>: the chip generates its private key, the server signs its certificate, and the board gets a serial number.</div></li>
+            <li><div><b>Create identity</b>: the chip generates its private key and enrolls with its one-time token (see <a href="#provisioning">Provisioning</a>), and the board gets a serial number.</div></li>
             <li><div><b>Lock down</b> (production boards only): enable secure boot and flash encryption. This burns eFuses and can't be undone, so the page asks you to confirm.</div></li>
             <li><div><b>Flash the release image</b> and print a QR label with the serial and claim code.</div></li>
           </ol>
@@ -1060,37 +1132,52 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
       <!-- PROVISIONING -->
       <section id="provisioning">
         <div class="sec-head"><span class="label">10 · Identity</span><h2>Provisioning and certificates</h2></div>
-        <p>v5 issued a certificate when the setup portal first exchanged credentials, so the server created the key. In the new flow the key is created inside the chip at bring-up and never leaves it. Claiming a device into a home is a separate, later step.</p>
+        <p>v5 issued a certificate when the setup portal first exchanged credentials, so the server created the key. In the new flow every node, whether PCB, legacy C3 or prototype, creates its own key on first boot and <b>enrolls</b> over HTTPS with a one-time token the builder wrote when flashing it. The key never leaves the chip, and the same path works over the network for every kind of node.</p>
         <div class="figure">
 <pre class="mermaid">
 sequenceDiagram
   autonumber
-  participant J as Admin bring-up page
-  participant D as C6 node
-  participant S as Server and CA
-  participant O as Owner phone
-  J->>D: Flash factory image over USB
-  D->>D: Self-test, then generate key in chip
-  D->>J: Test report and signing request
-  J->>S: Submit report and request
-  S->>J: Signed device certificate and serial
-  J->>D: Store certificate, flash release image
-  Note over J,D: QR label printed with serial and claim code
-  O->>S: Scan QR to claim into a home
-  O->>D: Wi-Fi details through the setup portal
-  D->>S: Connect to MQTT with mutual TLS
-  S->>D: Desired state and settings
+  participant B as Node builder in browser
+  participant D as Node, C3 or C6
+  participant P as Phone on setup network
+  participant S as lights.evm100.org
+  B->>S: Save board descriptor, get one-time token
+  B->>D: Flash firmware image, descriptor and token over USB
+  D->>D: First boot, generate private key in chip
+  D->>P: No Wi-Fi saved, open setup network and page
+  P->>D: Wi-Fi name, password and DNS server
+  D->>S: Look up server via chosen DNS, send signing request and token
+  S->>D: Signed device certificate, token is now spent
+  D->>S: Connect to MQTT on 8883 with mutual TLS
+  S->>D: Output mapping and desired state
 </pre>
-          <p class="figcap">The certificate name is the device ID, which the broker uses as the username. A device can't pretend to be another one, and a stolen certificate is revoked from the Certificates page.</p>
+          <p class="figcap">Bench nodes can have Wi-Fi and DNS written by the builder and skip steps 4 and 5. The certificate name is the device ID, which the broker uses as the username, so a device can't pretend to be another one. A stolen certificate is revoked from the Certificates page.</p>
+        </div>
+        <div class="grid2">
+          <div class="panel stack">
+            <h4>Setup page</h4>
+            <p class="small">A node with no saved Wi-Fi, or one reset by holding its reset button for 5 seconds, opens a setup network named <code>UltraLights-XXXX</code>. Joining it on a phone shows one page:</p>
+            <ul class="clean small">
+              <li><b>Wi-Fi network</b>: picked from a scan, or typed.</li>
+              <li><b>Password</b>.</li>
+              <li><b>DNS server</b>: optional. Enter <code>192.168.1.99</code> on your network. If left empty, the router's DNS is used.</li>
+            </ul>
+            <p class="small">All three are stored in NVS. The DNS server is applied after each DHCP lease so the router can't overwrite it. The reset button pin comes from the board descriptor and defaults to GPIO9, the BOOT button on both chips.</p>
+          </div>
+          <div class="panel stack">
+            <h4>Why the DNS field matters</h4>
+            <p class="small">Nodes always connect to <code>lights.evm100.org</code> by name. Never hard-code an IP address; v5 had a dial-IP override for this. On your network, the DNS at <code>192.168.1.99</code> answers with the server's LAN address, so traffic stays local. Anywhere else, public DNS answers with your public address and the forwarded ports. The certificate checks pass either way because the name is the same.</p>
+          </div>
         </div>
         <details class="more"><summary>Key handling <span class="muted small">CA layout and lifetimes</span></summary>
           <div class="body">
             <ul class="clean">
               <li><b>Root CA</b>: kept offline (USB stick or password manager). Used only to sign intermediates.</li>
-              <li><b>Device intermediate</b>: on the VM. Signs device and bridge certificates.</li>
+              <li><b>Device intermediate</b>: on the server host. Signs device and bridge certificates during enrollment.</li>
+              <li><b>Enrollment tokens</b>: single use, tied to one descriptor, expire after 7 days if unused.</li>
               <li><b>Firmware signing key</b>: on the workstation, used by the build worker. Secure boot only accepts images it signed.</li>
               <li><b>Lifetimes</b>: long-lived device certificates (years), with renewal over MQTT before expiry, so a node that's offline for months still reconnects.</li>
-              <li><b>Wi-Fi setup</b>: the setup portal (soft access point) works on every phone. BLE setup is nicer but Web Bluetooth doesn't work on iPhones, so the portal stays as the baseline.</li>
+              <li><b>Wi-Fi setup</b>: the setup page on the node's own access point works on every phone. BLE setup is nicer but Web Bluetooth doesn't work on iPhones, so the page stays as the baseline.</li>
             </ul>
           </div>
         </details>
@@ -1098,8 +1185,8 @@ sequenceDiagram
 
       <!-- BUILDS -->
       <section id="builds">
-        <div class="sec-head"><span class="label">11 · Delivery</span><h2>Builds and OTA</h2></div>
-        <p>Firmware is built per board profile, not per device. The admin panel queues a build, the workstation builds and signs it, and a staged rollout delivers it.</p>
+        <div class="sec-head"><span class="label">11 · Delivery</span><h2>Builds, deployment and OTA</h2></div>
+        <p>Firmware is built per chip and feature profile, never per device: a handful of images serves every node, since pins live in the board descriptor. The admin panel queues a build, the workstation builds and signs it, and a staged rollout delivers it. Until the build worker exists, images are built on the workstation with <code>idf.py</code> and uploaded through the admin panel.</p>
         <div class="figure">
 <pre class="mermaid">
 flowchart LR
@@ -1117,6 +1204,45 @@ flowchart LR
           <li>The OTA command is never retained, and success is reported only after the broker acknowledges it. v5 learned both the hard way.</li>
           <li>Owners see "Update available" and can approve it. You can push to anyone.</li>
         </ul>
+
+        <div class="sub" id="deploy">
+          <h3>Deployment</h3>
+          <p>The server host runs everything from a clone of this repository. One install script sets the machine up, and it's safe to run again. After that, an update script pulls, migrates and restarts.</p>
+<pre><code>git clone git@github.com:evm100/UltraLights.git /opt/ultralights
+cd /opt/ultralights
+sudo ./deploy/install.sh          # first time, and safe to re-run
+sudo ./deploy/update.sh           # later: pull, migrate, rebuild web, restart</code></pre>
+          <div class="grid2">
+            <div class="stack">
+              <h4>What <code>install.sh</code> sets up</h4>
+              <ul class="clean small">
+                <li>System packages: nginx, certbot, PostgreSQL, Mosquitto, Python, Node (to build the web UI).</li>
+                <li>A dedicated <code>ultralights</code> system user that owns the app and its data.</li>
+                <li>Python environment for the API, database and migrations, and the built web UI.</li>
+                <li>Device CA intermediate and other secrets, generated once into <code>/etc/ultralights/</code> and never into the repo.</li>
+                <li>nginx site for <code>lights.evm100.org</code> with a Let's Encrypt certificate, plus a renewal hook that also reloads Mosquitto.</li>
+                <li>Mosquitto on 8883 with mutual TLS, using that certificate for the server side and our CA for devices.</li>
+                <li>systemd services: <code>ultralights-api</code> (API, WebSocket, MQTT bridge) and <code>ultralights-scheduler</code>.</li>
+                <li>Data under <code>/var/lib/ultralights/</code>: firmware artifacts, uploads, backups.</li>
+              </ul>
+            </div>
+            <div class="stack">
+              <h4>Network</h4>
+              <div class="tbl">
+                <table>
+                  <thead><tr><th>Port</th><th>Service</th><th>Used by</th></tr></thead>
+                  <tbody>
+                    <tr><td class="num">80</td><td>nginx</td><td>Certificate renewal, redirect to 443</td></tr>
+                    <tr><td class="num">443</td><td>nginx</td><td>Web UI, API, enrollment, OTA downloads, workers</td></tr>
+                    <tr><td class="num">8883</td><td>Mosquitto</td><td>Nodes and bridges (mutual TLS)</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="small">On the LAN, <code>192.168.1.99</code> resolves <code>lights.evm100.org</code> to the server directly. From outside, the router forwards 443 and 8883. The database and the API's own port listen only on localhost.</p>
+              <p class="small"><b>This workstation</b> becomes the worker: it reaches the server at <code>https://lights.evm100.org</code> with a worker token, builds firmware with ESP-IDF 6.1, and later runs the AI worker on Ollama.</p>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- REPORTS -->
@@ -1232,6 +1358,18 @@ flowchart LR
               <p><b>Evidence:</b> <code>ul_pir</code> component, an ultrasonic sensor using RMT, and server-side motion schedules with retained "off" commands. Whether sensors are in scope is an <a href="#questions">open question</a>. If they are, they'd be inputs in the device contract feeding the scheduler, not special cases.</p>
             </div>
           </details>
+          <details class="more"><summary><span class="tag rework">Rework</span> Hand-written pin configs need checking</summary>
+            <div class="body">
+              <p><b>Evidence:</b> the 37 files in <code>UltraNodeV5/node_configs</code>. Three of them assign one pin twice: the Wi-Fi reset button shares GPIO0 with a light channel in two, and GPIO9 with the strip in another. Most C3 configs default the reset button to GPIO0, which is the BOOT button on the S3 but not on the C3 (GPIO9). Several put outputs on strapping pins.</p>
+              <p><b>New form:</b> pins live in the board descriptor, and the <a href="#builder">node builder</a> checks them per chip before flashing.</p>
+            </div>
+          </details>
+          <details class="more"><summary><span class="tag drop">Drop</span> Plain MQTT and hard-coded server addresses</summary>
+            <div class="body">
+              <p><b>Evidence:</b> 16 of the 37 node configs have TLS turned off, and the configs carry a fixed dial IP next to the hostname.</p>
+              <p><b>New form:</b> every node uses mutual TLS on 8883 and reaches the server by name, with the DNS server set on the setup page.</p>
+            </div>
+          </details>
           <details class="more"><summary><span class="tag new">Process</span> Write the spec before the code</summary>
             <div class="body">
               <p><b>Evidence:</b> about 370 pull requests, including repeated reverts of the same feature (four reverts of "glowing border buttons" alone) and dozens of leftover branches. Agents writing code against an unwritten spec produced churn.</p>
@@ -1264,8 +1402,8 @@ docs/        this blueprint, decisions</code></pre>
           <div class="stack">
             <h4>Phases</h4>
             <ol class="steps">
-              <li><div><b>Foundations.</b> Contracts, database schema, CA, broker config, sign-in.</div></li>
-              <li><div><b>First light.</b> A C6 dev board driving dual white end to end, with the live slider and the light control screen.</div></li>
+              <li><div><b>Foundations, in two parallel tracks.</b> Shared contracts first. Then the server track (sign-in, database, CA and enrollment, broker, install script) and the firmware track (core, board descriptor, PWM, strip, setup page with DNS, enrollment, MQTT), each building for both C3 and C6.</div></li>
+              <li><div><b>Bench.</b> A reflashed legacy C3 node, set up through the node builder, enrolls with the deployed server. Its white channels and strip (solid color) are controlled live from <code>lights.evm100.org</code> with the light control screen.</div></li>
               <li><div><b>Homes and people.</b> Roles, guest grants, rooms list, scenes, schedules, relays.</div></li>
               <li><div><b>Fleet.</b> Admin panel, health, build worker, OTA, problem reports.</div></li>
               <li><div><b>Color and ARGB.</b> RGB, RGBW, RGB+CCT, building blocks, clips, OpenRGB bridge, solenoids.</div></li>
@@ -1293,6 +1431,10 @@ docs/        this blueprint, decisions</code></pre>
               <tr><td>Is the VM reachable from the internet?</td><td>Remote access, certificates, attack surface</td><td>Yes, behind the proxy with strict sign-in</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Secure boot and flash encryption on production boards?</td><td>Irreversible eFuse burns at bring-up</td><td>Yes for production, never on dev boards</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Is the Member role needed?</td><td>One less role if not</td><td>Keep, it's cheap</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>Support legacy C3 and hand-built nodes?</td><td>Chip support, builder, firmware images</td><td>Yes: pins as data, node builder with per-chip checks</td><td><span class="tag keep">Decided</span></td></tr>
+              <tr><td>Does the v5 server keep running until every node is reflashed? On the same host?</td><td>Port clashes on 443 and 8883, migration order</td><td>New server on its own host, v5 left running until the last node moves</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>Server host operating system?</td><td>What <code>install.sh</code> targets</td><td>Ubuntu Server LTS or Debian</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>Four v5 configs target the original ESP32. Are any still in service?</td><td>A third chip to support</td><td>Replace them rather than support a third chip</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Stepper header and 4-layer stackup?</td><td>Pin budget, cost, ground plane under the buck</td><td>Liked, not decided</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Commit the <code>research/</code> screenshots (34 MB)?</td><td>Repo size forever</td><td>Keep one or two references in the repo, the rest outside it</td><td><span class="tag rework">Open</span></td></tr>
             </tbody>
@@ -1302,7 +1444,7 @@ docs/        this blueprint, decisions</code></pre>
     </main>
   </div>
 
-  <footer>UltraLights Blueprint · Draft 2 · Sources: <code>research/</code> screenshots, <code>docs/hardware-notes.md</code> (ESP32-C6 datasheets and TRM), v5 code at tag <code>v5-final</code>.</footer>
+  <footer>UltraLights Blueprint · Draft 3 · Sources: <code>research/</code> screenshots, <code>docs/hardware-notes.md</code> (ESP32-C6 datasheets and TRM), v5 code at tag <code>v5-final</code>.</footer>
 </div>
 
 <script>
@@ -1751,6 +1893,120 @@ docs/        this blueprint, decisions</code></pre>
   }
   $("#ai-next").addEventListener("click", function () { aiIdx = (aiIdx + 1) % SCENES.length; drawAi(); });
   drawAi();
+
+  /* ---------- node builder (per-chip pin checks) ---------- */
+  function rng(a, b) { var r = []; for (var i = a; i <= b; i++) r.push(i); return r; }
+  var CHIPS = {
+    esp32c3: { name: "ESP32-C3", gpios: rng(0, 21), reserved: { 11: "the flash supply pin", 12: "the flash chip", 13: "the flash chip", 14: "the flash chip", 15: "the flash chip", 16: "the flash chip", 17: "the flash chip" }, usb: [18, 19], uart: [20, 21], strap: [2, 8, 9], boot: 9 },
+    esp32c6: { name: "ESP32-C6", gpios: rng(0, 23), reserved: { 14: "not brought out on the module" }, usb: [12, 13], uart: [16, 17], strap: [8, 9, 15], boot: 9 }
+  };
+  var NB_TYPES = [["pwm", "PWM light"], ["argb", "ARGB strip"], ["switch", "Relay or solenoid"], ["button", "Reset button"], ["motion", "Motion input"]];
+  var NB_PRESETS = {
+    legacy1: { chip: "esp32c3", board: "custom", rows: [{ n: "White 1", t: "pwm", g: 4, v: 3000 }, { n: "White 2", t: "pwm", g: 0, v: 3000 }, { n: "Reset button", t: "button", g: 0 }] },
+    legacy2: { chip: "esp32c3", board: "custom", rows: [{ n: "Strip", t: "argb", g: 5, v: 10 }, { n: "White", t: "pwm", g: 8, v: 3000 }, { n: "Red", t: "pwm", g: 7, v: 3000 }, { n: "Green", t: "pwm", g: 10, v: 3000 }, { n: "Blue", t: "pwm", g: 9, v: 3000 }, { n: "Reset button", t: "button", g: 0 }] },
+    pcb: { chip: "esp32c6", board: "ul-c6-main-revA", rows: [{ n: "PWM 1", t: "pwm", g: 0, v: 19000 }, { n: "PWM 2", t: "pwm", g: 1, v: 19000 }, { n: "PWM 3", t: "pwm", g: 2, v: 19000 }, { n: "PWM 4", t: "pwm", g: 3, v: 19000 }, { n: "PWM 5", t: "pwm", g: 4, v: 19000 }, { n: "PWM 6", t: "pwm", g: 5, v: 19000 }, { n: "Strip A", t: "argb", g: 6, v: 144 }, { n: "Strip B", t: "argb", g: 7, v: 300 }, { n: "Reset button", t: "button", g: 9 }] },
+    blank: { chip: "esp32c3", board: "custom", rows: [{ n: "Reset button", t: "button", g: 9 }] }
+  };
+  var nb = { chip: "esp32c3", board: "custom", rows: [] };
+  var nbRows = $("#nb-rows"), nbChip = $("#nb-chip"), nbPreset = $("#nb-preset");
+  function nbLoad(key) {
+    var p = NB_PRESETS[key];
+    nb.chip = p.chip; nb.board = p.board;
+    nb.rows = p.rows.map(function (r) { return { n: r.n, t: r.t, g: r.g, v: r.v == null ? "" : r.v }; });
+    nbChip.value = nb.chip;
+    nbRender();
+  }
+  function nbPinLabel(chip, g) {
+    var c = CHIPS[chip], tag = "";
+    if (c.reserved[g]) tag = " (reserved)";
+    else if (c.usb.indexOf(g) >= 0) tag = " (USB)";
+    else if (c.uart.indexOf(g) >= 0) tag = " (console)";
+    else if (c.strap.indexOf(g) >= 0) tag = " (strapping)";
+    return "GPIO " + g + tag;
+  }
+  function el(tag, props) { var e = document.createElement(tag); if (props) Object.keys(props).forEach(function (k) { e[k] = props[k]; }); return e; }
+  function nbRender() {
+    nbRows.innerHTML = "";
+    nb.rows.forEach(function (r, idx) {
+      var row = el("div", { className: "nb-row" });
+      var name = el("input", { type: "text", value: r.n, id: "nb-n-" + idx });
+      name.setAttribute("aria-label", "Channel name");
+      name.addEventListener("input", function () { r.n = name.value; nbCheck(); });
+      var type = el("select", { id: "nb-t-" + idx });
+      type.setAttribute("aria-label", "Channel type");
+      NB_TYPES.forEach(function (t) { var o = el("option", { value: t[0], textContent: t[1] }); type.appendChild(o); });
+      type.value = r.t;
+      type.addEventListener("change", function () { r.t = type.value; r.v = r.t === "pwm" ? 3000 : r.t === "argb" ? 60 : ""; nbRender(); });
+      var pin = el("select", { id: "nb-g-" + idx });
+      pin.setAttribute("aria-label", "GPIO");
+      var pins = CHIPS[nb.chip].gpios.slice();
+      if (pins.indexOf(r.g) < 0) pins.push(r.g);
+      pins.forEach(function (g) {
+        var label = CHIPS[nb.chip].gpios.indexOf(g) < 0 ? "GPIO " + g + " (not on this chip)" : nbPinLabel(nb.chip, g);
+        pin.appendChild(el("option", { value: String(g), textContent: label }));
+      });
+      pin.value = String(r.g);
+      pin.addEventListener("change", function () { r.g = +pin.value; nbCheck(); });
+      var val = el("input", { type: "number", id: "nb-v-" + idx, value: r.v, min: "1" });
+      val.setAttribute("aria-label", r.t === "pwm" ? "PWM frequency in hertz" : "Pixel count");
+      if (r.t !== "pwm" && r.t !== "argb") { val.disabled = true; val.value = ""; val.placeholder = "–"; }
+      else val.placeholder = r.t === "pwm" ? "Hz" : "pixels";
+      val.addEventListener("input", function () { r.v = val.value === "" ? "" : +val.value; nbCheck(); });
+      var rm = el("button", { type: "button", className: "x", textContent: "×" });
+      rm.setAttribute("aria-label", "Remove " + (r.n || "channel"));
+      rm.addEventListener("click", function () { nb.rows.splice(idx, 1); nbRender(); });
+      [name, type, pin, val, rm].forEach(function (c) { row.appendChild(c); });
+      nbRows.appendChild(row);
+    });
+    nbCheck();
+  }
+  function nbCheck() {
+    var c = CHIPS[nb.chip], errs = [], warns = [];
+    var byPin = {};
+    nb.rows.forEach(function (r) { (byPin[r.g] = byPin[r.g] || []).push(r.n || "a channel"); });
+    Object.keys(byPin).forEach(function (g) { if (byPin[g].length > 1) errs.push("GPIO " + g + " is used by both " + byPin[g].join(" and ") + "."); });
+    nb.rows.forEach(function (r) {
+      var nm = r.n || "Unnamed channel", g = r.g;
+      if (c.gpios.indexOf(g) < 0) { errs.push(nm + ": the " + c.name + " has no GPIO " + g + "."); return; }
+      if (c.reserved[g]) { errs.push(nm + ": GPIO " + g + " is " + c.reserved[g] + " on the " + c.name + "."); return; }
+      if (c.usb.indexOf(g) >= 0) warns.push(nm + ": GPIO " + g + " is a USB pin. Using it disables USB flashing and logs on this node.");
+      if (c.uart.indexOf(g) >= 0) warns.push(nm + ": GPIO " + g + " is the console UART. Boot messages will toggle it at power-up.");
+      if (c.strap.indexOf(g) >= 0) {
+        if (r.t === "button") { if (g !== c.boot) warns.push(nm + ": GPIO " + g + " is a strapping pin. Holding the button at power-up changes how the chip boots."); }
+        else warns.push(nm + ": GPIO " + g + " is a strapping pin. Whatever is connected must not pull it at power-up, or the chip may not boot.");
+      }
+      if ((r.t === "pwm" || r.t === "argb") && (r.v === "" || r.v <= 0)) errs.push(nm + ": enter " + (r.t === "pwm" ? "a PWM frequency" : "a pixel count") + ".");
+    });
+    var pwm = nb.rows.filter(function (r) { return r.t === "pwm"; });
+    var freqs = {}; pwm.forEach(function (r) { if (r.v) freqs[r.v] = 1; });
+    var nFreq = Object.keys(freqs).length;
+    var argb = nb.rows.filter(function (r) { return r.t === "argb"; }).length;
+    var buttons = nb.rows.filter(function (r) { return r.t === "button"; }).length;
+    if (pwm.length > 6) errs.push(pwm.length + " PWM channels, but the " + c.name + " has 6.");
+    if (nFreq > 4) errs.push("PWM channels use " + nFreq + " different frequencies, but the " + c.name + " has 4 PWM timers.");
+    if (argb > 2) errs.push(argb + " strips, but the " + c.name + " has 2 strip outputs.");
+    if (buttons === 0) warns.push("No reset button. Without one, the setup page can only be reopened by reflashing.");
+    if (buttons > 1) warns.push("More than one reset button. Only one is used.");
+    var list = $("#nb-issues"); list.innerHTML = "";
+    errs.forEach(function (m) { list.appendChild(el("li", { className: "err", textContent: "Error: " + m })); });
+    warns.forEach(function (m) { list.appendChild(el("li", { className: "warn", textContent: "Warning: " + m })); });
+    if (!errs.length) list.appendChild(el("li", { className: "ok", textContent: warns.length ? "No errors. Flashing is allowed; review the warnings first." : "No problems found. Ready to flash." }));
+    $("#nb-res").textContent = "Uses " + pwm.length + " of 6 PWM channels, " + nFreq + " of 4 PWM frequencies, " + argb + " of 2 strip outputs.";
+    var counters = {}, channels = [], reset = null;
+    nb.rows.forEach(function (r) {
+      if (r.t === "button") { if (reset === null) reset = r.g; return; }
+      counters[r.t] = (counters[r.t] || 0) + 1;
+      var ch = { id: r.t + counters[r.t], name: r.n, type: r.t, gpio: r.g };
+      if (r.t === "pwm") ch.hz = r.v;
+      if (r.t === "argb") { ch.pixels = r.v; ch.order = "GRB"; }
+      channels.push(ch);
+    });
+    $("#nb-json").textContent = JSON.stringify({ chip: nb.chip, board: nb.board, channels: channels, reset_button: reset }, null, 2);
+  }
+  nbChip.addEventListener("change", function () { nb.chip = nbChip.value; nbRender(); });
+  nbPreset.addEventListener("change", function () { nbLoad(nbPreset.value); });
+  $("#nb-add").addEventListener("click", function () { nb.rows.push({ n: "Channel " + (nb.rows.length + 1), t: "pwm", g: CHIPS[nb.chip].gpios[0], v: 3000 }); nbRender(); });
+  nbLoad("legacy1");
 
   /* ---------- contents highlighting ---------- */
   var links = $$(".toc a");
