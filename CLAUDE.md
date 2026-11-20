@@ -21,8 +21,15 @@
 - Nodes reach the server by name (`lights.evm100.org`), never a hard-coded IP. MQTT is always mutual TLS on 8883.
 - Pure logic (effects, contract encoding, state) must build and run as host tests.
 
+## Server conventions (`server/`, `web/`, `deploy/`)
+
+- Production host: Ubuntu Server 26.04 LTS, deployed by cloning the repo and running `deploy/install.sh` (idempotent; `--check` changes nothing). The user restarts services themselves; scripts never stop services they didn't create.
+- v5 currently runs on that same host and is replaced in a one-weekend cutover. Nothing from v5 is migrated (users, node configs, certificates); the node builder starts blank except for the PCB template.
+- FastAPI + PostgreSQL (migrations) + Mosquitto (mTLS on 8883) behind nginx + certbot; Svelte 5 + Vite SPA in `web/`, built to static files.
+- Secrets live in `/etc/ultralights/` on the host (dev: a gitignored `server/.dev/`), never in the repo.
+
 ## Working style
 
 - Spec before code: check the blueprint, then build small end-to-end slices with a clear acceptance check.
-- Message formats come from `contracts/`; don't hand-roll JSON shapes in firmware, server or web.
+- Message formats come from `contracts/`; don't hand-roll JSON shapes in firmware, server or web. Run `python3 contracts/tools/check.py` after touching contracts.
 - Never commit secrets (keys, certificates, `.env`, databases).

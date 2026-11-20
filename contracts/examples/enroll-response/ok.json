@@ -1,0 +1,1 @@
+{ "device_id": "ul-0a1b2c", "cert": "-----BEGIN CERTIFICATE-----\nMIIB...\n-----END CERTIFICATE-----\n", "ca_chain": "-----BEGIN CERTIFICATE-----\nMIIB...\n-----END CERTIFICATE-----\n", "mqtt": { "host": "lights.evm100.org", "port": 8883 } }

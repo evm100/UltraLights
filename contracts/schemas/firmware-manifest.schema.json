@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/firmware-manifest.schema.json",
+  "title": "Firmware package manifest (manifest.json inside a package)",
+  "description": "A firmware package is a .zip with manifest.json at the root plus every file it lists. Produced by firmware/tools/package.py (later by the build worker), uploaded to the server, and used by the node builder to flash over Web Serial and by OTA. The builder writes each file at its offset, then the ul_board blob at board_partition.offset.",
+  "type": "object",
+  "required": ["v", "profile", "chip", "version", "idf", "commit", "built_at", "flash", "files", "app", "board_partition"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "profile": { "$ref": "common.schema.json#/$defs/profile" },
+    "chip": { "$ref": "common.schema.json#/$defs/chip" },
+    "version": { "$ref": "common.schema.json#/$defs/semver" },
+    "idf": { "type": "string" },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}(-dirty)?$" },
+    "built_at": { "type": "string", "format": "date-time" },
+    "flash": {
+      "type": "object", "required": ["size", "mode", "freq"], "additionalProperties": false,
+      "properties": { "size": { "enum": ["4MB", "8MB", "16MB"] }, "mode": { "enum": ["qio", "qout", "dio", "dout"] }, "freq": { "enum": ["80m", "40m", "26m", "20m"] } }
+    },
+    "files": {
+      "type": "array", "minItems": 3,
+      "items": {
+        "type": "object", "required": ["name", "offset", "size", "sha256", "role"], "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9_.-]+\\.bin$" },
+          "offset": { "type": "integer", "minimum": 0 },
+          "size": { "type": "integer", "minimum": 1 },
+          "sha256": { "$ref": "common.schema.json#/$defs/sha256" },
+          "role": { "enum": ["bootloader", "partition_table", "otadata", "app"] }
+        }
+      }
+    },
+    "app": { "type": "string", "description": "Name of the file with role app; this file alone is the OTA image." },
+    "board_partition": {
+      "type": "object", "required": ["offset", "size"], "additionalProperties": false,
+      "properties": { "offset": { "type": "integer", "minimum": 0 }, "size": { "type": "integer", "minimum": 4096 } }
+    }
+  }
+}

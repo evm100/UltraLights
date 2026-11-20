@@ -1,0 +1,10 @@
+{ "v": 1,
+  "board": { "v": 1, "chip": "esp32c3", "board": "C3 bench node",
+    "channels": [
+      { "id": "warm", "name": "Warm white", "type": "pwm", "gpio": 4, "hz": 19000 },
+      { "id": "cool", "name": "Cool white", "type": "pwm", "gpio": 5, "hz": 19000 },
+      { "id": "strip", "name": "Strip", "type": "argb", "gpio": 6, "pixels": 60, "order": "GRB" },
+      { "id": "relay", "type": "switch", "gpio": 7 } ],
+    "reset_button": { "gpio": 9 } },
+  "provision": { "device_id": "ul-0a1b2c", "token": "tok_EXAMPLE_ONLY_000000000000000000000", "server": "lights.evm100.org",
+    "wifi": { "ssid": "ExampleNet", "psk": "example-password" }, "dns": "192.168.1.99" } }

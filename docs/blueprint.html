@@ -349,7 +349,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
   <header class="hero">
     <div class="meta-row">
       <span class="label">Design document</span>
-      <span class="label">Draft 3</span>
+      <span class="label">Draft 4</span>
       <span class="label">19 Nov 2026</span>
       <span class="label">Branch: beta</span>
     </div>
@@ -410,6 +410,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
         <li><a href="#builds">Builds, deployment and OTA</a>
           <ol>
             <li><a href="#deploy">Deployment</a></li>
+            <li><a href="#cutover">Cutover from v5</a></li>
           </ol>
         </li>
         <li><a href="#reports">Problem reports</a></li>
@@ -575,7 +576,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
 
         <div class="sub" id="topics">
           <h3>Message topics</h3>
-          <p>Topics are versioned and scoped per device. The broker allows a device to publish and subscribe only under its own ID.</p>
+          <p>Topics are versioned and scoped per device. The broker allows a device to publish and subscribe only under its own ID. The exact payloads are JSON schemas in <code>contracts/</code>, with examples that the firmware and server tests both check against.</p>
           <div class="tbl">
             <table>
               <thead><tr><th>Topic</th><th>Direction</th><th>Retained</th><th>QoS</th><th>Purpose</th></tr></thead>
@@ -586,6 +587,8 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
                 <tr><td><code>ul/v1/d/{id}/set/{out}</code></td><td>server → device</td><td class="yes">yes</td><td>1</td><td>Desired state. Retained so a reconnecting device catches up.</td></tr>
                 <tr><td><code>ul/v1/d/{id}/live/{out}</code></td><td>server → device</td><td class="no">no</td><td>0</td><td>Slider streams while a finger is down. Losing one doesn't matter.</td></tr>
                 <tr><td><code>ul/v1/d/{id}/cmd</code></td><td>server → device</td><td class="no">never</td><td>1</td><td>One-shot actions: OTA, reboot, identify, pulse.</td></tr>
+                <tr><td><code>ul/v1/d/{id}/config</code></td><td>server → device</td><td class="yes">yes</td><td>1</td><td>Output mapping: which channels form which output, names, limits. Without one, each channel is its own output.</td></tr>
+                <tr><td><code>ul/v1/d/{id}/evt</code></td><td>device → server</td><td class="no">no</td><td>1</td><td>Command results, button presses, errors, motion.</td></tr>
                 <tr><td><code>ul/v1/d/{id}/health</code></td><td>device → server</td><td class="no">no</td><td>0</td><td>Periodic metrics for the admin panel.</td></tr>
               </tbody>
             </table>
@@ -1093,7 +1096,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
 
         <div class="sub" id="builder">
           <h3>Node builder</h3>
-          <p>The builder is where every node gets its board descriptor. It applies to the PCB, the legacy C3 nodes and anything you solder together on the bench. You choose the chip first, because the checks depend on it. Then you list what's connected to which pin, and the builder checks the result against that chip's rules before anything is flashed. Try the presets: the first one is a real v5 layout that put a light and the reset button on the same pin.</p>
+          <p>The builder is where every node gets its board descriptor. It applies to the PCB, the legacy C3 nodes and anything you solder together on the bench. You choose the chip first, because the checks depend on it. Then you list what's connected to which pin, and the builder checks the result against that chip's rules before anything is flashed. Try the presets: the first one is a real v5 layout that put a light and the reset button on the same pin. The demo presets exist only here; the real builder starts blank, with only the PCB template saved.</p>
           <div class="panel nb" aria-label="Node builder demo">
             <div class="ctrls">
               <div class="ctrl"><label for="nb-chip">Chip</label><select id="nb-chip"><option value="esp32c3">ESP32-C3</option><option value="esp32c6">ESP32-C6</option></select></div>
@@ -1242,6 +1245,19 @@ sudo ./deploy/update.sh           # later: pull, migrate, rebuild web, restart</
               <p class="small"><b>This workstation</b> becomes the worker: it reaches the server at <code>https://lights.evm100.org</code> with a worker token, builds firmware with ESP-IDF 6.1, and later runs the AI worker on Ollama.</p>
             </div>
           </div>
+        </div>
+
+        <div class="sub" id="cutover">
+          <h3>Cutover from v5</h3>
+          <p>v5 runs on the same Ubuntu Server 26.04 host, so the switch happens in one weekend while nobody depends on the lights. Nothing from v5 is migrated: no users, no node configs, no certificates. Every node starts from a blank builder.</p>
+          <ol class="steps">
+            <li><div><b>Before the weekend</b>: build and test both sides on the bench against a dev server on the workstation. Reflash one C3 and drive it end to end.</div></li>
+            <li><div><b>Preflight</b>: <code>sudo ./deploy/install.sh --check</code> changes nothing. It lists what's in the way: v5's nginx site for <code>lights.evm100.org</code>, whatever holds ports 8883 and 8000, the v5 Mosquitto container, and old services.</div></li>
+            <li><div><b>Stop v5</b> yourself, following the commands the preflight prints. The script never stops services it didn't create.</div></li>
+            <li><div><b>Install</b>: <code>sudo ./deploy/install.sh</code> backs up the v5 nginx site and Mosquitto config to <code>/var/backups/ultralights-v5/</code>, reuses the existing Let's Encrypt certificate, and installs the rest. v5's <code>/srv/firmware</code> is left alone.</div></li>
+            <li><div><b>Create your admin account</b> (the script prompts once), sign in, and recreate each node in the builder as you inspect and reflash it.</div></li>
+            <li><div><b>Rollback</b> if needed: <code>sudo ./deploy/rollback-v5.sh</code> restores the backed-up nginx site so you can restart v5.</div></li>
+          </ol>
         </div>
       </section>
 
@@ -1403,7 +1419,7 @@ docs/        this blueprint, decisions</code></pre>
             <h4>Phases</h4>
             <ol class="steps">
               <li><div><b>Foundations, in two parallel tracks.</b> Shared contracts first. Then the server track (sign-in, database, CA and enrollment, broker, install script) and the firmware track (core, board descriptor, PWM, strip, setup page with DNS, enrollment, MQTT), each building for both C3 and C6.</div></li>
-              <li><div><b>Bench.</b> A reflashed legacy C3 node, set up through the node builder, enrolls with the deployed server. Its white channels and strip (solid color) are controlled live from <code>lights.evm100.org</code> with the light control screen.</div></li>
+              <li><div><b>Bench, then cutover.</b> A reflashed legacy C3 node, created from a blank builder, enrolls with the server (dev server first, then the deployed one after the weekend cutover). Its white channels and strip (solid color) are controlled live from <code>lights.evm100.org</code> with the light control screen.</div></li>
               <li><div><b>Homes and people.</b> Roles, guest grants, rooms list, scenes, schedules, relays.</div></li>
               <li><div><b>Fleet.</b> Admin panel, health, build worker, OTA, problem reports.</div></li>
               <li><div><b>Color and ARGB.</b> RGB, RGBW, RGB+CCT, building blocks, clips, OpenRGB bridge, solenoids.</div></li>
@@ -1427,14 +1443,14 @@ docs/        this blueprint, decisions</code></pre>
               <tr><td>Does the C6 have PSRAM?</td><td>Clip storage and RAM budget</td><td>No (datasheet). Stay on C6, clips in flash</td><td><span class="tag keep">Decided</span></td></tr>
               <tr><td>How many ARGB outputs?</td><td>RMT memory and pins</td><td>Two, with the 48/144-word memory split</td><td><span class="tag keep">Decided</span></td></tr>
               <tr><td>ARGB strip voltages to support (5, 12, 24 V)?</td><td>Power stage and level shifting</td><td>Data line at 5 V; strip power external</td><td><span class="tag rework">Open</span></td></tr>
-              <tr><td>Web UI framework?</td><td>Everything in <code>web/</code></td><td>Svelte</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>Web UI framework?</td><td>Everything in <code>web/</code></td><td>Svelte 5 + Vite, built to static files that nginx serves</td><td><span class="tag keep">Decided</span></td></tr>
               <tr><td>Is the VM reachable from the internet?</td><td>Remote access, certificates, attack surface</td><td>Yes, behind the proxy with strict sign-in</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Secure boot and flash encryption on production boards?</td><td>Irreversible eFuse burns at bring-up</td><td>Yes for production, never on dev boards</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Is the Member role needed?</td><td>One less role if not</td><td>Keep, it's cheap</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Support legacy C3 and hand-built nodes?</td><td>Chip support, builder, firmware images</td><td>Yes: pins as data, node builder with per-chip checks</td><td><span class="tag keep">Decided</span></td></tr>
-              <tr><td>Does the v5 server keep running until every node is reflashed? On the same host?</td><td>Port clashes on 443 and 8883, migration order</td><td>New server on its own host, v5 left running until the last node moves</td><td><span class="tag rework">Open</span></td></tr>
-              <tr><td>Server host operating system?</td><td>What <code>install.sh</code> targets</td><td>Ubuntu Server LTS or Debian</td><td><span class="tag rework">Open</span></td></tr>
-              <tr><td>Four v5 configs target the original ESP32. Are any still in service?</td><td>A third chip to support</td><td>Replace them rather than support a third chip</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>How does v5 hand over to the new server?</td><td>Same host, same ports 443 and 8883</td><td>Full cutover in one weekend on the same host (see <a href="#cutover">Cutover</a>). No v5 node configs are migrated: every node is inspected, rewired where needed and recreated in the builder</td><td><span class="tag keep">Decided</span></td></tr>
+              <tr><td>Server host operating system?</td><td>What <code>install.sh</code> targets</td><td>Ubuntu Server 26.04 LTS</td><td><span class="tag keep">Decided</span></td></tr>
+              <tr><td>Four v5 configs target the original ESP32. Are any still in service?</td><td>A third chip to support</td><td>No. Those nodes are rebuilt on C3; only C3 and C6 are supported</td><td><span class="tag keep">Decided</span></td></tr>
               <tr><td>Stepper header and 4-layer stackup?</td><td>Pin budget, cost, ground plane under the buck</td><td>Liked, not decided</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Commit the <code>research/</code> screenshots (34 MB)?</td><td>Repo size forever</td><td>Keep one or two references in the repo, the rest outside it</td><td><span class="tag rework">Open</span></td></tr>
             </tbody>
@@ -1444,7 +1460,7 @@ docs/        this blueprint, decisions</code></pre>
     </main>
   </div>
 
-  <footer>UltraLights Blueprint · Draft 3 · Sources: <code>research/</code> screenshots, <code>docs/hardware-notes.md</code> (ESP32-C6 datasheets and TRM), v5 code at tag <code>v5-final</code>.</footer>
+  <footer>UltraLights Blueprint · Draft 4 · Sources: <code>research/</code> screenshots, <code>docs/hardware-notes.md</code> (ESP32-C6 datasheets and TRM), v5 code at tag <code>v5-final</code>.</footer>
 </div>
 
 <script>

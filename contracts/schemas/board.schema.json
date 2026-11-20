@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/board.schema.json",
+  "title": "Board descriptor",
+  "description": "What is physically connected to which pin. Written by the node builder, stored on the node in the ul_board partition and on the server. Pin rules beyond this schema are in chips.json and are checked by both the builder and ul_board.",
+  "type": "object",
+  "required": ["v", "chip", "board", "channels"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "chip": { "$ref": "common.schema.json#/$defs/chip" },
+    "board": { "$ref": "common.schema.json#/$defs/name", "description": "Human name, e.g. 'PCB rev A' or 'Legacy C3: kitchen'." },
+    "hw_rev": { "type": "string", "maxLength": 16 },
+    "channels": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/channel" } },
+    "reset_button": {
+      "type": "object", "additionalProperties": false, "required": ["gpio"],
+      "properties": {
+        "gpio": { "$ref": "common.schema.json#/$defs/gpio" },
+        "active_low": { "type": "boolean", "default": true },
+        "hold_ms": { "type": "integer", "minimum": 1000, "maximum": 30000, "default": 5000 }
+      }
+    },
+    "status_led": {
+      "type": "object", "additionalProperties": false, "required": ["gpio"],
+      "properties": {
+        "gpio": { "$ref": "common.schema.json#/$defs/gpio" },
+        "active_low": { "type": "boolean", "default": false }
+      }
+    }
+  },
+  "$defs": {
+    "channel": {
+      "type": "object",
+      "required": ["id", "type", "gpio"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/key" },
+        "name": { "$ref": "common.schema.json#/$defs/name" },
+        "type": { "enum": ["pwm", "argb", "switch", "motion"] },
+        "gpio": { "$ref": "common.schema.json#/$defs/gpio" }
+      },
+      "oneOf": [
+        { "properties": {
+            "type": { "const": "pwm" },
+            "id": true, "name": true, "gpio": true,
+            "hz": { "type": "integer", "minimum": 100, "maximum": 40000, "default": 19000 },
+            "invert": { "type": "boolean", "default": false }
+          }, "additionalProperties": false },
+        { "required": ["pixels"], "properties": {
+            "type": { "const": "argb" },
+            "id": true, "name": true, "gpio": true,
+            "pixels": { "type": "integer", "minimum": 1, "maximum": 1500 },
+            "order": { "$ref": "common.schema.json#/$defs/pixel_order", "default": "GRB" },
+            "chipset": { "enum": ["ws2812", "sk6812", "ws2811"], "default": "ws2812" }
+          }, "additionalProperties": false },
+        { "properties": {
+            "type": { "const": "switch" },
+            "id": true, "name": true, "gpio": true,
+            "active_low": { "type": "boolean", "default": false }
+          }, "additionalProperties": false },
+        { "properties": {
+            "type": { "const": "motion" },
+            "id": true, "name": true, "gpio": true,
+            "active_low": { "type": "boolean", "default": false }
+          }, "additionalProperties": false }
+      ]
+    }
+  }
+}

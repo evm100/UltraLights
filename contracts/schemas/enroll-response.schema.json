@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/enroll-response.schema.json",
+  "title": "Enrollment response",
+  "description": "200: the signed certificate. Errors use {error, detail} with HTTP 400 csr_invalid | device_mismatch | chip_mismatch, 401 token_invalid | token_expired, 409 token_used, 429 rate_limited. Retrying with the same token and the same public key within 24 h returns the same certificate (200), so a lost response is safe to retry.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["device_id", "cert", "ca_chain", "mqtt"],
+      "additionalProperties": false,
+      "properties": {
+        "device_id": { "$ref": "common.schema.json#/$defs/device_id" },
+        "cert": { "$ref": "common.schema.json#/$defs/pem_cert", "description": "Leaf certificate, CN = device_id, clientAuth EKU." },
+        "ca_chain": { "$ref": "common.schema.json#/$defs/pem_cert", "description": "Device intermediate (and nothing else). The device presents leaf + chain to the broker." },
+        "mqtt": { "type": "object", "required": ["host", "port"], "additionalProperties": false, "properties": { "host": { "type": "string" }, "port": { "type": "integer" } } }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["error"],
+      "additionalProperties": false,
+      "properties": {
+        "error": { "enum": ["csr_invalid", "device_mismatch", "chip_mismatch", "token_invalid", "token_expired", "token_used", "rate_limited"] },
+        "detail": { "type": "string", "maxLength": 200 }
+      }
+    }
+  ]
+}

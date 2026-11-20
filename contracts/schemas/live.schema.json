@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/live.schema.json",
+  "title": "Live update (topic ul/v1/d/{id}/live/{out}, not retained, QoS 0, server to device)",
+  "description": "Partial update while a slider is held, at most 20 per second per output after server coalescing. Applied on top of the current state with a hardware fade of fade_ms (default 60, slightly longer than the 50 ms update interval so steps blend). Shares the seq counter with set; when the finger lifts the server publishes the final value as a retained set with a higher seq.",
+  "type": "object",
+  "required": ["seq"],
+  "minProperties": 2,
+  "additionalProperties": false,
+  "properties": {
+    "on": { "type": "boolean" },
+    "level": { "$ref": "common.schema.json#/$defs/level" },
+    "cct": { "$ref": "common.schema.json#/$defs/kelvin" },
+    "color": { "$ref": "common.schema.json#/$defs/rgb" },
+    "white": { "$ref": "common.schema.json#/$defs/level" },
+    "fade_ms": { "$ref": "common.schema.json#/$defs/fade_ms", "default": 60 },
+    "src": { "$ref": "common.schema.json#/$defs/src" },
+    "seq": { "$ref": "common.schema.json#/$defs/seq" }
+  }
+}

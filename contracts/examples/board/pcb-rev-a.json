@@ -1,0 +1,12 @@
+{ "v": 1, "chip": "esp32c6", "board": "PCB rev A", "hw_rev": "A",
+  "channels": [
+    { "id": "pwm1", "type": "pwm", "gpio": 0, "hz": 19000 },
+    { "id": "pwm2", "type": "pwm", "gpio": 1, "hz": 19000 },
+    { "id": "pwm3", "type": "pwm", "gpio": 2, "hz": 19000 },
+    { "id": "pwm4", "type": "pwm", "gpio": 3, "hz": 19000 },
+    { "id": "pwm5", "type": "pwm", "gpio": 4, "hz": 19000 },
+    { "id": "pwm6", "type": "pwm", "gpio": 5, "hz": 19000 },
+    { "id": "argb1", "type": "argb", "gpio": 6, "pixels": 144, "order": "GRB", "chipset": "ws2812" },
+    { "id": "argb2", "type": "argb", "gpio": 7, "pixels": 300, "order": "GRB", "chipset": "ws2812" }
+  ],
+  "reset_button": { "gpio": 9, "active_low": true, "hold_ms": 5000 } }

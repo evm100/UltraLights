@@ -1,0 +1,4 @@
+{ "_expect": { "errors": ["pin_conflict:0"], "warnings": [] },
+  "v": 1, "chip": "esp32c3", "board": "Pin conflict",
+  "channels": [ { "id": "w1", "type": "pwm", "gpio": 0 } ],
+  "reset_button": { "gpio": 0 } }

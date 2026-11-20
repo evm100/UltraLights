@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/set.schema.json",
+  "title": "Desired state (topic ul/v1/d/{id}/set/{out}, retained, QoS 1, server to device)",
+  "description": "The full desired state of one output, so the retained message alone is enough after a reconnect. Fields that don't apply to the output's kind are ignored. The device ignores a message whose seq is not greater than the last one it applied to that output (seq is kept in RAM only, so the first message after boot always applies).",
+  "type": "object",
+  "required": ["on", "seq"],
+  "additionalProperties": false,
+  "properties": {
+    "on": { "type": "boolean" },
+    "level": { "$ref": "common.schema.json#/$defs/level" },
+    "cct": { "$ref": "common.schema.json#/$defs/kelvin" },
+    "color": { "$ref": "common.schema.json#/$defs/rgb" },
+    "white": { "$ref": "common.schema.json#/$defs/level", "description": "rgbw only: the white channel, 0 to 1." },
+    "effect": { "$ref": "#/$defs/effect" },
+    "fade_ms": { "$ref": "common.schema.json#/$defs/fade_ms", "default": 400 },
+    "src": { "$ref": "common.schema.json#/$defs/src" },
+    "seq": { "$ref": "common.schema.json#/$defs/seq" }
+  },
+  "$defs": {
+    "effect": {
+      "type": ["object", "null"],
+      "description": "argb only. null or absent = solid color. Building blocks arrive in the Color and ARGB phase; phase 1 firmware may report effect unsupported by leaving the cap out of info.",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,23}$" },
+        "palette": { "type": "array", "maxItems": 16, "items": { "$ref": "common.schema.json#/$defs/rgb" } },
+        "speed": { "type": "number", "minimum": 0, "maximum": 1 },
+        "scale": { "type": "number", "minimum": 0, "maximum": 1 },
+        "intensity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "direction": { "enum": [1, -1] },
+        "seed": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "segment": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "minItems": 2, "maxItems": 2 }
+      }
+    }
+  }
+}

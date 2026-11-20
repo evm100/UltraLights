@@ -1,0 +1,13 @@
+{ "v": 1, "id": "ul-0a1b2c", "chip": "esp32c3", "fw": "0.1.0", "profile": "c3-lights", "idf": "v6.1",
+  "board": "C3 bench node", "board_crc": "00000000", "mac": "34:85:18:00:00:01",
+  "channels": [
+    { "id": "warm", "name": "Warm white", "type": "pwm", "gpio": 4, "hz": 19000 },
+    { "id": "cool", "name": "Cool white", "type": "pwm", "gpio": 5, "hz": 19000 },
+    { "id": "strip", "name": "Strip", "type": "argb", "gpio": 6, "pixels": 60, "order": "GRB" },
+    { "id": "relay", "type": "switch", "gpio": 7 } ],
+  "outputs": [
+    { "key": "warm", "kind": "white", "channels": { "w": "warm" }, "caps": ["onoff", "level"] },
+    { "key": "cool", "kind": "white", "channels": { "w": "cool" }, "caps": ["onoff", "level"] },
+    { "key": "strip", "kind": "argb", "channels": { "data": "strip" }, "pixels": 60, "caps": ["onoff", "level", "color"] },
+    { "key": "relay", "kind": "relay", "channels": { "coil": "relay" }, "caps": ["onoff"] } ],
+  "config_rev": 0 }

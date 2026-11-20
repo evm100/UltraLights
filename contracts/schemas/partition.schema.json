@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/partition.schema.json",
+  "title": "ul_board partition payload",
+  "description": "The JSON stored after the 16-byte header in the ul_board partition (see board-partition.md). Board descriptor plus one-time provisioning data.",
+  "type": "object",
+  "required": ["v", "board", "provision"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "board": { "$ref": "board.schema.json" },
+    "provision": {
+      "type": "object",
+      "required": ["device_id", "server"],
+      "additionalProperties": false,
+      "properties": {
+        "device_id": { "$ref": "common.schema.json#/$defs/device_id" },
+        "token": { "type": "string", "pattern": "^[A-Za-z0-9_-]{32,64}$", "description": "One-time enrollment token. Absent when only the descriptor is being rewritten on an already-enrolled node." },
+        "server": { "type": "string", "pattern": "^[a-z0-9.-]{1,253}$", "description": "Host name for HTTPS enrollment and MQTT. lights.evm100.org in production; a dev host name on the bench. Never an IP." },
+        "mqtt_port": { "type": "integer", "default": 8883 },
+        "server_ca": { "$ref": "common.schema.json#/$defs/pem_cert", "description": "Optional. Trust this CA for the server instead of the built-in public CA bundle. For dev servers without a Let's Encrypt certificate." },
+        "wifi": {
+          "type": "object", "required": ["ssid"], "additionalProperties": false,
+          "properties": { "ssid": { "type": "string", "minLength": 1, "maxLength": 32 }, "psk": { "type": "string", "maxLength": 64 } }
+        },
+        "dns": { "type": "string", "format": "ipv4", "description": "Optional DNS server applied after every DHCP lease, e.g. 192.168.1.99." }
+      }
+    }
+  }
+}

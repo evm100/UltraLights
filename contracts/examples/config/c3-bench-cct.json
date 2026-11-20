@@ -1,0 +1,4 @@
+{ "v": 1, "rev": 3, "outputs": [
+  { "key": "main", "kind": "cct", "name": "Desk lamp", "channels": { "warm": "warm", "cool": "cool" }, "cct_range": [2700, 6500], "min_duty": 0.004 },
+  { "key": "strip", "kind": "argb", "name": "Shelf strip", "channels": { "data": "strip" }, "pixels": 60, "max_level": 0.8 },
+  { "key": "fan", "kind": "relay", "name": "Fan", "channels": { "coil": "relay" }, "power_on": "off" } ] }

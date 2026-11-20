@@ -1,0 +1,10 @@
+{ "_expect": { "errors": ["too_many_argb:3", "too_many_pwm:7", "too_many_pwm_freqs:6"], "warnings": [] },
+  "v": 1, "chip": "esp32c6", "board": "Over limits",
+  "channels": [
+    { "id": "p1", "type": "pwm", "gpio": 0, "hz": 1000 }, { "id": "p2", "type": "pwm", "gpio": 1, "hz": 2000 },
+    { "id": "p3", "type": "pwm", "gpio": 2, "hz": 3000 }, { "id": "p4", "type": "pwm", "gpio": 3, "hz": 4000 },
+    { "id": "p5", "type": "pwm", "gpio": 4, "hz": 5000 }, { "id": "p6", "type": "pwm", "gpio": 5 },
+    { "id": "p7", "type": "pwm", "gpio": 6 },
+    { "id": "s1", "type": "argb", "gpio": 7, "pixels": 10 }, { "id": "s2", "type": "argb", "gpio": 10, "pixels": 10 },
+    { "id": "s3", "type": "argb", "gpio": 11, "pixels": 10 } ],
+  "reset_button": { "gpio": 9 } }

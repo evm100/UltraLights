@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/evt.schema.json",
+  "title": "Device event (topic ul/v1/d/{id}/evt, not retained, QoS 1, device to server)",
+  "type": "object",
+  "required": ["type"],
+  "oneOf": [
+    { "required": ["cmd_id", "ok"], "properties": { "type": { "const": "cmd_result" }, "cmd_id": { "type": "string" }, "ok": { "type": "boolean" }, "error": { "type": "string", "maxLength": 64 }, "detail": { "type": "string", "maxLength": 200 }, "progress": { "type": "integer", "minimum": 0, "maximum": 100, "description": "ota only: intermediate results carry progress and ok=true; the final one has no progress." } }, "additionalProperties": false },
+    { "required": ["action"], "properties": { "type": { "const": "button" }, "action": { "enum": ["press", "hold", "reset"] } }, "additionalProperties": false },
+    { "required": ["code"], "properties": { "type": { "const": "error" }, "code": { "type": "string", "pattern": "^[a-z0-9_]{1,32}$" }, "detail": { "type": "string", "maxLength": 200 }, "out": { "$ref": "common.schema.json#/$defs/key" } }, "additionalProperties": false },
+    { "required": ["out", "active"], "properties": { "type": { "const": "motion" }, "out": { "$ref": "common.schema.json#/$defs/key" }, "active": { "type": "boolean" } }, "additionalProperties": false }
+  ]
+}

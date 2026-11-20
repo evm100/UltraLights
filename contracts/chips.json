@@ -1,0 +1,22 @@
+{
+  "_doc": "Per-chip pin rules shared by the node builder (web) and ul_board (firmware). 'unusable' pins are errors, 'caution' pins are warnings. Limits are hard errors. A reset button on boot_button is fine. The C3 column is from Espressif docs and should be checked against real C3 boards.",
+  "v": 1,
+  "esp32c3": {
+    "name": "ESP32-C3",
+    "gpio_max": 21,
+    "unusable": { "11": "flash supply (VDD_SPI)", "12": "SPI flash", "13": "SPI flash", "14": "SPI flash", "15": "SPI flash", "16": "SPI flash", "17": "SPI flash" },
+    "caution": { "2": "strapping pin, must not be pulled low at boot", "8": "strapping pin, must be high at boot (often the dev-board LED)", "9": "strapping pin (BOOT button)", "18": "USB D-, lost for flashing and logs over USB", "19": "USB D+, lost for flashing and logs over USB", "20": "console RX", "21": "console TX" },
+    "boot_button": 9,
+    "limits": { "pwm": 6, "pwm_freqs": 4, "argb": 2 },
+    "flash_sizes": ["4MB"]
+  },
+  "esp32c6": {
+    "name": "ESP32-C6",
+    "gpio_max": 23,
+    "unusable": { "14": "not brought out on the WROOM module" },
+    "caution": { "8": "strapping pin", "9": "strapping pin (BOOT button)", "15": "strapping pin", "12": "USB D-, lost for flashing and logs over USB", "13": "USB D+, lost for flashing and logs over USB", "16": "console TX", "17": "console RX" },
+    "boot_button": 9,
+    "limits": { "pwm": 6, "pwm_freqs": 4, "argb": 2 },
+    "flash_sizes": ["4MB", "8MB", "16MB"]
+  }
+}

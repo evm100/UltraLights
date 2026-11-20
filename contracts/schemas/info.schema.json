@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/info.schema.json",
+  "title": "Device info (topic ul/v1/d/{id}/info, retained, QoS 1, device to server)",
+  "description": "Published after every connect and after a config is applied.",
+  "type": "object",
+  "required": ["v", "id", "chip", "fw", "profile", "board", "board_crc", "mac", "channels", "outputs", "config_rev"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "id": { "$ref": "common.schema.json#/$defs/device_id" },
+    "chip": { "$ref": "common.schema.json#/$defs/chip" },
+    "fw": { "$ref": "common.schema.json#/$defs/semver" },
+    "profile": { "$ref": "common.schema.json#/$defs/profile" },
+    "idf": { "type": "string", "maxLength": 32 },
+    "board": { "$ref": "common.schema.json#/$defs/name" },
+    "hw_rev": { "type": "string", "maxLength": 16 },
+    "board_crc": { "$ref": "common.schema.json#/$defs/hex32", "description": "CRC32 of the ul_board payload, so the server can tell which descriptor the node runs." },
+    "mac": { "$ref": "common.schema.json#/$defs/mac" },
+    "channels": { "type": "array", "items": { "$ref": "board.schema.json#/$defs/channel" } },
+    "outputs": { "type": "array", "items": { "allOf": [ { "$ref": "output.schema.json" }, { "required": ["caps"] } ] } },
+    "config_rev": { "type": "integer", "minimum": 0, "description": "0 = default mapping." },
+    "config_error": { "type": "string", "maxLength": 200, "description": "Set when the last config was rejected (unknown channel, role mismatch); the previous mapping stays." }
+  }
+}

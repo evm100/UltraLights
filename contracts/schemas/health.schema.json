@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/health.schema.json",
+  "title": "Health metrics (topic ul/v1/d/{id}/health, not retained, QoS 0, device to server)",
+  "description": "Every 60 s and once right after connect.",
+  "type": "object",
+  "required": ["uptime_s", "heap_free", "heap_min", "rssi", "ip", "reset_reason", "wifi_reconnects", "mqtt_reconnects"],
+  "additionalProperties": false,
+  "properties": {
+    "uptime_s": { "type": "integer", "minimum": 0 },
+    "heap_free": { "type": "integer", "minimum": 0 },
+    "heap_min": { "type": "integer", "minimum": 0, "description": "Lowest free heap since boot." },
+    "rssi": { "type": "integer", "minimum": -127, "maximum": 0 },
+    "ip": { "type": "string", "format": "ipv4" },
+    "channel": { "type": "integer", "minimum": 1, "maximum": 196 },
+    "reset_reason": { "type": "string", "maxLength": 24, "description": "esp_reset_reason() name in lower case, e.g. poweron, sw, panic, brownout, task_wdt." },
+    "wifi_reconnects": { "type": "integer", "minimum": 0 },
+    "mqtt_reconnects": { "type": "integer", "minimum": 0 },
+    "temp_c": { "type": "number" },
+    "ota": { "enum": ["valid", "pending_verify", "rolled_back"] },
+    "dns": { "type": "string", "format": "ipv4", "description": "DNS server in use." }
+  }
+}

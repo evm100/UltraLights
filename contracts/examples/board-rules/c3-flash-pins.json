@@ -1,0 +1,3 @@
+{ "_expect": { "errors": ["no_such_pin:22", "unusable_pin:12"], "warnings": ["caution_pin:8", "no_reset_button:"] },
+  "v": 1, "chip": "esp32c3", "board": "Bad pins",
+  "channels": [ { "id": "a", "type": "pwm", "gpio": 12 }, { "id": "b", "type": "pwm", "gpio": 22 }, { "id": "c", "type": "switch", "gpio": 8 } ] }

@@ -1,0 +1,4 @@
+{ "_expect": { "errors": [], "warnings": [] },
+  "v": 1, "chip": "esp32c6", "board": "Clean C6",
+  "channels": [ { "id": "w", "type": "pwm", "gpio": 18 }, { "id": "s", "type": "argb", "gpio": 19, "pixels": 30 } ],
+  "reset_button": { "gpio": 9 } }

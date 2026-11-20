@@ -27,3 +27,6 @@ deploy/secrets/
 .vscode/
 .idea/
 .DS_Store
+
+# Dev secrets and state
+server/.dev/

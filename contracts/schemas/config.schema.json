@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/config.schema.json",
+  "title": "Output mapping (topic ul/v1/d/{id}/config, retained, QoS 1, server to device)",
+  "description": "How the board's channels group into outputs. If no config is retained the device uses the default mapping: one output per channel, key = channel id, pwm -> white, argb -> argb, switch -> relay, motion -> motion. The device stores the last applied config in NVS.",
+  "type": "object",
+  "required": ["v", "rev", "outputs"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "rev": { "type": "integer", "minimum": 1, "description": "Increases on every change; echoed as config_rev in info." },
+    "outputs": { "type": "array", "maxItems": 16, "items": { "$ref": "output.schema.json" } }
+  }
+}

@@ -1,0 +1,1 @@
+{ "v": 1, "chip": "esp32c3", "board": "x", "channels": [ { "id": "p", "type": "pwm", "gpio": 4, "pixels": 10 } ] }

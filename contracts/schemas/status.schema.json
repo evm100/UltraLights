@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/status.schema.json",
+  "title": "Connection status (topic ul/v1/d/{id}/status, retained, QoS 1, device to server)",
+  "description": "{\"online\": true} after connect; {\"online\": false} is the last-will message and is also published before a clean disconnect.",
+  "type": "object",
+  "required": ["online"],
+  "additionalProperties": false,
+  "properties": { "online": { "type": "boolean" } }
+}

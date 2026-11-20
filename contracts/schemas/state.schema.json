@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/state.schema.json",
+  "title": "Actual state (topic ul/v1/d/{id}/state/{out}, retained, QoS 1, device to server)",
+  "description": "What the output is doing. Published after a set or live message is applied (at most 5 per second per output while a live stream runs, and always once when it settles), after a local change such as a button, and once per output after every connect. seq and src echo the message that caused it; local changes use src 'device' and seq 0.",
+  "type": "object",
+  "required": ["on", "seq"],
+  "additionalProperties": false,
+  "properties": {
+    "on": { "type": "boolean" },
+    "level": { "$ref": "common.schema.json#/$defs/level" },
+    "cct": { "$ref": "common.schema.json#/$defs/kelvin" },
+    "color": { "$ref": "common.schema.json#/$defs/rgb" },
+    "white": { "$ref": "common.schema.json#/$defs/level" },
+    "effect": { "$ref": "set.schema.json#/$defs/effect" },
+    "pulse_ms_left": { "type": "integer", "minimum": 0, "description": "solenoid only: time left in the current pulse." },
+    "motion": { "type": "boolean", "description": "motion only." },
+    "src": { "$ref": "common.schema.json#/$defs/src" },
+    "seq": { "$ref": "common.schema.json#/$defs/seq" }
+  }
+}

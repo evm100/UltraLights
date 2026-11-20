@@ -1,0 +1,8 @@
+{ "v": 1, "chip": "esp32c3", "board": "C3 bench node",
+  "channels": [
+    { "id": "warm", "name": "Warm white", "type": "pwm", "gpio": 4, "hz": 19000 },
+    { "id": "cool", "name": "Cool white", "type": "pwm", "gpio": 5, "hz": 19000 },
+    { "id": "strip", "name": "Strip", "type": "argb", "gpio": 6, "pixels": 60, "order": "GRB" },
+    { "id": "relay", "type": "switch", "gpio": 7 }
+  ],
+  "reset_button": { "gpio": 9 } }

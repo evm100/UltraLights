@@ -1,0 +1,1 @@
+{ "uptime_s": 3600, "heap_free": 182340, "heap_min": 150112, "rssi": -61, "ip": "192.168.1.57", "channel": 6, "reset_reason": "poweron", "wifi_reconnects": 0, "mqtt_reconnects": 1, "temp_c": 41.5, "ota": "valid", "dns": "192.168.1.99" }
