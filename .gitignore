@@ -1,3 +1,29 @@
+# ESP-IDF (sdkconfig is generated from sdkconfig.defaults + profile fragments)
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+firmware/dependencies.lock
+
+# Python
 __pycache__/
 *.pyc
-firmware_artifacts/
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+web/dist/
+
+# Secrets and local data: never commit
+.env
+*.key
+*.pem
+*.p12
+*.db
+deploy/secrets/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store

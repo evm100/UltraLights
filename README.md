@@ -1,70 +1,26 @@
-# UltraLights Setup
+# UltraLights
 
-This repository contains two cooperating projects:
+Self-hosted lighting and switched-load control: custom ESP32-C6 nodes, a web app with an admin panel, and workers for firmware builds and (later) AI scenes.
 
-- `Server/` – FastAPI-based control surface for houses, rooms, presets and OTA
-  distribution.
-- `UltraNodeV5/` – ESP-IDF firmware for the UltraNode controllers.
+This branch (`beta`) is a ground-up rewrite. The previous generation (ESP32-S3 `UltraNodeV5` firmware and its FastAPI server) is preserved at the tag `v5-final`.
 
-Most provisioning work touches both halves of the stack, so refer back to the
-server documentation whenever you onboard a new controller.
+## Start here
 
-## Provisioning checklist
+- [`docs/blueprint.html`](docs/blueprint.html): the design. Architecture, device contract, firmware components, interface, roles, admin panel, provisioning, phases and open questions.
+- [`docs/hardware-notes.md`](docs/hardware-notes.md): verified ESP32-C6 facts and board decisions.
 
-1. Use the admin UI (or edit `Server/app/device_registry.json`) to register the
-   house, room and node.
-2. Before flashing firmware, review the [house-prefixed node ID
-   guide](Server/docs/node-ids.md) and mirror the generated identifier in
-   `UltraNodeV5/sdkconfig.defaults` and your OTA artifact paths.
-3. Build and flash `UltraNodeV5`, then upload the binary to the OTA location
-   referenced in the config.
-4. After the installer completes captive portal provisioning, confirm the admin
-   UI shows an issued MQTT client certificate for the node. The server mints it
-   from the UltraLights CA and the broker maps the certificate subject back to
-   the node ID.
-5. Reload the server to pick up registry changes and confirm the node reports in
-   under the expected `ul/<node-id>/...` topics.
-
-Following the checklist keeps the registry, firmware and OTA distribution in
-sync so devices can report status and accept updates immediately after they boot
-on the network.
-
-### Certificate lifecycle
-
-Node certificates now follow the same lifecycle as OTA bearer tokens. When you
-generate IDs in the Node factory or CLI nothing is issued yet; the certificate is
-created the first time the captive portal exchanges credentials. The server
-stores the bundle metadata and exposes the fingerprint in the admin UI so you can
-audit who last rotated the identity. If a certificate is lost or compromised,
-use the admin tooling to revoke it (updating the Mosquitto CRL) and trigger the
-provisioning portal again so the node receives a fresh key pair—no firmware
-rebuild is required.
-
-## Firmware build prerequisites
-
-The ESP-IDF toolchain expects a number of helper modules to be available on the
-Python path when you call `idf.py`. The upstream installer wires everything up
-automatically, but our containerized development environment does not ship with
-those extras pre-installed. If you see an error such as
+## Layout
 
 ```
-No module named 'esp_idf_monitor'
+contracts/   device contract schemas, shared by firmware, server and web
+firmware/    ESP-IDF 6.1 project for the ESP32-C6 (slim main + ul_* components)
+server/      API, auth, scheduler, MQTT bridge
+web/         user UI and admin panel
+workers/     build worker, AI worker (later)
+bridges/     OpenRGB bridge agent, others later
+hardware/    PCB design
+deploy/      broker, proxy and database configuration
+docs/        blueprint and hardware notes
 ```
 
-install the optional firmware dependencies before invoking any `idf.py`
-commands:
-
-```
-python -m pip install -r UltraNodeV5/requirements-dev.txt
-```
-
-Make sure you also activate an ESP-IDF environment (so `idf.py` resolves the
-cross-compilers) before running `idf.py build` or `idf.py -p <port> flash`.
-
-### Resetting a node for reprovisioning
-
-If the installation Wi-Fi changes, press and hold the ESP32's **BOOT** button
-for about five seconds. The firmware monitors that GPIO at runtime; once the
-hold timer elapses it erases the saved SSID/password from NVS and reboots. On
-the next boot the node falls back to the captive portal provisioning flow so new
-credentials can be entered.
+Folders are created as each phase starts, so some of these don't exist yet.

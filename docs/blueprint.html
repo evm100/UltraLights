@@ -1,0 +1,1769 @@
+<title>UltraLights Blueprint</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sticky contents rail on the left, one reading column; figures and mockups run the full column width. */
+:root {
+  --bg: #ECEFF3;
+  --surface: #FFFFFF;
+  --sunk: #E2E6EC;
+  --ink: #17202A;
+  --muted: #56616F;
+  --line: #D2D8E0;
+  --warm: #A85A16;
+  --cool: #2A67A6;
+  --ok: #23804F;
+  --warn: #9A6410;
+  --bad: #B83A2E;
+  --accent: var(--warm);
+  --code-bg: #F4F6F9;
+
+  /* Device mockups and the LED "wall" are always dark glass, in both themes */
+  --ph-frame: #0A0C0F;
+  --ph-bg: #23282E;
+  --ph-ink: #F3F2EF;
+  --ph-muted: #A7ADB4;
+  --ph-glass: rgba(255,255,255,0.10);
+  --ph-glass-2: rgba(255,255,255,0.18);
+  --ph-amber: #F2B24C;
+  --wall: #0B0D11;
+
+  --f-display: "Outfit", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1317; --surface: #161B21; --sunk: #0B0E12; --ink: #E5EAF0; --muted: #98A3AF; --line: #28313B;
+    --warm: #EBA05A; --cool: #7DB2EA; --ok: #4CC38A; --warn: #E2AE52; --bad: #F07468; --code-bg: #12171C;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1317; --surface: #161B21; --sunk: #0B0E12; --ink: #E5EAF0; --muted: #98A3AF; --line: #28313B;
+  --warm: #EBA05A; --cool: #7DB2EA; --ok: #4CC38A; --warn: #E2AE52; --bad: #F07468; --code-bg: #12171C;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--f-body); font-size: 16px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 64px;
+}
+h1, h2, h3, h4 { font-family: var(--f-display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.2rem, 5vw, 3.2rem); font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 1.75rem; font-weight: 600; }
+h3 { font-size: 1.2rem; font-weight: 600; }
+h4 { font-size: 1rem; font-weight: 600; }
+p { margin: 0; }
+a { color: var(--cool); }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, [tabindex]:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--cool); outline-offset: 2px;
+}
+code, pre, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 4px; padding: 0.05em 0.35em; }
+pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; margin: 0; line-height: 1.5; }
+pre code { background: none; border: 0; padding: 0; font-size: 0.82rem; }
+.label { font-family: var(--f-display); font-size: 0.74rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.muted { color: var(--muted); }
+.small { font-size: 0.875rem; }
+
+/* ---------- page frame ---------- */
+.page { max-width: 1240px; margin: 0 auto; }
+.hero { padding-block: 48px 36px; display: grid; gap: 18px; border-bottom: 1px solid var(--line); margin-bottom: 32px; }
+.hero .lede { font-size: 1.15rem; max-width: 68ch; color: var(--ink); }
+.meta-row { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.decisions { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 8px; }
+.decision { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 4px; min-width: 0; }
+.decision b { font-family: var(--f-display); font-weight: 600; font-size: 1rem; }
+.decision span { color: var(--muted); font-size: 0.9rem; }
+
+.layout { display: grid; gap: 40px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1100px) { .layout { grid-template-columns: 230px minmax(0, 1fr); } }
+
+.toc { align-self: start; font-size: 0.9rem; }
+@media (min-width: 1100px) {
+  .toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); max-height: calc(100vh - 32px); overflow-y: auto; }
+  .toc summary { display: none; }
+}
+.toc summary { cursor: pointer; font-family: var(--f-display); font-weight: 600; padding: 10px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.toc > ol, .toc details > ol { padding: 10px 0; }
+.toc ol ol { padding-left: 14px; margin: 2px 0 6px; border-left: 1px solid var(--line); }
+.toc a { color: var(--muted); text-decoration: none; display: block; padding: 3px 8px; border-radius: 6px; }
+.toc a:hover { color: var(--ink); background: var(--sunk); }
+.toc a.active { color: var(--ink); font-weight: 600; }
+
+main { min-width: 0; display: grid; gap: 72px; }
+section { display: grid; gap: 20px; min-width: 0; scroll-margin-top: 16px; }
+section > p, .prose { max-width: 68ch; }
+.sec-head { display: grid; gap: 6px; }
+.sec-head .label { color: var(--accent); }
+.sub { display: grid; gap: 14px; min-width: 0; }
+.sub > p { max-width: 68ch; }
+ul.clean, ol.clean { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 68ch; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; min-width: 0; }
+.grid2 { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.grid3 { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+.callout { border-left: 3px solid var(--warn); background: var(--surface); padding: 12px 16px; border-radius: 0 8px 8px 0; max-width: 72ch; font-size: 0.95rem; }
+.callout.info { border-left-color: var(--cool); }
+
+/* tables */
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--f-display); font-weight: 600; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--sunk); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.num { font-variant-numeric: tabular-nums; }
+.yes { color: var(--ok); font-weight: 600; }
+.no { color: var(--muted); }
+.part { color: var(--warn); font-weight: 600; }
+
+/* tags & chips */
+.tag { display: inline-block; font-family: var(--f-display); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.tag.keep { color: var(--ok); }
+.tag.rework { color: var(--warn); }
+.tag.drop { color: var(--bad); }
+.tag.new { color: var(--cool); }
+
+/* details (nested info) */
+details.more { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
+details.more > summary { cursor: pointer; padding: 12px 16px; font-weight: 500; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; list-style: none; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before { content: "+"; font-family: var(--f-mono); color: var(--muted); width: 1ch; }
+details.more[open] > summary::before { content: "\2212"; }
+details.more > .body { padding: 0 16px 16px 36px; display: grid; gap: 10px; }
+details.more > .body p, details.more > .body li { max-width: 68ch; }
+.stack { display: grid; gap: 8px; }
+
+/* diagrams */
+.figure { display: grid; gap: 8px; min-width: 0; }
+.figure .canvas { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+.figcap { font-size: 0.85rem; color: var(--muted); max-width: 72ch; }
+svg text { font-family: var(--f-body); }
+.d-box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.d-zone { fill: var(--sunk); stroke: var(--line); stroke-width: 1; stroke-dasharray: 5 4; }
+.d-item { fill: var(--bg); stroke: var(--line); stroke-width: 1; }
+.d-title { fill: var(--ink); font-family: var(--f-display); font-weight: 600; font-size: 14px; }
+.d-text { fill: var(--ink); font-size: 12px; }
+.d-sub { fill: var(--muted); font-size: 11px; }
+.d-line { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+.d-warm { stroke: var(--warm); }
+.d-cool { stroke: var(--cool); }
+.d-head { fill: var(--muted); }
+.d-headw { fill: var(--warm); }
+.d-headc { fill: var(--cool); }
+.d-lbl { fill: var(--muted); font-size: 11px; font-family: var(--f-mono); }
+pre.mermaid { background: var(--surface); text-align: center; }
+
+/* firmware layers */
+.layers { display: grid; gap: 10px; }
+.layer { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: center; }
+@media (max-width: 600px) { .layer { grid-template-columns: minmax(0, 1fr); gap: 6px; } }
+.layer .lname { display: grid; gap: 2px; }
+.layer .lname b { font-family: var(--f-display); font-weight: 600; }
+.layer .lname span { font-size: 0.8rem; color: var(--muted); }
+.mods { display: flex; flex-wrap: wrap; gap: 6px; }
+.mod { font-family: var(--f-mono); font-size: 0.78rem; padding: 4px 9px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); white-space: nowrap; }
+.mod.core { border-color: var(--warm); color: var(--warm); font-weight: 500; }
+.mod.later { border-style: dashed; color: var(--muted); }
+.layer-arrow { font-size: 0.8rem; color: var(--muted); padding-left: 162px; }
+@media (max-width: 600px) { .layer-arrow { padding-left: 0; } }
+
+/* ---------- phone mockups ---------- */
+.phones { display: flex; gap: 22px; overflow-x: auto; padding: 6px 2px 14px; align-items: flex-start; }
+.phone-wrap { display: grid; gap: 10px; flex: 0 0 auto; justify-items: center; }
+.phone-wrap .figcap { max-width: 260px; text-align: center; }
+.phone { width: 262px; height: 548px; max-width: 100%; border-radius: 40px; padding: 9px; background: var(--ph-frame); box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 18px 40px -18px rgba(0,0,0,0.55); }
+.screen { position: relative; height: 100%; border-radius: 32px; overflow: hidden; color: var(--ph-ink); background: var(--ph-bg); display: flex; flex-direction: column; font-family: var(--f-body); font-size: 13px; }
+.screen .bgimg { position: absolute; inset: 0; z-index: 0; }
+.screen > *:not(.bgimg) { position: relative; z-index: 1; }
+.sbar { display: flex; justify-content: space-between; padding: 12px 22px 0; font-size: 11px; font-weight: 600; }
+.ph-head { display: grid; grid-template-columns: 28px 1fr 28px; align-items: center; padding: 10px 14px 4px; text-align: center; }
+.ph-head .t { font-family: var(--f-display); font-weight: 600; letter-spacing: 0.08em; font-size: 11.5px; text-transform: uppercase; }
+.ph-head .s { color: var(--ph-muted); font-size: 11px; }
+.ph-icon { width: 18px; height: 18px; stroke: var(--ph-ink); fill: none; stroke-width: 2; }
+.pill { font-family: var(--f-display); font-weight: 600; font-size: 11px; letter-spacing: 0.08em; border-radius: 999px; padding: 5px 14px; border: 1px solid rgba(255,255,255,0.45); background: transparent; color: var(--ph-ink); cursor: pointer; }
+.pill.on { background: var(--ph-ink); color: #1b1d20; border-color: var(--ph-ink); }
+.pct { font-family: var(--f-display); font-size: 26px; font-weight: 400; text-align: center; font-variant-numeric: tabular-nums; }
+.vslider { margin: 8px auto 0; width: 46%; flex: 1 1 auto; min-height: 120px; border-radius: 22px; background: var(--ph-glass); position: relative; overflow: hidden; cursor: ns-resize; touch-action: none; }
+.vslider .fill { position: absolute; left: 0; right: 0; bottom: 0; background: #fff; border-radius: 0 0 22px 22px; }
+.vslider .fill::before { content: ""; position: absolute; top: 12px; left: 50%; width: 22px; height: 3px; margin-left: -11px; border-radius: 2px; background: rgba(0,0,0,0.55); }
+/* Bottom sheet: collapsed to a grab bar by default; expands upward and the flex slider above shrinks to make room */
+.sheet { margin-top: 10px; border-radius: 22px 22px 0 0; background: rgba(0,0,0,0); border-top: 1px solid rgba(255,255,255,0); transition: background-color .3s ease, border-color .3s ease; }
+.sheet.open { background: rgba(0,0,0,0.38); border-top-color: rgba(255,255,255,0.08); backdrop-filter: blur(8px); }
+.sheet-handle { display: block; width: 100%; padding: 10px 0 14px; background: none; border: 0; cursor: pointer; border-radius: 22px 22px 0 0; }
+.sheet-handle::before { content: ""; display: block; margin: 0 auto; width: 40px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.85); transition: width .2s ease, background-color .2s ease; }
+.sheet-handle:hover::before, .sheet-handle:focus-visible::before { width: 52px; background: #fff; }
+.sheet-handle:focus-visible { outline: 2px solid rgba(255,255,255,0.6); outline-offset: -4px; }
+.sheet.open .sheet-handle { padding-bottom: 6px; }
+.sheet-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .32s cubic-bezier(.2,.8,.2,1); }
+.sheet.open .sheet-body { grid-template-rows: 1fr; }
+.sheet-inner { min-height: 0; overflow: hidden; display: grid; gap: 10px; padding: 0 14px; }
+.sheet.open .sheet-inner { padding-bottom: 16px; }
+.sheet [hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .sheet, .sheet-body, .sheet-handle::before { transition: none; } }
+.tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; }
+.tabs button { background: none; border: 0; color: var(--ph-muted); font-family: var(--f-display); font-size: 10.5px; letter-spacing: 0.1em; font-weight: 600; padding: 6px 0; border-bottom: 2px solid transparent; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--ph-ink); border-bottom-color: var(--ph-ink); }
+.ph-row { display: grid; gap: 4px; }
+.ph-row .lab { font-family: var(--f-display); font-size: 10px; letter-spacing: 0.1em; color: var(--ph-muted); text-transform: uppercase; display: flex; justify-content: space-between; }
+.ph-range { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 2px; background: var(--ph-glass-2); outline-offset: 4px; }
+.ph-range::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 3px solid #2a2d31; box-shadow: 0 0 0 1px rgba(255,255,255,0.6); cursor: pointer; }
+.ph-range::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 3px solid #2a2d31; cursor: pointer; }
+.cct-track { background: linear-gradient(90deg, #FF8B27, #FFB46B 20%, #FFD6AA 42%, #FFF1E0 62%, #F3F2FF 82%, #D9E3FF); }
+.hue-track { background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+.fxcards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.fxcards button { border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; padding: 0; overflow: hidden; background: none; color: var(--ph-ink); cursor: pointer; display: grid; text-align: left; }
+.fxcards button[aria-pressed="true"] { border-color: var(--ph-ink); box-shadow: 0 0 0 1px var(--ph-ink); }
+.fxcards .sw { height: 26px; }
+.fxcards .nm { font-size: 9.5px; padding: 3px 6px 4px; font-weight: 600; letter-spacing: 0.04em; }
+
+.home-title { font-family: var(--f-display); font-size: 26px; font-weight: 600; padding: 0 18px; margin-top: auto; text-shadow: 0 1px 12px rgba(0,0,0,0.4); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 18px 0; }
+.chip { background: rgba(255,255,255,0.92); color: #1d2024; border-radius: 999px; padding: 5px 11px; font-family: var(--f-display); font-weight: 600; font-size: 11px; letter-spacing: 0.04em; display: inline-flex; gap: 6px; align-items: center; }
+.chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.ph-nav { display: flex; justify-content: space-around; padding: 10px 16px 6px; }
+.ph-nav span { font-size: 9.5px; letter-spacing: 0.08em; color: var(--ph-muted); font-family: var(--f-display); font-weight: 600; }
+.ph-nav span.cur { color: var(--ph-ink); text-decoration: underline; text-underline-offset: 5px; }
+.room-cards { display: grid; gap: 8px; padding: 12px 14px 16px; }
+.room-card { height: 64px; border-radius: 12px; position: relative; overflow: hidden; display: flex; align-items: flex-end; padding: 8px 10px; font-family: var(--f-display); font-weight: 500; font-size: 14px; text-shadow: 0 1px 6px rgba(0,0,0,0.6); }
+.room-card .badge { position: absolute; right: 8px; top: 8px; font-size: 10px; background: rgba(0,0,0,0.4); padding: 2px 8px; border-radius: 999px; font-family: var(--f-body); text-shadow: none; }
+.ask { margin: auto 14px 14px; border: 1px solid rgba(255,255,255,0.45); border-radius: 999px; padding: 8px 12px; font-size: 11px; color: var(--ph-muted); font-style: italic; }
+
+.rlist { display: grid; padding: 6px 12px 12px; gap: 2px; overflow-y: auto; }
+.rrow { display: grid; grid-template-columns: 30px 1fr auto; gap: 10px; align-items: center; padding: 8px 2px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.rrow .thumb { width: 30px; height: 30px; border-radius: 6px; }
+.rrow .nm { font-family: var(--f-display); font-weight: 600; font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+.dots { display: flex; gap: 3px; margin-top: 3px; }
+.dots i { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,0.55); }
+.dots i.lit { background: var(--ph-amber); }
+.onoff { display: flex; gap: 4px; }
+.onoff .pill { padding: 4px 9px; font-size: 10px; }
+
+.dev-card { margin: 8px 14px; padding: 12px; border-radius: 14px; background: var(--ph-glass); display: grid; gap: 8px; }
+.dev-card .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.dev-card .nm { font-family: var(--f-display); font-weight: 600; font-size: 13px; }
+.dev-card .kind { font-size: 10px; color: var(--ph-muted); letter-spacing: 0.08em; text-transform: uppercase; }
+.btnrow { display: flex; gap: 6px; flex-wrap: wrap; }
+.countdown { font-family: var(--f-mono); font-size: 12px; color: var(--ph-amber); }
+.ph-note { font-size: 10.5px; color: var(--ph-muted); }
+
+.rp-sheet { margin-top: auto; background: #2d3238; border-radius: 22px 22px 0 0; padding: 14px 16px 18px; display: grid; gap: 10px; }
+.rp-sheet h4 { font-size: 15px; }
+.rp-sheet textarea { width: 100%; height: 86px; resize: none; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.25); color: var(--ph-ink); padding: 8px 10px; font: inherit; font-size: 12px; }
+.rp-sheet label { display: flex; gap: 8px; align-items: flex-start; font-size: 11.5px; color: var(--ph-ink); }
+.rp-sheet .attach { border: 1px dashed rgba(255,255,255,0.3); border-radius: 10px; padding: 8px; text-align: center; font-size: 11px; color: var(--ph-muted); }
+.rp-sheet .send { background: var(--ph-ink); color: #1b1d20; border: 0; border-radius: 999px; padding: 9px; font-family: var(--f-display); font-weight: 600; letter-spacing: 0.06em; cursor: pointer; }
+.toast { font-size: 11px; color: var(--ph-amber); min-height: 1.2em; text-align: center; }
+
+/* ---------- labs ---------- */
+.lab { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .lab.split { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); } }
+.wall { background: var(--wall); border-radius: var(--radius); position: relative; overflow: hidden; height: 150px; }
+.wall canvas { position: absolute; left: 0; width: 100%; display: block; }
+.wall .glow { top: 0; height: 110px; filter: blur(18px) saturate(1.2); opacity: 0.85; }
+.wall .leds { bottom: 22px; height: 18px; }
+.wall .cap { position: absolute; left: 12px; bottom: 4px; font-family: var(--f-mono); font-size: 10.5px; color: #8b939c; }
+.ctrls { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.ctrl { display: grid; gap: 4px; }
+.ctrl label { font-size: 0.82rem; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.ctrl label output { font-family: var(--f-mono); color: var(--ink); font-size: 0.8rem; }
+.ctrl input[type="range"], .ctrl select { width: 100%; accent-color: var(--warm); }
+.ctrl select { font: inherit; font-size: 0.9rem; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { font: inherit; font-size: 0.85rem; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.fxdesc { font-size: 0.9rem; color: var(--muted); min-height: 1.6em; }
+.btn { font: inherit; font-size: 0.85rem; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.btn:hover { background: var(--sunk); }
+
+.meter { display: grid; gap: 6px; }
+.meter .bar { height: 10px; border-radius: 5px; background: var(--sunk); overflow: hidden; border: 1px solid var(--line); }
+.meter .bar i { display: block; height: 100%; background: var(--warm); border-radius: 5px 0 0 5px; transition: width 0.2s; }
+.meter .row { display: flex; justify-content: space-between; font-size: 0.82rem; color: var(--muted); gap: 8px; }
+.stat { font-family: var(--f-display); font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.pipe { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: stretch; }
+.pipe .stage { background: var(--sunk); border-radius: 8px; padding: 10px 12px; display: grid; gap: 2px; }
+.pipe .stage .stat { font-size: 1.4rem; }
+.lamp { height: 90px; border-radius: var(--radius); background: var(--wall); position: relative; overflow: hidden; }
+.lamp .light { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 0%, #FFC27A 0%, rgba(255,170,90,0.55) 35%, rgba(255,140,60,0) 75%); opacity: var(--lvl, 0.5); transition-property: opacity; transition-timing-function: linear; }
+.lamp .fixture { position: absolute; top: 0; left: 50%; width: 120px; margin-left: -60px; height: 6px; background: #3a3f45; border-radius: 0 0 4px 4px; }
+.msglog { font-family: var(--f-mono); font-size: 0.75rem; color: var(--muted); min-height: 5.5em; white-space: pre; overflow-x: auto; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+
+/* admin mockup */
+.admin { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 760px) { .admin { grid-template-columns: 190px minmax(0, 1fr); } }
+.admin nav { background: var(--sunk); padding: 14px 10px; display: grid; gap: 2px; align-content: start; font-size: 0.86rem; border-right: 1px solid var(--line); }
+@media (max-width: 759px) { .admin nav { display: flex; flex-wrap: wrap; gap: 4px; border-right: 0; border-bottom: 1px solid var(--line); } }
+.admin nav button { text-align: left; font: inherit; background: none; border: 0; color: var(--muted); padding: 6px 10px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+.admin nav button[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600; }
+.admin nav .count { font-family: var(--f-mono); font-size: 0.75rem; background: var(--warm); color: var(--surface); border-radius: 999px; padding: 0 6px; }
+.admin .pane { padding: 16px; display: grid; gap: 12px; min-width: 0; align-content: start; }
+.admin .pane .tbl { border-radius: 8px; }
+.spill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 500; white-space: nowrap; }
+.spill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.spill.ok { color: var(--ok); } .spill.warn { color: var(--warn); } .spill.bad { color: var(--bad); } .spill.info { color: var(--cool); }
+.example { font-size: 0.75rem; color: var(--muted); font-style: italic; }
+.steps { display: grid; gap: 8px; counter-reset: st; padding: 0; margin: 0; list-style: none; }
+.steps li { counter-increment: st; display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; }
+.steps li::before { content: counter(st); width: 24px; height: 24px; border-radius: 50%; background: var(--sunk); border: 1px solid var(--line); display: grid; place-items: center; font-family: var(--f-mono); font-size: 0.75rem; }
+
+/* AI scene sampler */
+.sampler { display: grid; gap: 12px; }
+.sampler canvas { width: 100%; max-width: 640px; height: auto; border-radius: 8px; display: block; background: var(--wall); }
+.fixtures { display: grid; gap: 8px; max-width: 640px; }
+.fixture-row { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; align-items: center; font-size: 0.85rem; }
+.fixture-row .px { display: flex; gap: 2px; flex-wrap: wrap; background: var(--wall); padding: 6px; border-radius: 6px; }
+.fixture-row .px i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+
+footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+</style>
+
+<div class="page">
+  <header class="hero">
+    <div class="meta-row">
+      <span class="label">Design document</span>
+      <span class="label">Draft 2</span>
+      <span class="label">19 Nov 2026</span>
+      <span class="label">Branch: beta</span>
+    </div>
+    <h1>UltraLights Blueprint</h1>
+    <p class="lede">A ground-up redesign of UltraLights: new ESP32-C6 hardware on a custom PCB, lean ESP-IDF 6.x firmware, a rebuilt server and broker, and a calm interface modeled on the room-and-slider style in <code>research/</code>. It covers what we're building, how the pieces fit, and what we're keeping from v5.</p>
+    <div class="decisions" aria-label="Key decisions">
+      <div class="decision"><b>One device contract</b><span>Nodes, the OpenRGB bridge and future devices all describe themselves with the same capabilities.</span></div>
+      <div class="decision"><b>Hardware does the dimming</b><span>LEDC fades replace the v5 software smoothing tasks.</span></div>
+      <div class="decision"><b>Lean by construction</b><span>Each board profile compiles only the drivers it uses. Effects are data, not code.</span></div>
+      <div class="decision"><b>Workers connect out</b><span>The 4080 machine builds firmware and runs AI jobs without exposing a single port.</span></div>
+      <div class="decision"><b>Four roles</b><span>Admin, Owner, Member and Guest, with guest access granted per room or device.</span></div>
+      <div class="decision"><b>Matter later, on the server</b><span>No Matter stack in firmware. A server-side bridge can be added if wanted.</span></div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <details class="toc" open>
+      <summary>Contents</summary>
+      <ol>
+        <li><a href="#goals">Goals and scope</a></li>
+        <li><a href="#architecture">System architecture</a>
+          <ol>
+            <li><a href="#machines">Machines and roles</a></li>
+            <li><a href="#stack">Server stack</a></li>
+            <li><a href="#topics">Message topics</a></li>
+          </ol>
+        </li>
+        <li><a href="#devices">Device model</a>
+          <ol>
+            <li><a href="#outputs">Output types</a></li>
+            <li><a href="#contract">Contract examples</a></li>
+          </ol>
+        </li>
+        <li><a href="#hardware">Hardware and firmware</a>
+          <ol>
+            <li><a href="#board">Board and population</a></li>
+            <li><a href="#firmware">Firmware components</a></li>
+          </ol>
+        </li>
+        <li><a href="#realtime">Real-time control</a></li>
+        <li><a href="#effects">Effects</a>
+          <ol>
+            <li><a href="#fxlab">Effects lab</a></li>
+            <li><a href="#clips">Clips and streaming</a></li>
+          </ol>
+        </li>
+        <li><a href="#interface">Interface</a></li>
+        <li><a href="#people">Accounts and permissions</a></li>
+        <li><a href="#admin">Admin panel</a>
+          <ol>
+            <li><a href="#bringup">Fabrication bring-up</a></li>
+          </ol>
+        </li>
+        <li><a href="#provisioning">Provisioning and certificates</a></li>
+        <li><a href="#builds">Builds and OTA</a></li>
+        <li><a href="#reports">Problem reports</a></li>
+        <li><a href="#ai">AI integration</a></li>
+        <li><a href="#lessons">Lessons from v5</a></li>
+        <li><a href="#plan">Repository and phases</a></li>
+        <li><a href="#questions">Open questions</a></li>
+      </ol>
+    </details>
+
+    <main>
+      <!-- GOALS -->
+      <section id="goals">
+        <div class="sec-head"><span class="label">01 · Scope</span><h2>Goals and scope</h2></div>
+        <p>UltraLights controls the lighting and simple switched loads in a handful of homes. Most people use it to turn rooms on and off and set brightness and warmth. Its owner (you) also needs to build, register, update and support every device from a web browser.</p>
+        <div class="grid2">
+          <div class="panel stack">
+            <h3>In scope</h3>
+            <ul class="clean">
+              <li>Outputs: PWM white, dual white (CCT), RGB, RGBW and RGB+CCT; addressable strips (ARGB); relays; solenoids.</li>
+              <li>Inputs: power monitoring on every board; motion sensors in a later phase.</li>
+              <li>One modular board, populated differently per install, with firmware built from matching modular components.</li>
+              <li>A room-first interface with a big brightness control, white and color tabs, scenes and schedules.</li>
+              <li>Homes with an Owner, Members and Guests who have limited access.</li>
+              <li>An admin panel that does everything the v5 CLI tools did: registration, profiles, builds, OTA, bring-up, health and certificates.</li>
+              <li>Low-friction problem reports that land in the admin panel.</li>
+              <li>The OpenRGB host as a bridged device.</li>
+              <li>Hooks so an AI worker can create scenes and schedules and, later, use room layout.</li>
+            </ul>
+          </div>
+          <div class="panel stack">
+            <h3>Out of scope (for now)</h3>
+            <ul class="clean">
+              <li>Matter or Thread in firmware. A server-side bridge is a later option.</li>
+              <li>ESP-NOW mesh and dual-chip gateway for larger venues. Same node hardware, later firmware.</li>
+              <li>A large built-in effect catalog. A small set of building blocks replaces it.</li>
+              <li>Software brightness smoothing on the node.</li>
+              <li>Cloud dependencies. Everything runs on your own machines.</li>
+              <li>Native mobile apps. The web UI is built phone-first and can be installed to the home screen.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ARCHITECTURE -->
+      <section id="architecture">
+        <div class="sec-head"><span class="label">02 · Architecture</span><h2>System architecture</h2></div>
+        <p>One machine is the hub. Everything else connects to it, never the other way round. Only the main VM accepts incoming connections. Devices, bridges and workers all dial out to it, so the build machine and home networks need no port forwarding.</p>
+        <div class="figure">
+          <div class="canvas">
+            <svg viewBox="0 0 860 500" width="860" height="500" role="img" aria-label="Architecture diagram: browsers, main VM, workstation workers, and home networks with nodes and bridges">
+              <defs>
+                <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="d-head"/></marker>
+                <marker id="ahw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="d-headw"/></marker>
+                <marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="d-headc"/></marker>
+              </defs>
+              <!-- Browsers -->
+              <rect x="20" y="30" width="180" height="112" rx="10" class="d-box"/>
+              <text x="36" y="56" class="d-title">Browsers and phones</text>
+              <text x="36" y="80" class="d-text">Owners, Members, Guests</text>
+              <text x="36" y="100" class="d-text">You (admin panel)</text>
+              <text x="36" y="122" class="d-sub">Installable web app</text>
+
+              <!-- Main VM -->
+              <rect x="250" y="20" width="340" height="270" rx="12" class="d-box"/>
+              <text x="268" y="46" class="d-title">Main VM</text>
+              <text x="580" y="46" class="d-sub" text-anchor="end">only machine with open ports</text>
+              <rect x="268" y="60" width="304" height="30" rx="6" class="d-item"/><text x="280" y="80" class="d-text">Reverse proxy (HTTPS)</text>
+              <rect x="268" y="96" width="148" height="44" rx="6" class="d-item"/><text x="280" y="115" class="d-text">Web app + API</text><text x="280" y="131" class="d-sub">auth, homes, scenes</text>
+              <rect x="424" y="96" width="148" height="44" rx="6" class="d-item"/><text x="436" y="115" class="d-text">Scheduler</text><text x="436" y="131" class="d-sub">schedules, automations</text>
+              <rect x="268" y="146" width="148" height="44" rx="6" class="d-item"/><text x="280" y="165" class="d-text">MQTT broker</text><text x="280" y="181" class="d-sub">mutual TLS</text>
+              <rect x="424" y="146" width="148" height="44" rx="6" class="d-item"/><text x="436" y="165" class="d-text">Database</text><text x="436" y="181" class="d-sub">state, users, audit, jobs</text>
+              <rect x="268" y="196" width="148" height="44" rx="6" class="d-item"/><text x="280" y="215" class="d-text">Device CA</text><text x="280" y="231" class="d-sub">intermediate; root offline</text>
+              <rect x="424" y="196" width="148" height="44" rx="6" class="d-item"/><text x="436" y="215" class="d-text">Artifact store</text><text x="436" y="231" class="d-sub">firmware, clips, uploads</text>
+              <text x="268" y="270" class="d-sub">Job queue lives in the database; workers poll it over HTTPS.</text>
+
+              <!-- Workstation -->
+              <rect x="640" y="20" width="200" height="190" rx="12" class="d-box"/>
+              <text x="656" y="46" class="d-title">Workstation</text>
+              <text x="656" y="64" class="d-sub">RTX 4080, no open ports</text>
+              <rect x="656" y="78" width="168" height="48" rx="6" class="d-item"/><text x="668" y="98" class="d-text">Build worker</text><text x="668" y="114" class="d-sub">ESP-IDF 6.x, signing</text>
+              <rect x="656" y="134" width="168" height="48" rx="6" class="d-item"/><text x="668" y="154" class="d-text">AI worker (later)</text><text x="668" y="170" class="d-sub">local LLM + vision</text>
+
+              <!-- Home networks -->
+              <rect x="20" y="340" width="820" height="145" rx="12" class="d-zone"/>
+              <text x="36" y="364" class="d-title">Home networks</text>
+              <rect x="36" y="378" width="150" height="90" rx="8" class="d-box"/><text x="50" y="400" class="d-text">C6 node</text><text x="50" y="418" class="d-sub">PWM white / CCT</text><text x="50" y="434" class="d-sub">kitchen undercabinet</text>
+              <rect x="200" y="378" width="150" height="90" rx="8" class="d-box"/><text x="214" y="400" class="d-text">C6 node</text><text x="214" y="418" class="d-sub">ARGB + RGB</text><text x="214" y="434" class="d-sub">office strip</text>
+              <rect x="364" y="378" width="150" height="90" rx="8" class="d-box"/><text x="378" y="400" class="d-text">C6 node</text><text x="378" y="418" class="d-sub">relays + solenoids</text><text x="378" y="434" class="d-sub">garden valves</text>
+              <rect x="560" y="378" width="130" height="90" rx="8" class="d-box"/><text x="574" y="400" class="d-text">OpenRGB host</text><text x="574" y="418" class="d-sub">bridge agent</text><text x="574" y="434" class="d-sub">speaks the contract</text>
+              <rect x="700" y="378" width="126" height="90" rx="8" class="d-box"/><text x="714" y="400" class="d-text">Future bridges</text><text x="714" y="418" class="d-sub">Matter, others</text>
+
+              <!-- arrows: browsers -> VM -->
+              <path d="M200 86 L262 86" class="d-line" marker-end="url(#ah)"/>
+              <text x="204" y="160" class="d-lbl">HTTPS +</text>
+              <text x="204" y="174" class="d-lbl">WebSocket</text>
+              <path d="M226 150 L226 100" class="d-line" stroke-dasharray="2 3"/>
+              <!-- workers -> VM -->
+              <path d="M640 110 L578 110" class="d-line d-cool" marker-end="url(#ahc)"/>
+              <text x="596" y="236" class="d-lbl">jobs over</text>
+              <text x="596" y="250" class="d-lbl">HTTPS (out)</text>
+              <path d="M610 228 L610 118" class="d-line d-cool" stroke-dasharray="2 3"/>
+              <!-- nodes -> broker -->
+              <path d="M111 378 L111 330 L300 330 L300 196" class="d-line d-warm" marker-end="url(#ahw)"/>
+              <path d="M275 378 L275 330" class="d-line d-warm"/>
+              <path d="M439 378 L439 330 L300 330" class="d-line d-warm"/>
+              <path d="M625 378 L625 330 L439 330" class="d-line d-warm"/>
+              <text x="310" y="322" class="d-lbl">MQTT over mutual TLS (outbound from each device)</text>
+              <!-- OTA -->
+              <path d="M498 246 L498 300" class="d-line" stroke-dasharray="4 3" marker-end="url(#ah)"/>
+              <text x="506" y="296" class="d-lbl">OTA download</text>
+            </svg>
+          </div>
+          <p class="figcap">Orange lines carry device traffic over MQTT. Blue lines are workers polling for jobs. The dashed line is the HTTPS firmware download during OTA. Live ARGB frames from a local PC are the one exception: they go straight across the home LAN (see <a href="#clips">Clips and streaming</a>).</p>
+        </div>
+
+        <div class="sub" id="machines">
+          <h3>Machines and roles</h3>
+          <div class="stack">
+            <details class="more"><summary>Main VM <span class="muted small">hub, always on</span></summary>
+              <div class="body">
+                <p>Runs the reverse proxy, web app and API, scheduler, MQTT broker, database, device CA (intermediate key only) and artifact store. Everything persistent lives here and gets backed up together.</p>
+                <p>If this VM is down, lights keep their last state and wall switches still work. Remote control, schedules and the UI stop until it returns. The scheduler runs here rather than on nodes so that schedules have one source of truth.</p>
+              </div>
+            </details>
+            <details class="more"><summary>Workstation (RTX 4080) <span class="muted small">workers, can be off</span></summary>
+              <div class="body">
+                <p>Hosts two workers that are the same kind of program: they authenticate to the API, claim a job, do it and upload the result. The <b>build worker</b> runs ESP-IDF 6.x in a pinned container and signs the images it produces. The <b>AI worker</b> runs local models on the GPU.</p>
+                <p>When the workstation is off, jobs wait in the queue and the admin panel shows the worker as offline. Nothing else is affected.</p>
+              </div>
+            </details>
+            <details class="more"><summary>C6 nodes <span class="muted small">your PCB</span></summary>
+              <div class="body">
+                <p>Each node connects out to the broker with its own certificate. It keeps its last state in flash and restores it after a power cut, so a light that was on stays on without waiting for the server.</p>
+              </div>
+            </details>
+            <details class="more"><summary>Bridge agents <span class="muted small">OpenRGB now, others later</span></summary>
+              <div class="body">
+                <p>A bridge is a small program that sits next to a foreign system and translates it into the device contract. The OpenRGB agent on your PC publishes one device per OpenRGB controller, with <code>color</code> and <code>argb</code> capabilities. The server and UI can't tell it apart from a C6 node.</p>
+                <p>A Matter bridge would be the same idea in reverse: it exposes UltraLights devices to Apple or Google Home.</p>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <div class="sub" id="stack">
+          <h3>Server stack (proposed)</h3>
+          <div class="tbl">
+            <table>
+              <thead><tr><th>Layer</th><th>Proposal</th><th>Why</th></tr></thead>
+              <tbody>
+                <tr><td>API</td><td>FastAPI (Python)</td><td>You know it, it has typed models, and the device contract schemas generate validation for free.</td></tr>
+                <tr><td>Database</td><td>PostgreSQL with migrations</td><td>Replaces the ~10 JSON files v5 used as storage. Also holds the job queue and audit log.</td></tr>
+                <tr><td>Broker</td><td>Mosquitto, rebuilt config</td><td>Mutual TLS with the certificate name as the username, so access rules can say "a device may only touch its own topics".</td></tr>
+                <tr><td>Web UI</td><td>Single-page app (Svelte suggested)</td><td>The interactive controls want a component framework; Jinja templates fought this in v5. See open questions.</td></tr>
+                <tr><td>Live updates</td><td>WebSocket from browser to API</td><td>Slider streams and state changes both ways without polling.</td></tr>
+                <tr><td>Proxy</td><td>Caddy</td><td>Automatic HTTPS certificates for the web side.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="sub" id="topics">
+          <h3>Message topics</h3>
+          <p>Topics are versioned and scoped per device. The broker allows a device to publish and subscribe only under its own ID.</p>
+          <div class="tbl">
+            <table>
+              <thead><tr><th>Topic</th><th>Direction</th><th>Retained</th><th>QoS</th><th>Purpose</th></tr></thead>
+              <tbody>
+                <tr><td><code>ul/v1/d/{id}/info</code></td><td>device → server</td><td class="yes">yes</td><td>1</td><td>Capabilities, firmware, hardware revision. Sent on connect.</td></tr>
+                <tr><td><code>ul/v1/d/{id}/status</code></td><td>device → server</td><td class="yes">yes</td><td>1</td><td><code>online</code>/<code>offline</code>, with the broker's last-will message for drops.</td></tr>
+                <tr><td><code>ul/v1/d/{id}/state/{out}</code></td><td>device → server</td><td class="yes">yes</td><td>1</td><td>What an output is actually doing.</td></tr>
+                <tr><td><code>ul/v1/d/{id}/set/{out}</code></td><td>server → device</td><td class="yes">yes</td><td>1</td><td>Desired state. Retained so a reconnecting device catches up.</td></tr>
+                <tr><td><code>ul/v1/d/{id}/live/{out}</code></td><td>server → device</td><td class="no">no</td><td>0</td><td>Slider streams while a finger is down. Losing one doesn't matter.</td></tr>
+                <tr><td><code>ul/v1/d/{id}/cmd</code></td><td>server → device</td><td class="no">never</td><td>1</td><td>One-shot actions: OTA, reboot, identify, pulse.</td></tr>
+                <tr><td><code>ul/v1/d/{id}/health</code></td><td>device → server</td><td class="no">no</td><td>0</td><td>Periodic metrics for the admin panel.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- DEVICES -->
+      <section id="devices">
+        <div class="sec-head"><span class="label">03 · Device model</span><h2>Device model</h2></div>
+        <p>A <b>device</b> is one node or one bridged thing. It has one or more <b>outputs</b>, and each output lists its <b>capabilities</b>. The UI draws controls from capabilities alone: an output with <code>level</code> and <code>cct</code> gets the brightness slider and the white tab; an output with only <code>onoff</code> gets the ON/OFF pill. Adding a new device type never needs new UI code.</p>
+
+        <div class="sub" id="outputs">
+          <h3>Output types</h3>
+          <div class="tbl">
+            <table>
+              <thead><tr><th>Output</th><th>Hardware</th><th>Channels</th><th>Capabilities</th><th>Safe state</th></tr></thead>
+              <tbody>
+                <tr><td>White</td><td>LEDC PWM</td><td class="num">1</td><td><code>onoff</code> <code>level</code></td><td>Last state, or off</td></tr>
+                <tr><td>Dual white (CCT)</td><td>LEDC PWM</td><td class="num">2</td><td><code>onoff</code> <code>level</code> <code>cct</code></td><td>Last state, or off</td></tr>
+                <tr><td>RGB</td><td>LEDC PWM</td><td class="num">3</td><td><code>onoff</code> <code>level</code> <code>color</code></td><td>Last state, or off</td></tr>
+                <tr><td>RGBW <span class="tag new">new</span></td><td>LEDC PWM</td><td class="num">4</td><td><code>onoff</code> <code>level</code> <code>color</code> <code>white</code></td><td>Last state, or off</td></tr>
+                <tr><td>RGB+CCT <span class="tag new">new</span></td><td>LEDC PWM</td><td class="num">5</td><td><code>onoff</code> <code>level</code> <code>color</code> <code>cct</code></td><td>Last state, or off</td></tr>
+                <tr><td>ARGB strip</td><td>RMT data line</td><td>3 or 4 bytes per pixel</td><td><code>onoff</code> <code>level</code> <code>color</code> <code>effect</code></td><td>Last state, or off</td></tr>
+                <tr><td>Relay</td><td>GPIO + driver</td><td class="num">1</td><td><code>onoff</code></td><td>Configurable per output</td></tr>
+                <tr><td>Solenoid <span class="tag new">new</span></td><td>GPIO + driver</td><td class="num">1</td><td><code>pulse</code> (with max on-time)</td><td>Always off</td></tr>
+                <tr><td>Motion sensor <span class="tag new">input</span></td><td>GPIO (PIR) or I2C</td><td class="num">1</td><td><code>motion</code></td><td>Reports nothing until stable after boot</td></tr>
+                <tr><td>Power monitor <span class="tag new">input</span></td><td>INA226 on I2C</td><td class="num">1 per board</td><td><code>power</code> (bus volts, amps, per-output estimates)</td><td>Overcurrent alert turns outputs off</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout"><b>RGBW is worth it.</b> RGB strips make a poor, tinted white. Six identical low-side MOSFET channels on the PCB cover every PWM row above, and with the optional flyback diode fitted, any of them can drive a relay or solenoid coil. Which channels form which output is a setting, not a different board (see <a href="#board">Board and population</a>). Solenoids differ from relays because many can't stay energized, so they get <code>pulse</code> rather than <code>onoff</code>. The firmware enforces a maximum on-time, and a hardware timeout on the PCB would make sure a crash can't leave a valve open.</div>
+        </div>
+
+        <div class="sub" id="contract">
+          <h3>Contract examples</h3>
+          <p>These schemas live in one shared <code>contracts/</code> folder. The firmware, server and UI all generate or validate against it, so they can't drift apart.</p>
+          <div class="grid2">
+            <div class="stack"><span class="label">Device info (retained)</span>
+<pre><code>{
+  "id": "ul-7f3a91",
+  "hw": "ul-c6-main rev B",
+  "fw": "0.3.1",
+  "profile": "cct+argb",
+  "outputs": [
+    { "key": "main", "kind": "cct",
+      "caps": ["onoff","level","cct"],
+      "cct_range": [2700, 6500] },
+    { "key": "strip", "kind": "argb",
+      "caps": ["onoff","level","color","effect"],
+      "pixels": 144, "order": "GRB" }
+  ]
+}</code></pre></div>
+            <div class="stack"><span class="label">Set state for one output</span>
+<pre><code>// ul/v1/d/ul-7f3a91/set/main
+{
+  "on": true,
+  "level": 0.42,
+  "cct": 3000,
+  "fade_ms": 400,
+  "src": "ui:owner:31",
+  "seq": 1187
+}</code></pre>
+              <p class="small muted"><code>src</code> records who caused a change (UI, schedule, AI, admin) for the activity log and undo. <code>seq</code> lets the device ignore stale messages that arrive out of order.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- HARDWARE -->
+      <section id="hardware">
+        <div class="sec-head"><span class="label">04 · Hardware</span><h2>Hardware and firmware</h2></div>
+        <div class="grid2">
+          <div class="panel stack">
+            <h3>ESP32-C6 facts (verified)</h3>
+            <ul class="clean small">
+              <li><b>Module:</b> ESP32-C6-WROOM-1 (PCB antenna) or -1U (external). N8 or N16 flash. There is no WROVER variant.</li>
+              <li><b>No PSRAM.</b> 512 KB HP SRAM and 16 KB LP SRAM. Clips live in flash (see <a href="#clips">Clips</a>).</li>
+              <li><b>One 160 MHz RISC-V core</b> plus a low-power core. Wi-Fi, TLS and effects share it, so effects render on a fixed frame budget and never block networking.</li>
+              <li><b>LEDC:</b> 6 channels, 4 timers, so at most 4 distinct PWM frequencies. Hardware fades.</li>
+              <li><b>MCPWM:</b> 6 more outputs, spare for PWM or motor drive.</li>
+              <li><b>RMT:</b> 2 transmit channels, no DMA. Planned memory split: channel 0 gets 48 words, channel 1 gets 144 (borrowing the receive channels' blocks). The interrupt handler must be IRAM-safe. Fallback: SPI2 with GDMA.</li>
+              <li><b>Pins:</b> 23 GPIOs on the module, about 17 free after USB (12/13), UART0 (16/17) and strapping pins (8, 9, 15). The GPIO matrix lets strip pins switch peripheral without a board change.</li>
+            </ul>
+          </div>
+          <div class="panel stack">
+            <h3>Board decisions</h3>
+            <ul class="clean small">
+              <li><b>One board, populated per install.</b> Some units carry every channel, some only one.</li>
+              <li><b>6 PWM/switch channels</b> on low-side MOSFETs, each with an optional flyback diode footprint.</li>
+              <li><b>2 ARGB outputs</b> with level shifting. Strip frame rate is about 100 fps at 300 LEDs and 33 fps at 1000; the two lines run in parallel.</li>
+              <li><b>One INA226</b> on the main input, ALERT wired to a GPIO for overcurrent. Per-channel current is estimated from calibrated profiles instead of measured.</li>
+              <li><b>Self-test without per-channel sensing:</b> bring-up toggles each channel and checks the change in total current on the INA226.</li>
+              <li>A hardware revision ID so firmware knows which board it's on.</li>
+              <li><span class="tag rework">Under consideration</span> TMC2209 stepper header (curtains), status pixel as pixel 0 of a strip, 4-layer stackup.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="sub" id="board">
+          <h3>Board and population</h3>
+          <p>"Which board is this?" has four separate answers, each decided at a different time. Keeping them apart is what lets one PCB design and a handful of firmware builds cover every install.</p>
+          <div class="tbl">
+            <table>
+              <thead><tr><th>Layer</th><th>Decided</th><th>Stored in</th><th>Example</th></tr></thead>
+              <tbody>
+                <tr><td><b>Board revision</b>: pin map</td><td>PCB design</td><td><code>firmware/boards/</code></td><td>rev A: PWM1 on GPIO4, ARGB1 on GPIO10</td></tr>
+                <tr><td><b>Feature profile</b>: which components are compiled in</td><td>Build</td><td>Profile config fragment</td><td><code>lights</code>, <code>lights-argb</code>, <code>switches</code></td></tr>
+                <tr><td><b>Fitted channels</b>: what was soldered</td><td>Bring-up</td><td>Factory partition, checked by self-test</td><td>PWM1–2 and ARGB1 fitted, the rest empty</td></tr>
+                <tr><td><b>Output mapping</b>: how channels group into outputs</td><td>Install, changeable later</td><td>Server, pushed to the node</td><td>PWM1+PWM2 = "Undercabinet" (CCT), PWM3 = relay</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="small muted">This replaces v5's 37 per-node config files. Names, rooms, limits, CCT range and pixel count are part of the output mapping and never need a rebuild.</p>
+        </div>
+
+        <div class="sub" id="firmware">
+          <h3>Firmware components</h3>
+          <p>The firmware is a slim <code>main</code> plus a <code>components/</code> directory where each feature, driver, protocol or diagnostic is its own ESP-IDF component. A component that a profile doesn't need isn't compiled at all.</p>
+          <div class="panel layers" aria-label="Firmware layers">
+            <div class="layer"><div class="lname"><b>main</b><span>boot order only</span></div><div class="mods"><span class="mod">app_main.c</span></div></div>
+            <div class="layer"><div class="lname"><b>Services</b><span>protocols and control</span></div><div class="mods"><span class="mod">ul_wifi</span><span class="mod">ul_provision</span><span class="mod">ul_mqtt</span><span class="mod">ul_ota</span><span class="mod">ul_fx</span><span class="mod">ul_live</span><span class="mod later">ul_espnow</span></div></div>
+            <div class="layer"><div class="lname"><b>Diagnostics</b><span>health and testing</span></div><div class="mods"><span class="mod">ul_health</span><span class="mod">ul_selftest</span></div></div>
+            <div class="layer-arrow">↓ use the device model, never a driver directly</div>
+            <div class="layer"><div class="lname"><b>Core</b><span>the device model</span></div><div class="mods"><span class="mod core">ul_core</span><span class="mod core">ul_board</span></div></div>
+            <div class="layer-arrow">↑ register channels and inputs with the core</div>
+            <div class="layer"><div class="lname"><b>Drivers</b><span>hardware</span></div><div class="mods"><span class="mod">ul_pwm</span><span class="mod">ul_argb</span><span class="mod">ul_switch</span><span class="mod">ul_power</span><span class="mod">ul_status</span><span class="mod later">ul_motion</span><span class="mod later">ul_stepper</span></div></div>
+          </div>
+          <p class="figcap">Dashed components come in later phases.</p>
+          <details class="more"><summary>Component rules</summary>
+            <div class="body">
+              <ul class="clean">
+                <li><b><code>main</code> stays tiny.</b> It starts the core and the services in order and contains no feature logic or <code>#ifdef</code>s. Adding or removing a component never touches it.</li>
+                <li><b>Every component has the same shape:</b> <code>CMakeLists.txt</code>, a <code>Kconfig</code> with an enable switch and its options, a public header in <code>include/</code>, private code in <code>src/</code>, and tests in <code>test/</code>.</li>
+                <li><b>Dependencies point at the core.</b> Drivers implement the core's channel interface (set, fade, read, safe state) and register what's fitted. Services talk to outputs through the core. MQTT never knows about LEDC, and the PWM driver never knows about MQTT.</li>
+                <li><b>Logic that can run off-chip is tested off-chip.</b> Effect math, the contract encoder and state handling are plain C and run as host unit tests on the build machine.</li>
+                <li><b>Prefix everything <code>ul_</code></b> so our components never clash with ESP-IDF or managed components.</li>
+              </ul>
+            </div>
+          </details>
+<pre><code>firmware/
+├── main/app_main.c         boot order only
+├── boards/                 pin maps per board revision
+├── profiles/               config fragments per feature profile
+└── components/
+    ├── ul_core/            device model, channels, outputs, state, events
+    ├── ul_board/           loads pin map + fitted-channel data
+    ├── ul_pwm/             LEDC channels and hardware fades
+    ├── ul_argb/            RMT strip driver, RGB and RGBW pixels
+    ├── ul_switch/          relays, solenoid pulses with limits
+    ├── ul_power/           INA226, per-channel estimates
+    ├── ul_status/          status LED patterns
+    ├── ul_wifi/            Wi-Fi and time sync
+    ├── ul_provision/       setup portal
+    ├── ul_mqtt/            MQTT client and contract topics
+    ├── ul_ota/             signed OTA with rollback
+    ├── ul_fx/              effect building blocks, palettes, clips
+    ├── ul_live/            live frame receiver (DDP)
+    ├── ul_health/          metrics, reset reasons, core dumps
+    └── ul_selftest/        bring-up self-test (factory profile)</code></pre>
+        </div>
+      </section>
+
+      <!-- REALTIME -->
+      <section id="realtime">
+        <div class="sec-head"><span class="label">05 · Real-time</span><h2>Real-time control</h2></div>
+        <p>v5 made sliders work by throttling twice: the browser sent at most every 100 ms, then the server queued commands and released one per node every 200 ms. The node ran a software smoothing task to hide the steps. The new path keeps the throttling idea but lets the LEDC hardware hide the steps instead. Each update fades over exactly the gap until the next update, so movement looks continuous.</p>
+        <div class="panel lab" aria-label="Slider pipeline demo">
+          <div class="ctrls">
+            <div class="ctrl"><label for="pp-slider">Drag this slider <output id="pp-val">50%</output></label><input id="pp-slider" type="range" min="0" max="100" value="50"></div>
+            <div class="ctrl"><label for="pp-rate">Update rate</label>
+              <select id="pp-rate"><option value="5">5 Hz (v5 server limit)</option><option value="20" selected>20 Hz (proposed)</option></select></div>
+            <div class="ctrl"><label for="pp-fade">Node behavior</label>
+              <select id="pp-fade"><option value="1" selected>Hardware fade over each gap</option><option value="0">Jump to each value</option></select></div>
+          </div>
+          <div class="pipe">
+            <div class="stage"><span class="label">Browser input events</span><span class="stat" id="pp-in">0</span></div>
+            <div class="stage"><span class="label">Messages to the node</span><span class="stat" id="pp-out">0</span></div>
+            <div class="stage"><span class="label">Saved as final state</span><span class="stat" id="pp-final">0</span></div>
+          </div>
+          <div class="lamp" aria-hidden="true"><div class="light" id="pp-lamp"></div><div class="fixture"></div></div>
+          <div class="msglog" id="pp-log" aria-live="off"></div>
+          <p class="small muted">Try 5 Hz with "jump" to see the stepping v5 had to smooth out in software, then switch on the fade. When you let go, one final message is sent on the retained <code>set</code> topic so the value survives a reconnect.</p>
+        </div>
+        <details class="more"><summary>The rules <span class="muted small">for anything that streams</span></summary>
+          <div class="body">
+            <ol class="clean">
+              <li>The browser sends on the leading edge, then at most every 50 ms, and always sends the last value on release.</li>
+              <li>The server keeps the latest value per <b>device and output</b>, not per device. In v5 the queue was keyed by node only, so a command for one output could be overwritten by a command for another output on the same node.</li>
+              <li>Live values go on <code>live/{out}</code> at QoS 0. The final value goes on <code>set/{out}</code>, retained at QoS 1.</li>
+              <li>The node starts a hardware fade toward each value lasting one update interval. For ARGB, the renderer blends toward the new level over the same time.</li>
+              <li>Other open browsers see the change through the reported <code>state</code>, so two people dragging at once both see what the light is really doing.</li>
+            </ol>
+          </div>
+        </details>
+      </section>
+
+      <!-- EFFECTS -->
+      <section id="effects">
+        <div class="sec-head"><span class="label">06 · Effects</span><h2>Effects</h2></div>
+        <p>v5 compiled 11 ARGB effects, 4 white effects and 3 RGB effects into firmware, each with its own parameters. Most went unused. The new design takes the approach WLED and FastLED users settled on: a few building blocks that all take the same parameters, with a palette doing most of the work.</p>
+        <div class="grid3">
+          <div class="panel stack"><span class="label">Tier 1 · most use</span><h3>Building blocks</h3><p class="small">About 10 renderers in firmware. An "effect" is a small JSON document choosing one, plus palette and parameters. You can download, edit and share effects without touching firmware.</p></div>
+          <div class="panel stack"><span class="label">Tier 2 · loops</span><h3>Clips</h3><p class="small">Prerendered looping animations stored in a flash partition and replayed. Good for anything the building blocks can't express, including AI-made effects.</p></div>
+          <div class="panel stack"><span class="label">Tier 3 · reactive</span><h3>Live frames</h3><p class="small">Frames rendered elsewhere (OpenRGB, screen or music sync) and streamed over the LAN. Only for content that reacts to something in the moment.</p></div>
+        </div>
+
+        <div class="sub" id="fxlab">
+          <h3>Effects lab</h3>
+          <p>This is a simulation of the building blocks on a 72-pixel strip, with the glow it would throw on a wall. Every block takes the same parameters. The JSON on the right is the whole effect document a node would receive.</p>
+          <div class="panel lab split">
+            <div class="stack" style="gap:14px">
+              <div class="wall" aria-label="Simulated LED strip">
+                <canvas class="glow" id="fx-glow"></canvas>
+                <canvas class="leds" id="fx-leds"></canvas>
+                <span class="cap">72 px · SK6812 · simulated</span>
+              </div>
+              <div class="seg" id="fx-prims" role="group" aria-label="Building block"></div>
+              <p class="fxdesc" id="fx-desc"></p>
+              <div class="ctrls">
+                <div class="ctrl"><label for="fx-pal">Palette</label><select id="fx-pal"></select></div>
+                <div class="ctrl"><label for="fx-speed">Speed <output id="fx-speed-o"></output></label><input id="fx-speed" type="range" min="0" max="100" value="35"></div>
+                <div class="ctrl"><label for="fx-scale">Scale <output id="fx-scale-o"></output></label><input id="fx-scale" type="range" min="10" max="400" value="120"></div>
+                <div class="ctrl"><label for="fx-int">Intensity <output id="fx-int-o"></output></label><input id="fx-int" type="range" min="0" max="100" value="60"></div>
+                <div class="ctrl"><label for="fx-bri">Brightness <output id="fx-bri-o"></output></label><input id="fx-bri" type="range" min="5" max="100" value="85"></div>
+                <div class="ctrl"><label for="fx-dir">Direction</label><select id="fx-dir"><option value="1">Forward</option><option value="-1">Reverse</option></select></div>
+              </div>
+              <div><button class="btn" id="fx-play" type="button">Pause</button></div>
+            </div>
+            <div class="stack"><span class="label">Effect document</span><pre><code id="fx-json"></code></pre>
+              <p class="small muted">Scale means "how big the pattern features are". Intensity means "how strong the effect is" (depth of breathing, twinkle density, flicker amount). A random <code>seed</code> lets several strips show the same randomness in sync.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sub" id="clips">
+          <h3>Clips and streaming</h3>
+          <p>You asked whether a looping effect can be streamed once and replayed. Yes. The C6 has no PSRAM, so clips go in a flash partition. Writing a clip once and replaying it is fine for flash wear. Palette indexing (1 byte per pixel against a 256-color palette) usually cuts size by two thirds or more.</p>
+          <div class="panel lab">
+            <div class="ctrls">
+              <div class="ctrl"><label for="cl-px">Pixels <output id="cl-px-o"></output></label><input id="cl-px" type="range" min="30" max="600" step="6" value="300"></div>
+              <div class="ctrl"><label for="cl-fps">Frames per second <output id="cl-fps-o"></output></label><input id="cl-fps" type="range" min="10" max="60" step="5" value="30"></div>
+              <div class="ctrl"><label for="cl-sec">Loop length <output id="cl-sec-o"></output></label><input id="cl-sec" type="range" min="2" max="60" value="10"></div>
+              <div class="ctrl"><label for="cl-fmt">Pixel format</label><select id="cl-fmt"><option value="3">RGB, 3 bytes</option><option value="4">RGBW, 4 bytes</option><option value="1" selected>Palette index, 1 byte</option></select></div>
+            </div>
+            <div class="grid2">
+              <div class="meter"><div class="row"><span>Clip size</span><span class="mono" id="cl-size"></span></div>
+                <div class="row"><span>Compared to all SRAM (512 KB)</span><span class="mono" id="cl-sram-p"></span></div><div class="bar"><i id="cl-sram"></i></div></div>
+              <div class="meter"><div class="row"><span>Clips that fit a 4 MB partition</span><span class="mono" id="cl-count"></span></div>
+                <div class="row"><span>Share of the partition per clip</span><span class="mono" id="cl-part-p"></span></div><div class="bar"><i id="cl-part"></i></div></div>
+            </div>
+            <p class="small muted">Before compression. Frames that change slowly compress much further with frame-to-frame differences. The player reads from flash a frame at a time, so a clip never has to fit in RAM.</p>
+          </div>
+          <details class="more"><summary>Live frames <span class="muted small">how tier 3 stays fast</span></summary>
+            <div class="body">
+              <p>Routing 30 frames a second through the VM's MQTT broker adds latency and load for no benefit. Live frames go directly from the source (say the OpenRGB PC) to the node across the home LAN, using DDP over UDP. WLED and xLights use the same protocol, so existing tools work.</p>
+              <p>The server stays in charge: it opens a streaming session, gives both sides a short-lived session key, and the node drops frames that don't carry it. When the session ends or goes quiet, the node returns to its previous scene.</p>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- INTERFACE -->
+      <section id="interface">
+        <div class="sec-head"><span class="label">07 · Interface</span><h2>Interface</h2></div>
+        <p>The reference app gets its calm from what it leaves out. Each screen has one job and a single large control. Text is sparse and uppercase. State shows through pills and dots instead of numbers. The mockups below follow that model; the light control screen is interactive.</p>
+        <div class="phones">
+          <div class="phone-wrap">
+            <div class="phone"><div class="screen">
+              <div class="bgimg" style="background: radial-gradient(120% 70% at 70% 15%, #c9b49a 0%, #7d6a5a 35%, #2d3a44 70%, #1a2229 100%);"></div>
+              <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+              <div class="ph-nav"><span class="cur">HOME</span><span>ROOMS</span><span>SCENES</span><span>DEVICES</span></div>
+              <div class="home-title">Hillside House</div>
+              <div class="chips"><span class="chip"><i style="background:#F2B24C"></i>9 ON</span><span class="chip"><i style="background:#7DB2EA"></i>2 VALVES</span><span class="chip"><i style="background:#c77dff"></i>1 EFFECT</span></div>
+              <div class="room-cards">
+                <div class="room-card" style="background:linear-gradient(135deg,#8a6d50,#3c3128)">Kitchen<span class="badge">3 on</span></div>
+                <div class="room-card" style="background:linear-gradient(135deg,#3b3f6b,#1d1f33)">Office<span class="badge">effect</span></div>
+              </div>
+              <div class="ask">Try… "dim the kitchen to evening"</div>
+            </div></div>
+            <p class="figcap">Home: the house at a glance. Room cards use photos the owner uploads.</p>
+          </div>
+
+          <div class="phone-wrap">
+            <div class="phone"><div class="screen" style="background:linear-gradient(180deg,#3a3f46,#22262b)">
+              <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+              <div class="ph-head"><svg class="ph-icon" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><div><div class="t" style="font-size:15px;letter-spacing:0.02em;text-transform:none;font-weight:500">Lights</div></div><span></span></div>
+              <div class="rlist" id="roomlist"></div>
+            </div></div>
+            <p class="figcap">Rooms: one-tap OFF/ON per room. Dots show each light; amber means on.</p>
+          </div>
+
+          <div class="phone-wrap">
+            <div class="phone"><div class="screen" id="lc-screen" style="background:linear-gradient(180deg,#4a4640,#262a2f)">
+              <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+              <div class="ph-head"><svg class="ph-icon" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><div><div class="t">Undercabinet</div><div class="s">Kitchen</div></div><svg class="ph-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></div>
+              <div style="display:flex;justify-content:center;padding-top:4px"><button class="pill on" id="lc-on" type="button" aria-pressed="true">ON</button></div>
+              <div class="pct" id="lc-pct">40%</div>
+              <div class="vslider" id="lc-slider" role="slider" tabindex="0" aria-label="Brightness" aria-valuemin="0" aria-valuemax="100" aria-valuenow="40"><div class="fill" id="lc-fill" style="height:40%"></div></div>
+              <div class="sheet" id="lc-sheet">
+                <button class="sheet-handle" id="lc-handle" type="button" aria-expanded="false" aria-controls="lc-sheet-body" aria-label="Show light settings"></button>
+                <div class="sheet-body" id="lc-sheet-body"><div class="sheet-inner" inert>
+                <div class="tabs" role="tablist">
+                  <button role="tab" aria-selected="true" data-tab="white" type="button">WHITE</button>
+                  <button role="tab" aria-selected="false" data-tab="color" type="button">COLOR</button>
+                  <button role="tab" aria-selected="false" data-tab="effect" type="button">EFFECT</button>
+                </div>
+                <div data-pane="white" class="ph-row"><div class="lab"><span>Warmth</span><span id="lc-k">3000 K</span></div><input class="ph-range cct-track" id="lc-cct" type="range" min="2200" max="6500" step="50" value="3000" aria-label="Color temperature"></div>
+                <div data-pane="color" class="ph-row" hidden>
+                  <div class="lab"><span>Hue</span><span id="lc-h">28°</span></div><input class="ph-range hue-track" id="lc-hue" type="range" min="0" max="360" value="28" aria-label="Hue">
+                  <div class="lab"><span>Vibrancy</span><span id="lc-s">70%</span></div><input class="ph-range" id="lc-sat" type="range" min="0" max="100" value="70" aria-label="Vibrancy">
+                </div>
+                <div data-pane="effect" class="fxcards" hidden id="lc-fx"></div>
+                </div></div>
+              </div>
+            </div></div>
+            <p class="figcap">Light control (interactive): drag the bar. Tap the handle at the bottom for white, color or effect settings; each tab shows only its own controls.</p>
+          </div>
+
+          <div class="phone-wrap">
+            <div class="phone"><div class="screen" style="background:linear-gradient(180deg,#2f3d3a,#1d2427)">
+              <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+              <div class="ph-head"><svg class="ph-icon" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><div><div class="t">Garden</div><div class="s">3 devices</div></div><span></span></div>
+              <div class="dev-card">
+                <div class="top"><span class="nm">Bed valve</span><span class="kind">Solenoid</span></div>
+                <div class="btnrow" id="valve-btns"><button class="pill" type="button" data-min="5">5 MIN</button><button class="pill" type="button" data-min="15">15 MIN</button><button class="pill" type="button" data-min="30">30 MIN</button></div>
+                <div class="countdown" id="valve-cd">Closed</div>
+                <div class="ph-note">Owner limit: 45 min. Closes on power loss.</div>
+              </div>
+              <div class="dev-card">
+                <div class="top"><span class="nm">Fountain pump</span><span class="kind">Relay</span></div>
+                <div class="onoff" data-toggle><button class="pill" type="button">OFF</button><button class="pill on" type="button">ON</button></div>
+              </div>
+              <div class="dev-card">
+                <div class="top"><span class="nm">Path lights</span><span class="kind">Relay</span></div>
+                <div class="onoff" data-toggle><button class="pill on" type="button">OFF</button><button class="pill" type="button">ON</button></div>
+                <div class="ph-note">Schedule: sunset to 23:00</div>
+              </div>
+            </div></div>
+            <p class="figcap">Switches: relays get ON/OFF. Solenoids only open for a fixed time.</p>
+          </div>
+
+          <div class="phone-wrap">
+            <div class="phone"><div class="screen" style="background:linear-gradient(180deg,#3a3f46,#22262b)">
+              <div class="sbar"><span>9:41</span><span>●●● ▮</span></div>
+              <div class="ph-head"><span></span><div><div class="t">Office strip</div><div class="s">Office</div></div><span></span></div>
+              <form class="rp-sheet" id="rp-form">
+                <h4>Report a problem</h4>
+                <textarea id="rp-text" aria-label="What happened">Strip flickers at low brightness, only in the evening effect.</textarea>
+                <div class="attach">+ Add a screenshot or photo</div>
+                <label><input type="checkbox" id="rp-diag" checked> Include device diagnostics (signal, firmware, last 50 events)</label>
+                <button class="send" type="submit">SEND</button>
+                <div class="toast" id="rp-toast" aria-live="polite"></div>
+              </form>
+            </div></div>
+            <p class="figcap">Report a problem: reachable from every device screen and the help menu.</p>
+          </div>
+        </div>
+        <details class="more"><summary>Interface rules <span class="muted small">to keep it this simple</span></summary>
+          <div class="body">
+            <ul class="clean">
+              <li>One primary control per screen. Settings live behind the gear icon, never on the main screen.</li>
+              <li>Controls come from capabilities. A guest without <code>effect</code> permission simply doesn't see the EFFECT tab.</li>
+              <li>The ON pill and the brightness bar are separate: turning off remembers the level.</li>
+              <li>Everything a person can do by tapping, the AI can do through the same API, and both show up in the activity log.</li>
+              <li>Phone first. On desktop the same screens sit side by side (rooms list beside the selected light).</li>
+            </ul>
+          </div>
+        </details>
+      </section>
+
+      <!-- PEOPLE -->
+      <section id="people">
+        <div class="sec-head"><span class="label">08 · People</span><h2>Accounts and permissions</h2></div>
+        <p>There are four roles. <b>Owner</b> is the "moderator" level you described: the main person in a home, who manages its devices and people. <b>Member</b> is optional, for a partner or housemate who needs full control but shouldn't manage access. <b>Guests</b> get only what an owner grants them.</p>
+        <div class="tbl">
+          <table>
+            <thead><tr><th>Action</th><th>Admin (you)</th><th>Owner</th><th>Member</th><th>Guest</th></tr></thead>
+            <tbody>
+              <tr><td>Control lights and switches</td><td class="yes">All homes</td><td class="yes">Own home</td><td class="yes">Own home</td><td class="part">Granted only</td></tr>
+              <tr><td>Use effects and color</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="part">If granted</td></tr>
+              <tr><td>Create scenes and schedules</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+              <tr><td>Rename devices, assign rooms, set limits</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+              <tr><td>Invite members and guests, edit grants</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+              <tr><td>Claim or remove devices</td><td class="yes">Yes</td><td class="yes">Own home</td><td class="no">No</td><td class="no">No</td></tr>
+              <tr><td>Install available updates</td><td class="yes">Push any</td><td class="yes">Approve offered</td><td class="no">No</td><td class="no">No</td></tr>
+              <tr><td>Report a problem</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+              <tr><td>Fleet, builds, certificates, bring-up</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+              <tr><td>View a home as its owner (support)</td><td class="yes">Read-only, logged</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="grid2">
+          <div class="stack"><span class="label">A guest grant</span>
+<pre><code>{
+  "guest": "pool-party-sat",
+  "scope": ["room:patio", "device:ul-91c0e2"],
+  "can": ["control", "color"],
+  "kinds": ["light"],          // no solenoids
+  "window": "Sat 16:00–23:59",
+  "expires": "2026-11-30",
+  "invite": "link, single use"
+}</code></pre></div>
+          <div class="stack">
+            <h4>How grants work</h4>
+            <ul class="clean small">
+              <li><b>Scope</b>: whole home, rooms or single devices.</li>
+              <li><b>Abilities</b>: view, control (on/off and level), color and effects.</li>
+              <li><b>Device kinds</b>: lights only, or lights and switches. Solenoids are excluded unless granted explicitly.</li>
+              <li><b>Time</b>: an optional weekly window and an expiry date.</li>
+              <li>Guests join through a single-use invite link and can't see anything outside their grant, including other rooms' names.</li>
+              <li>The AI acts as the person asking, so a guest's request can only touch what the guest can touch.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ADMIN -->
+      <section id="admin">
+        <div class="sec-head"><span class="label">09 · Admin</span><h2>Admin panel</h2></div>
+        <p>The rule: <b>anything you'd open a terminal for is a page with buttons.</b> Each admin action is an API endpoint first and a UI page second, so a small CLI can still exist for scripts and both stay in sync. Admin sign-in requires a passkey or one-time code, and every admin action goes in the audit log.</p>
+        <div class="admin" id="adm">
+          <nav role="tablist" aria-label="Admin sections">
+            <button role="tab" aria-selected="true" data-a="fleet" type="button">Fleet and health</button>
+            <button role="tab" aria-selected="false" data-a="reports" type="button">Problem reports <span class="count">2</span></button>
+            <button role="tab" aria-selected="false" data-a="map" type="button">All sections</button>
+          </nav>
+          <div class="pane" data-ap="fleet">
+            <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline"><h4>Fleet</h4><span class="example">Example data</span></div>
+            <div class="tbl">
+              <table>
+                <thead><tr><th>Device</th><th>Home</th><th>Profile</th><th>Firmware</th><th>Signal</th><th>Uptime</th><th>Min free heap</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr><td>Undercabinet</td><td>Hillside</td><td>cct</td><td class="num">0.3.1</td><td class="num">−58 dBm</td><td class="num">12 d</td><td class="num">182 KB</td><td><span class="spill ok">Online</span></td></tr>
+                  <tr><td>Office strip</td><td>Hillside</td><td>cct+argb</td><td class="num">0.3.1</td><td class="num">−71 dBm</td><td class="num">3 d</td><td class="num">141 KB</td><td><span class="spill ok">Online</span></td></tr>
+                  <tr><td>Garden valves</td><td>Hillside</td><td>switch-4</td><td class="num">0.3.0</td><td class="num">−82 dBm</td><td class="num">4 h</td><td class="num">190 KB</td><td><span class="spill warn">Weak signal</span></td></tr>
+                  <tr><td>Den RGB</td><td>Lakeview</td><td>rgb</td><td class="num">0.2.9</td><td class="num">–</td><td class="num">–</td><td class="num">–</td><td><span class="spill bad">Offline 2 h</span></td></tr>
+                  <tr><td>Bench 07</td><td>Unclaimed</td><td>factory</td><td class="num">0.3.1-f</td><td class="num">USB</td><td class="num">–</td><td class="num">–</td><td><span class="spill info">In bring-up</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="small muted">Opening a device shows its live log, metrics history, certificate, and actions: identify (blink), reboot, OTA, fetch core dump, factory reset.</p>
+          </div>
+          <div class="pane" data-ap="reports" hidden>
+            <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline"><h4>Problem reports</h4><span class="example">Example data</span></div>
+            <div class="tbl">
+              <table>
+                <thead><tr><th>Received</th><th>From</th><th>Device</th><th>Report</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr><td class="num">Today 21:14</td><td>Owner · Hillside</td><td>Office strip</td><td>Strip flickers at low brightness, only in the evening effect. <span class="muted">+ diagnostics</span></td><td><span class="spill warn">New</span></td></tr>
+                  <tr><td class="num">Yesterday</td><td>Guest · Lakeview</td><td>–</td><td>Invite link said expired but it's the right day. <span class="muted">+ screenshot</span></td><td><span class="spill warn">New</span></td></tr>
+                  <tr><td class="num">12 Nov</td><td>Member · Hillside</td><td>Undercabinet</td><td>Light came on at 3 am. <span class="muted">Linked: schedule bug</span></td><td><span class="spill ok">Fixed</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="pane" data-ap="map" hidden>
+            <h4>Every section and what it replaces</h4>
+            <div class="tbl">
+              <table>
+                <thead><tr><th>Section</th><th>What you do there</th></tr></thead>
+                <tbody>
+                  <tr><td>Fleet and health</td><td>Live status, signal, heap, reset reasons, logs, remote actions</td></tr>
+                  <tr><td>Homes and people</td><td>Create homes, assign owners, reset sign-ins, view as owner</td></tr>
+                  <tr><td>Hardware and bring-up</td><td>Flash, test and register new boards from the browser; serials and revisions</td></tr>
+                  <tr><td>Board profiles</td><td>Which outputs and drivers a board type has; replaces <code>node_configs/</code> and hand-edited sdkconfig</td></tr>
+                  <tr><td>Builds</td><td>Queue builds, watch logs, keep artifacts with IDF version and commit</td></tr>
+                  <tr><td>Updates (OTA)</td><td>Staged rollouts, progress, pause, automatic rollback</td></tr>
+                  <tr><td>Certificates</td><td>Issued, expiring and revoked device certificates</td></tr>
+                  <tr><td>Workers</td><td>Build and AI worker status, queue depth</td></tr>
+                  <tr><td>Problem reports</td><td>Inbox, replies, link to device and audit log</td></tr>
+                  <tr><td>Audit log</td><td>Every change, with its source: UI, schedule, AI or admin</td></tr>
+                  <tr><td>System</td><td>Backups, broker stats, database migrations</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="sub" id="bringup">
+          <h3>Fabrication bring-up</h3>
+          <p>You plug a freshly assembled board into the computer running the admin panel, open <b>Bring-up</b>, and press one button. Flashing happens in the browser over Web Serial (Espressif's esptool-js, Chrome and Edge only), so no terminal is needed.</p>
+          <ol class="steps">
+            <li><div><b>Flash the factory image</b> for the chosen board profile over USB.</div></li>
+            <li><div><b>Self-test</b>: walk each PWM channel, pulse each relay, run the ARGB line, read the temperature sensor and the hardware revision ID. With test points or current sense on the PCB, every result is measured rather than eyeballed.</div></li>
+            <li><div><b>Create identity</b>: the chip generates its private key, the server signs its certificate, and the board gets a serial number.</div></li>
+            <li><div><b>Lock down</b> (production boards only): enable secure boot and flash encryption. This burns eFuses and can't be undone, so the page asks you to confirm.</div></li>
+            <li><div><b>Flash the release image</b> and print a QR label with the serial and claim code.</div></li>
+          </ol>
+          <p class="small muted">Every step's result is stored against the serial. A board that fails any step is marked and never offered for claiming.</p>
+        </div>
+      </section>
+
+      <!-- PROVISIONING -->
+      <section id="provisioning">
+        <div class="sec-head"><span class="label">10 · Identity</span><h2>Provisioning and certificates</h2></div>
+        <p>v5 issued a certificate when the setup portal first exchanged credentials, so the server created the key. In the new flow the key is created inside the chip at bring-up and never leaves it. Claiming a device into a home is a separate, later step.</p>
+        <div class="figure">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant J as Admin bring-up page
+  participant D as C6 node
+  participant S as Server and CA
+  participant O as Owner phone
+  J->>D: Flash factory image over USB
+  D->>D: Self-test, then generate key in chip
+  D->>J: Test report and signing request
+  J->>S: Submit report and request
+  S->>J: Signed device certificate and serial
+  J->>D: Store certificate, flash release image
+  Note over J,D: QR label printed with serial and claim code
+  O->>S: Scan QR to claim into a home
+  O->>D: Wi-Fi details through the setup portal
+  D->>S: Connect to MQTT with mutual TLS
+  S->>D: Desired state and settings
+</pre>
+          <p class="figcap">The certificate name is the device ID, which the broker uses as the username. A device can't pretend to be another one, and a stolen certificate is revoked from the Certificates page.</p>
+        </div>
+        <details class="more"><summary>Key handling <span class="muted small">CA layout and lifetimes</span></summary>
+          <div class="body">
+            <ul class="clean">
+              <li><b>Root CA</b>: kept offline (USB stick or password manager). Used only to sign intermediates.</li>
+              <li><b>Device intermediate</b>: on the VM. Signs device and bridge certificates.</li>
+              <li><b>Firmware signing key</b>: on the workstation, used by the build worker. Secure boot only accepts images it signed.</li>
+              <li><b>Lifetimes</b>: long-lived device certificates (years), with renewal over MQTT before expiry, so a node that's offline for months still reconnects.</li>
+              <li><b>Wi-Fi setup</b>: the setup portal (soft access point) works on every phone. BLE setup is nicer but Web Bluetooth doesn't work on iPhones, so the portal stays as the baseline.</li>
+            </ul>
+          </div>
+        </details>
+      </section>
+
+      <!-- BUILDS -->
+      <section id="builds">
+        <div class="sec-head"><span class="label">11 · Delivery</span><h2>Builds and OTA</h2></div>
+        <p>Firmware is built per board profile, not per device. The admin panel queues a build, the workstation builds and signs it, and a staged rollout delivers it.</p>
+        <div class="figure">
+<pre class="mermaid">
+flowchart LR
+  A[New release or profile change] --> B[Build job queued]
+  B --> C[Build worker on workstation]
+  C --> D[Signed image in artifact store]
+  D --> E[Canary devices]
+  E -->|healthy for 24 h| F[All devices on that profile]
+  E -->|fails health check| G[Roll back and pause]
+</pre>
+        </div>
+        <ul class="clean">
+          <li>Every artifact records its ESP-IDF version, commit and profile, so any build can be reproduced.</li>
+          <li>A new image marks itself good only after it reaches the broker. If it can't, the bootloader rolls back on the next reboot.</li>
+          <li>The OTA command is never retained, and success is reported only after the broker acknowledges it. v5 learned both the hard way.</li>
+          <li>Owners see "Update available" and can approve it. You can push to anyone.</li>
+        </ul>
+      </section>
+
+      <!-- REPORTS -->
+      <section id="reports">
+        <div class="sec-head"><span class="label">12 · Support</span><h2>Problem reports</h2></div>
+        <div class="grid2">
+          <div class="stack">
+            <p>A report should take one sentence from the user. Everything else is collected automatically so you don't have to ask follow-up questions.</p>
+            <ul class="clean small">
+              <li>Who sent it, their role and home, the page they were on, app version and browser.</li>
+              <li>If sent from a device screen: firmware, signal, uptime, reset reason and the device's last 50 events.</li>
+              <li>An optional screenshot or photo.</li>
+              <li>A checkbox to leave the diagnostics out.</li>
+            </ul>
+          </div>
+          <div class="stack">
+            <p>In the admin panel each report has a status (new, looking, fixed, won't fix), links to the device and the audit log around that time, and a reply the user sees under Help. If you want, new reports can also send you a push notification or email.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- AI -->
+      <section id="ai">
+        <div class="sec-head"><span class="label">13 · AI</span><h2>AI integration</h2></div>
+        <p>The AI worker on the 4080 is a plugin, not part of the core. The core only needs four things from day one to make adding it easy later.</p>
+        <div class="grid2">
+          <div class="panel stack"><h4>1. One command API</h4><p class="small">The model's tools are the same validated operations the UI uses: list rooms and devices, set state, create a scene, create a schedule. It can't do anything a person couldn't do by tapping.</p></div>
+          <div class="panel stack"><h4>2. Scenes and effects are data</h4><p class="small">"Make the living room space vibes" produces a scene document: a flow effect, a deep blue and purple palette, slow, 30% brightness. It can be previewed, saved, edited or undone.</p></div>
+          <div class="panel stack"><h4>3. Every change has a source</h4><p class="small">Changes are tagged <code>ai:&lt;user&gt;</code> in the activity log, and "undo last AI change" is one tap.</p></div>
+          <div class="panel stack"><h4>4. Room layout in the data model</h4><p class="small">Each light can have a position, and each strip a path and pixel count. Unused at first, it's what makes image-to-scene possible later.</p></div>
+        </div>
+
+        <div class="sub">
+          <h3>Image to scene</h3>
+          <p>The simplest layout model that works treats each room like a picture frame. The owner places each light on a frame of the room, the way ambient-TV tools place LEDs around a screen. Matching an image is then a matter of sampling the image at those positions. A vision model chooses the overall mood and palette, and the sampling decides which color goes where.</p>
+          <div class="panel sampler">
+            <canvas id="ai-canvas" width="640" height="300" aria-label="Example scene image with fixture positions overlaid"></canvas>
+            <div class="fixtures" id="ai-fix"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn" id="ai-next" type="button">Try another image</button><span class="small muted" id="ai-name"></span></div>
+            <p class="small muted">The images are generated stand-ins for a user's screenshot. Dashed lines are strips, circles are lamps, and the rows below are the colors each fixture would receive.</p>
+          </div>
+        </div>
+        <details class="more"><summary>Request flow <span class="muted small">text request to lights</span></summary>
+          <div class="body">
+            <ol class="clean">
+              <li>The user types or says a request. The API stores it as a job tagged with the user's identity.</li>
+              <li>The AI worker claims the job and calls read-only tools to see the rooms, devices and capabilities this user can access.</li>
+              <li>It proposes a scene document. The server validates it against the contract and the user's grants.</li>
+              <li>It is applied right away with an Undo button, or shown as a preview card, depending on a user setting.</li>
+              <li>If the workstation is off, the request waits with a "thinking" status or times out politely.</li>
+            </ol>
+          </div>
+        </details>
+      </section>
+
+      <!-- LESSONS -->
+      <section id="lessons">
+        <div class="sec-head"><span class="label">14 · History</span><h2>Lessons from v5</h2></div>
+        <p>Each lesson below was checked against the v5 code or commit history and re-judged for the C6, ESP-IDF 6.x and the new design. Anything that only made sense given v5's constraints is marked as dropped, so it doesn't creep back in.</p>
+        <div class="stack">
+          <details class="more"><summary><span class="tag rework">Rework</span> Live sliders need throttling at both ends</summary>
+            <div class="body">
+              <p><b>Evidence:</b> browser throttle at 100 ms in <code>Server/app/templates/modules/white.html</code> (<code>scheduleSend</code>); server queue at 5 Hz per node in <code>Server/app/mqtt_bus.py</code>.</p>
+              <p><b>Keep:</b> leading-edge send, latest value wins, final value always sent.</p>
+              <p><b>Change:</b> the server queue keeps one pending command per node, so a command for one output can silently replace another output's. Key it by device and output. Raise the rate to about 20 Hz and let hardware fades cover the gaps. See <a href="#realtime">Real-time control</a>.</p>
+            </div>
+          </details>
+          <details class="more"><summary><span class="tag keep">Keep</span> State is retained, commands are not</summary>
+            <div class="body">
+              <p><b>Evidence:</b> commit "Avoid retaining OTA command"; <code>mqtt_bus.py</code> retains light state so lights resume after reconnecting.</p>
+              <p><b>New form:</b> separate <code>set/</code> (retained) from <code>cmd</code> (never retained) in the topic layout itself, so it can't be gotten wrong per call.</p>
+            </div>
+          </details>
+          <details class="more"><summary><span class="tag keep">Keep</span> OTA needs large partitions, acknowledged reporting and relative URLs</summary>
+            <div class="body">
+              <p><b>Evidence:</b> commits "Ensure default sdkconfig uses two large OTA partitions", "Ensure OTA success publishes wait for MQTT ack", "Resolve OTA binary URLs relative to manifest", and a reverted attempt at namespaced paths.</p>
+              <p><b>New form:</b> 8–16 MB flash with the partition table designed up front; artifacts addressed by content hash; rollback built in.</p>
+            </div>
+          </details>
+          <details class="more"><summary><span class="tag keep">Keep</span> Every MQTT client needs a unique, stable ID</summary>
+            <div class="body">
+              <p><b>Evidence:</b> commit "Throttle node commands and fix MQTT client IDs".</p>
+              <p><b>New form:</b> the client ID, certificate name and device ID are the same string, so they can't collide.</p>
+            </div>
+          </details>
+          <details class="more"><summary><span class="tag keep">Keep</span> Newer chips have no LEDC high-speed mode</summary>
+            <div class="body">
+              <p><b>Evidence:</b> commit "Handle LEDC speed mode absence on newer targets". The C6 only has low-speed mode, so the new driver uses it from the start.</p>
+            </div>
+          </details>
+          <details class="more"><summary><span class="tag drop">Drop</span> Software smoothing tasks on the node</summary>
+            <div class="body">
+              <p><b>Evidence:</b> the white engine ran a periodic smoothing task (<code>CONFIG_UL_WHITE_SMOOTH_HZ</code>) with its own failure handling. LEDC hardware fades replace it entirely.</p>
+            </div>
+          </details>
+          <details class="more"><summary><span class="tag drop">Drop</span> A large compiled-in effect catalog</summary>
+            <div class="body">
+              <p><b>Evidence:</b> 11 ARGB effects in <code>ul_ws_engine/effects_ws</code>, plus separate white and RGB effect sets, each with its own parameter list. Replaced by building blocks and palettes. Some old looks (fire, space waves, triple wave) are worth recreating as effect documents to test the building blocks.</p>
+            </div>
+          </details>
+          <details class="more"><summary><span class="tag drop">Drop</span> JSON files as the database; per-node config files</summary>
+            <div class="body">
+              <p><b>Evidence:</b> <code>device_registry.json</code>, <code>motion_prefs.json</code>, <code>custom_presets.json</code>, <code>brightness_curve.json</code> and others in <code>Server/app</code>; 37 files in <code>UltraNodeV5/node_configs</code>. Replaced by one database and a few board profiles.</p>
+            </div>
+          </details>
+          <details class="more"><summary><span class="tag rework">Rework</span> Time-of-day brightness curve</summary>
+            <div class="body">
+              <p><b>Evidence:</b> <code>brightness_curve.json</code> stored hourly brightness points per room and channel. It's a useful idea but was its own subsystem. In the new design it becomes a kind of schedule: "follow this curve" (with warmth too, for a circadian feel).</p>
+            </div>
+          </details>
+          <details class="more"><summary><span class="tag rework">Rework</span> Motion sensing</summary>
+            <div class="body">
+              <p><b>Evidence:</b> <code>ul_pir</code> component, an ultrasonic sensor using RMT, and server-side motion schedules with retained "off" commands. Whether sensors are in scope is an <a href="#questions">open question</a>. If they are, they'd be inputs in the device contract feeding the scheduler, not special cases.</p>
+            </div>
+          </details>
+          <details class="more"><summary><span class="tag new">Process</span> Write the spec before the code</summary>
+            <div class="body">
+              <p><b>Evidence:</b> about 370 pull requests, including repeated reverts of the same feature (four reverts of "glowing border buttons" alone) and dozens of leftover branches. Agents writing code against an unwritten spec produced churn.</p>
+              <p><b>New form:</b> this document and the contract schemas come first. Work goes in small end-to-end slices with acceptance checks.</p>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- PLAN -->
+      <section id="plan">
+        <div class="sec-head"><span class="label">15 · Plan</span><h2>Repository and phases</h2></div>
+        <div class="grid2">
+          <div class="stack">
+            <h4>Repository</h4>
+            <p class="small"><span class="tag keep">Done</span> Master is tagged <code>v5-final</code> and <code>beta</code> starts from an empty tree with this layout. Old code stays reachable through the tag (<code>git show v5-final:path</code>) and nothing in the new tree points at it. The ~45 leftover <code>codex/*</code> and <code>revert-*</code> branches on GitHub can be deleted once the tag is pushed.</p>
+<pre><code>contracts/   device contract schemas (shared)
+firmware/    ESP-IDF 6.x project for the C6
+server/      API, auth, scheduler, MQTT bridge
+web/         user UI and admin panel
+workers/
+  build/     build worker
+  ai/        AI worker (later)
+bridges/
+  openrgb/   OpenRGB bridge agent
+hardware/    KiCad project
+deploy/      broker, proxy, database config
+docs/        this blueprint, decisions</code></pre>
+          </div>
+          <div class="stack">
+            <h4>Phases</h4>
+            <ol class="steps">
+              <li><div><b>Foundations.</b> Contracts, database schema, CA, broker config, sign-in.</div></li>
+              <li><div><b>First light.</b> A C6 dev board driving dual white end to end, with the live slider and the light control screen.</div></li>
+              <li><div><b>Homes and people.</b> Roles, guest grants, rooms list, scenes, schedules, relays.</div></li>
+              <li><div><b>Fleet.</b> Admin panel, health, build worker, OTA, problem reports.</div></li>
+              <li><div><b>Color and ARGB.</b> RGB, RGBW, RGB+CCT, building blocks, clips, OpenRGB bridge, solenoids.</div></li>
+              <li><div><b>Fabrication.</b> PCB bring-up page, self-test, power calibration profiles, secure boot on production boards.</div></li>
+              <li><div><b>Sensors and larger installs.</b> Motion inputs feeding the scheduler; ESP-NOW mesh and gateway for venues.</div></li>
+              <li><div><b>AI.</b> Text to scene and schedules, then room layout and image to scene.</div></li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- QUESTIONS -->
+      <section id="questions">
+        <div class="sec-head"><span class="label">16 · Open</span><h2>Open questions</h2></div>
+        <div class="tbl">
+          <table>
+            <thead><tr><th>Question</th><th>Why it matters</th><th>Answer or leaning</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>One PCB for everything, or a few variants?</td><td>Board profiles, cost, bring-up tests</td><td>One board, populated per install; modular firmware to match</td><td><span class="tag keep">Decided</span></td></tr>
+              <tr><td>Are motion sensors still in scope?</td><td>Adds inputs to the contract and scheduler</td><td>Yes, as inputs, in the sensors phase</td><td><span class="tag keep">Decided</span></td></tr>
+              <tr><td>Does the C6 have PSRAM?</td><td>Clip storage and RAM budget</td><td>No (datasheet). Stay on C6, clips in flash</td><td><span class="tag keep">Decided</span></td></tr>
+              <tr><td>How many ARGB outputs?</td><td>RMT memory and pins</td><td>Two, with the 48/144-word memory split</td><td><span class="tag keep">Decided</span></td></tr>
+              <tr><td>ARGB strip voltages to support (5, 12, 24 V)?</td><td>Power stage and level shifting</td><td>Data line at 5 V; strip power external</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>Web UI framework?</td><td>Everything in <code>web/</code></td><td>Svelte</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>Is the VM reachable from the internet?</td><td>Remote access, certificates, attack surface</td><td>Yes, behind the proxy with strict sign-in</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>Secure boot and flash encryption on production boards?</td><td>Irreversible eFuse burns at bring-up</td><td>Yes for production, never on dev boards</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>Is the Member role needed?</td><td>One less role if not</td><td>Keep, it's cheap</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>Stepper header and 4-layer stackup?</td><td>Pin budget, cost, ground plane under the buck</td><td>Liked, not decided</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>Commit the <code>research/</code> screenshots (34 MB)?</td><td>Repo size forever</td><td>Keep one or two references in the repo, the rest outside it</td><td><span class="tag rework">Open</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer>UltraLights Blueprint · Draft 2 · Sources: <code>research/</code> screenshots, <code>docs/hardware-notes.md</code> (ESP32-C6 datasheets and TRM), v5 code at tag <code>v5-final</code>.</footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- color helpers ---------- */
+  function hexToRgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function kelvinToRgb(k) {
+    var t = k / 100, r, g, b;
+    if (t <= 66) { r = 255; g = 99.4708025861 * Math.log(t) - 161.1195681661; }
+    else { r = 329.698727446 * Math.pow(t - 60, -0.1332047592); g = 288.1221695283 * Math.pow(t - 60, -0.0755148492); }
+    if (t >= 66) b = 255; else if (t <= 19) b = 0; else b = 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+    return [clamp(r, 0, 255), clamp(g, 0, 255), clamp(b, 0, 255)];
+  }
+  function rgbStr(c, a) { return "rgba(" + Math.round(c[0]) + "," + Math.round(c[1]) + "," + Math.round(c[2]) + "," + (a == null ? 1 : a) + ")"; }
+
+  /* ---------- palettes ---------- */
+  var PALETTES = {
+    aurora: { name: "Aurora", c: ["#06202b", "#1b6b4f", "#3fd18f", "#7a5cf0", "#1d3b7a"] },
+    space: { name: "Space vibes", c: ["#120634", "#3a1a8a", "#8a3ff0", "#2f8cff", "#0b1d5c"] },
+    ocean: { name: "Ocean", c: ["#00203f", "#005f8a", "#18a7b5", "#8fe3d8", "#0a3d66"] },
+    ember: { name: "Ember", c: ["#3a0800", "#a3260b", "#ff6a10", "#ffbf5a", "#7a1a04"] },
+    arcade: { name: "Arcade", c: ["#ff2bd6", "#5b2bff", "#00e5ff", "#ffe14d", "#ff3b6b"] },
+    warm: { name: "Warm white", c: ["#ff9a3c", "#ffc27a", "#ffe0b8", "#ffb35c"] }
+  };
+  Object.keys(PALETTES).forEach(function (k) { PALETTES[k].rgb = PALETTES[k].c.map(hexToRgb); });
+  function palAt(key, x) {
+    var p = PALETTES[key].rgb, n = p.length;
+    x = ((x % 1) + 1) % 1;
+    var f = x * n, i = Math.floor(f), u = f - i, s = u * u * (3 - 2 * u);
+    var a = p[i % n], b = p[(i + 1) % n];
+    return [a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s, a[2] + (b[2] - a[2]) * s];
+  }
+  function rnd(i, seed) { var x = Math.sin(i * 127.1 + seed * 311.7) * 43758.5453; return x - Math.floor(x); }
+  function noise1(x, seed) { var i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return rnd(i, seed) * (1 - u) + rnd(i + 1, seed) * u; }
+
+  /* ---------- building blocks ---------- */
+  var PRIMS = [
+    { key: "gradient", name: "Gradient", desc: "A still palette spread along the strip. Speed is ignored." },
+    { key: "drift", name: "Palette drift", desc: "The palette slides slowly along the strip. Rainbow is this with a rainbow palette." },
+    { key: "flow", name: "Noise flow", desc: "Organic, cloud-like motion from layered noise. The workhorse for ambient looks like aurora, ocean and lava." },
+    { key: "breathe", name: "Breathe", desc: "The whole strip rises and falls together. Intensity sets how deep the breath goes." },
+    { key: "twinkle", name: "Twinkle", desc: "Pixels sparkle at random. Intensity sets how many twinkle." },
+    { key: "flicker", name: "Flicker", desc: "Irregular brightness like a candle or fire. Best with the Ember palette." },
+    { key: "chase", name: "Chase", desc: "Bands of color travel along the strip. Scale sets the band count, intensity their width." },
+    { key: "wave", name: "Wave", desc: "Smooth brightness waves roll along the strip." },
+    { key: "comet", name: "Comet", desc: "A bright head with a fading tail. Intensity sets the tail length." }
+  ];
+  var FX = {
+    gradient: function (i, n, t, p) { return [palAt(p.palette, i / n * p.scale * 0.5), 1]; },
+    drift: function (i, n, t, p) { return [palAt(p.palette, i / n * p.scale * 0.5 - t * p.sp * 0.12 * p.dir), 1]; },
+    flow: function (i, n, t, p) {
+      var x = i / n * p.scale * 3;
+      var v = noise1(x - t * p.sp * 0.7 * p.dir, p.seed) * 0.65 + noise1(x * 2.1 + t * p.sp * 0.45, p.seed + 9) * 0.35;
+      var l = noise1(x * 1.4 - t * p.sp * 0.5 * p.dir + 40, p.seed + 3);
+      return [palAt(p.palette, v * 1.3 + t * 0.01), 1 - p.intensity * (1 - (0.15 + 0.85 * l))];
+    },
+    breathe: function (i, n, t, p) {
+      var ph = 0.5 - 0.5 * Math.cos(2 * Math.PI * t * p.sp * 0.3);
+      return [palAt(p.palette, i / n * p.scale * 0.3 + t * 0.015), 1 - p.intensity * 0.92 * (1 - ph)];
+    },
+    twinkle: function (i, n, t, p) {
+      var active = rnd(i, p.seed + 3) < 0.2 + 0.8 * p.intensity;
+      var rate = 0.6 + rnd(i, p.seed) * 1.6, ph = rnd(i, p.seed + 1) * 6.283;
+      var s = Math.sin(t * p.sp * 2.5 * rate + ph);
+      var b = active && s > 0 ? Math.pow(s, 4) : 0;
+      return [palAt(p.palette, rnd(i, p.seed + 2)), 0.05 + 0.95 * b];
+    },
+    flicker: function (i, n, t, p) {
+      var z = noise1(t * p.sp * 9 + i * 0.12 * p.scale, p.seed) * 0.6 + noise1(t * p.sp * 23 + i * 0.3, p.seed + 5) * 0.4;
+      return [palAt(p.palette, 0.35 + z * 0.4), clamp(1 - p.intensity * (1 - z) * 1.1, 0.05, 1)];
+    },
+    chase: function (i, n, t, p) {
+      var x = i / n * p.scale * 3 - t * p.sp * 0.9 * p.dir, f = x - Math.floor(x);
+      var w = 0.12 + 0.6 * p.intensity, b = f < w ? Math.sin(f / w * Math.PI) : 0;
+      return [palAt(p.palette, Math.floor(x) * 0.23), 0.04 + 0.96 * b];
+    },
+    wave: function (i, n, t, p) {
+      var b = 0.5 + 0.5 * Math.sin(2 * Math.PI * (i / n * p.scale - t * p.sp * 0.5 * p.dir));
+      return [palAt(p.palette, i / n * 0.5 + t * 0.02), 1 - p.intensity * (1 - b)];
+    },
+    comet: function (i, n, t, p) {
+      var head = (((t * p.sp * 0.35) % 1) + 1) % 1 * n;
+      var d = p.dir > 0 ? head - i : i - (n - 1 - head);
+      if (p.dir < 0) { head = n - 1 - head; d = i - head; }
+      d = ((d % n) + n) % n;
+      var tail = 3 + p.intensity * n * 0.55;
+      var b = d < tail ? Math.pow(1 - d / tail, 2.2) : 0;
+      return [palAt(p.palette, d / tail * 0.6 + t * 0.03), 0.03 + 0.97 * b];
+    }
+  };
+
+  /* ---------- effects lab ---------- */
+  var N = 72;
+  var fx = { prim: "flow", palette: "aurora", speed: 35, scale: 120, intensity: 60, bri: 85, dir: 1, seed: 7 };
+  var primBox = $("#fx-prims"), palSel = $("#fx-pal");
+  PRIMS.forEach(function (pr) {
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = pr.name; b.dataset.k = pr.key;
+    b.setAttribute("aria-pressed", pr.key === fx.prim ? "true" : "false");
+    b.addEventListener("click", function () {
+      fx.prim = pr.key;
+      if (pr.key === "flicker" && fx.palette !== "ember") { fx.palette = "ember"; palSel.value = "ember"; }
+      $$("button", primBox).forEach(function (x) { x.setAttribute("aria-pressed", x.dataset.k === fx.prim ? "true" : "false"); });
+      updateFxText(); if (!playing) drawFx(lastT);
+    });
+    primBox.appendChild(b);
+  });
+  Object.keys(PALETTES).forEach(function (k) {
+    var o = document.createElement("option"); o.value = k; o.textContent = PALETTES[k].name; palSel.appendChild(o);
+  });
+  palSel.value = fx.palette;
+  function speedFactor(v) { return 0.04 + Math.pow(v / 100, 1.5) * 2.2; }
+  function fxParams() {
+    return { palette: fx.palette, sp: speedFactor(fx.speed), scale: fx.scale / 100, intensity: fx.intensity / 100, dir: fx.dir, seed: fx.seed };
+  }
+  function updateFxText() {
+    var pr = PRIMS.filter(function (x) { return x.key === fx.prim; })[0];
+    $("#fx-desc").textContent = pr.desc;
+    $("#fx-speed-o").textContent = (fx.speed / 100).toFixed(2);
+    $("#fx-scale-o").textContent = (fx.scale / 100).toFixed(2);
+    $("#fx-int-o").textContent = (fx.intensity / 100).toFixed(2);
+    $("#fx-bri-o").textContent = fx.bri + "%";
+    var doc = {
+      effect: fx.prim,
+      palette: fx.palette === "space" ? "space-vibes" : fx.palette,
+      speed: +(fx.speed / 100).toFixed(2),
+      scale: +(fx.scale / 100).toFixed(2),
+      intensity: +(fx.intensity / 100).toFixed(2),
+      direction: fx.dir > 0 ? "forward" : "reverse",
+      brightness: +(fx.bri / 100).toFixed(2),
+      seed: fx.seed,
+      segment: [0, N - 1]
+    };
+    $("#fx-json").textContent = JSON.stringify(doc, null, 2);
+  }
+  [["#fx-speed", "speed"], ["#fx-scale", "scale"], ["#fx-int", "intensity"], ["#fx-bri", "bri"]].forEach(function (pair) {
+    var el = $(pair[0]);
+    el.addEventListener("input", function () { fx[pair[1]] = +el.value; updateFxText(); if (!playing) drawFx(lastT); });
+  });
+  palSel.addEventListener("change", function () { fx.palette = palSel.value; updateFxText(); if (!playing) drawFx(lastT); });
+  $("#fx-dir").addEventListener("change", function () { fx.dir = +$("#fx-dir").value; updateFxText(); if (!playing) drawFx(lastT); });
+
+  var cGlow = $("#fx-glow"), cLeds = $("#fx-leds");
+  function sizeCanvas(c) {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.max(1, Math.round(c.clientWidth * dpr)), h = Math.max(1, Math.round(c.clientHeight * dpr));
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  }
+  function drawFx(t) {
+    sizeCanvas(cGlow); sizeCanvas(cLeds);
+    var p = fxParams(), f = FX[fx.prim], bri = fx.bri / 100;
+    var gctx = cGlow.getContext("2d"), lctx = cLeds.getContext("2d");
+    var W = cLeds.width, H = cLeds.height, GW = cGlow.width, GH = cGlow.height;
+    gctx.clearRect(0, 0, GW, GH); lctx.clearRect(0, 0, W, H);
+    var step = W / N, r = Math.min(step * 0.32, H * 0.42);
+    for (var i = 0; i < N; i++) {
+      var out = f(i, N, t, p), col = out[0], b = clamp(out[1], 0, 1) * bri;
+      var c = [col[0] * b, col[1] * b, col[2] * b];
+      gctx.fillStyle = rgbStr(c);
+      gctx.fillRect(i * (GW / N), GH * 0.25, GW / N + 1, GH * 0.75);
+      lctx.fillStyle = rgbStr([Math.max(c[0], 18), Math.max(c[1], 18), Math.max(c[2], 20)]);
+      lctx.beginPath(); lctx.arc(step * (i + 0.5), H / 2, r, 0, Math.PI * 2); lctx.fill();
+    }
+  }
+  var playing = !reduceMotion, lastT = 4.2, t0 = null;
+  var playBtn = $("#fx-play");
+  playBtn.textContent = playing ? "Pause" : "Play";
+  playBtn.addEventListener("click", function () {
+    playing = !playing; playBtn.textContent = playing ? "Pause" : "Play";
+    if (playing) { t0 = null; requestAnimationFrame(loop); }
+  });
+  var tOffset = lastT;
+  function loop(ts) {
+    if (!playing) { tOffset = lastT; return; }
+    if (t0 === null) t0 = ts - tOffset * 1000;
+    lastT = (ts - t0) / 1000;
+    drawFx(lastT);
+    requestAnimationFrame(loop);
+  }
+  updateFxText(); drawFx(lastT);
+  if (playing) requestAnimationFrame(loop);
+  window.addEventListener("resize", function () { if (!playing) drawFx(lastT); });
+
+  /* ---------- clip calculator ---------- */
+  function fmtBytes(b) { if (b >= 1048576) return (b / 1048576).toFixed(2) + " MB"; return Math.round(b / 1024) + " KB"; }
+  function updClip() {
+    var px = +$("#cl-px").value, fps = +$("#cl-fps").value, sec = +$("#cl-sec").value, bpp = +$("#cl-fmt").value;
+    $("#cl-px-o").textContent = px; $("#cl-fps-o").textContent = fps; $("#cl-sec-o").textContent = sec + " s";
+    var size = px * bpp * fps * sec + (bpp === 1 ? 768 : 0);
+    $("#cl-size").textContent = fmtBytes(size);
+    var sramP = size / (512 * 1024) * 100, partP = size / (4 * 1048576) * 100;
+    $("#cl-sram-p").textContent = Math.round(sramP) + "%";
+    $("#cl-sram").style.width = Math.min(100, sramP) + "%";
+    $("#cl-part-p").textContent = partP < 1 ? partP.toFixed(1) + "%" : Math.round(partP) + "%";
+    $("#cl-part").style.width = Math.min(100, partP) + "%";
+    $("#cl-count").textContent = Math.floor(4 * 1048576 / size);
+  }
+  ["#cl-px", "#cl-fps", "#cl-sec", "#cl-fmt"].forEach(function (s) { $(s).addEventListener("input", updClip); $(s).addEventListener("change", updClip); });
+  updClip();
+
+  /* ---------- slider pipeline demo ---------- */
+  var pp = { inputs: 0, sent: 0, finals: 0, last: -1e9, timer: null, latest: 50, log: [] };
+  var ppSlider = $("#pp-slider"), ppLamp = $("#pp-lamp");
+  function ppRate() { return +$("#pp-rate").value; }
+  function ppLog(line) { pp.log.push(line); if (pp.log.length > 5) pp.log.shift(); $("#pp-log").textContent = pp.log.join("\n"); }
+  function ppSend() {
+    pp.last = performance.now(); pp.sent++;
+    var interval = 1000 / ppRate();
+    ppLamp.style.transitionDuration = $("#pp-fade").value === "1" ? interval + "ms" : "0ms";
+    ppLamp.style.setProperty("--lvl", (0.05 + 0.95 * pp.latest / 100).toFixed(3));
+    $("#pp-out").textContent = pp.sent;
+    ppLog("live/main  QoS0  {\"level\": " + (pp.latest / 100).toFixed(2) + ", \"fade_ms\": " + Math.round(interval) + "}");
+  }
+  function ppSchedule() {
+    var interval = 1000 / ppRate(), wait = interval - (performance.now() - pp.last);
+    if (wait <= 0) { if (pp.timer) { clearTimeout(pp.timer); pp.timer = null; } ppSend(); }
+    else if (!pp.timer) { pp.timer = setTimeout(function () { pp.timer = null; ppSend(); }, wait); }
+  }
+  ppSlider.addEventListener("input", function () {
+    pp.inputs++; pp.latest = +ppSlider.value;
+    $("#pp-val").textContent = ppSlider.value + "%"; $("#pp-in").textContent = pp.inputs;
+    ppSchedule();
+  });
+  ppSlider.addEventListener("change", function () {
+    pp.finals++; $("#pp-final").textContent = pp.finals;
+    setTimeout(function () { ppLog("set/main   QoS1  retained  {\"level\": " + (pp.latest / 100).toFixed(2) + "}"); }, 1000 / ppRate());
+  });
+  ppLamp.style.setProperty("--lvl", "0.525");
+  ppLog("Drag the slider to see messages.");
+
+  /* ---------- rooms list ---------- */
+  var ROOMS = [
+    ["Game room", 2, 0, "#5b6b7a,#2c333b"], ["Gym", 2, 2, "#4a5560,#202830"], ["Kids bathroom", 1, 0, "#7d8d85,#3c4842"],
+    ["Kitchen", 4, 3, "#8a6d50,#3c3128"], ["Living room", 3, 0, "#9a8a78,#4a4038"], ["Office", 4, 1, "#3b3f6b,#1d1f33"],
+    ["Powder room", 1, 0, "#6d7b8a,#323a44"], ["Primary bedroom", 4, 4, "#8a7a6a,#3a3029"], ["Patio", 3, 0, "#4f6b52,#243226"]
+  ];
+  var rl = $("#roomlist");
+  ROOMS.forEach(function (r) {
+    var row = document.createElement("div"); row.className = "rrow";
+    var cols = r[3].split(",");
+    var dots = ""; for (var i = 0; i < r[1]; i++) dots += "<i" + (i < r[2] ? ' class="lit"' : "") + "></i>";
+    var on = r[2] > 0;
+    row.innerHTML = '<div class="thumb" style="background:linear-gradient(135deg,' + cols[0] + "," + cols[1] + ')"></div>' +
+      '<div><div class="nm">' + r[0] + '</div><div class="dots">' + dots + "</div></div>" +
+      '<div class="onoff"><button class="pill' + (on ? "" : " on") + '" type="button" data-v="off">OFF</button><button class="pill' + (on ? " on" : "") + '" type="button" data-v="on">ON</button></div>';
+    rl.appendChild(row);
+    $$("button", row).forEach(function (b) {
+      b.addEventListener("click", function () {
+        var isOn = b.dataset.v === "on";
+        $$("button", row).forEach(function (x) { x.classList.toggle("on", x === b); });
+        $$(".dots i", row).forEach(function (d) { d.classList.toggle("lit", isOn); });
+      });
+    });
+  });
+  $$("[data-toggle]").forEach(function (grp) {
+    $$("button", grp).forEach(function (b) { b.addEventListener("click", function () { $$("button", grp).forEach(function (x) { x.classList.toggle("on", x === b); }); }); });
+  });
+
+  /* ---------- solenoid countdown ---------- */
+  var valveTimer = null, valveEnd = 0;
+  $$("#valve-btns button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var already = b.classList.contains("on");
+      $$("#valve-btns button").forEach(function (x) { x.classList.remove("on"); });
+      clearInterval(valveTimer);
+      if (already) { $("#valve-cd").textContent = "Closed"; return; }
+      b.classList.add("on");
+      valveEnd = Date.now() + (+b.dataset.min) * 60000;
+      var tick = function () {
+        var s = Math.max(0, Math.round((valveEnd - Date.now()) / 1000));
+        $("#valve-cd").textContent = "Open · closes in " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+        if (s <= 0) { clearInterval(valveTimer); $("#valve-cd").textContent = "Closed"; b.classList.remove("on"); }
+      };
+      tick(); valveTimer = setInterval(tick, 1000);
+    });
+  });
+
+  /* ---------- light control mockup ---------- */
+  var lc = { level: 40, on: true, tab: "white", k: 3000, hue: 28, sat: 70, fx: "space" };
+  var FXCARDS = [["space", "Space"], ["aurora", "Aurora"], ["ocean", "Ocean"], ["ember", "Candle"], ["arcade", "Arcade"], ["warm", "Sunset"]];
+  var fxWrap = $("#lc-fx");
+  FXCARDS.forEach(function (fc) {
+    var b = document.createElement("button"); b.type = "button"; b.dataset.p = fc[0];
+    b.setAttribute("aria-pressed", fc[0] === lc.fx ? "true" : "false");
+    b.innerHTML = '<span class="sw" style="background:linear-gradient(90deg,' + PALETTES[fc[0]].c.join(",") + ')"></span><span class="nm">' + fc[1] + "</span>";
+    b.addEventListener("click", function () { lc.fx = fc[0]; $$("button", fxWrap).forEach(function (x) { x.setAttribute("aria-pressed", x.dataset.p === lc.fx ? "true" : "false"); }); renderLc(); });
+    fxWrap.appendChild(b);
+  });
+  function hslToRgb(h, s, l) {
+    s /= 100; l /= 100;
+    var k = function (n) { return (n + h / 30) % 12; }, a = s * Math.min(l, 1 - l);
+    var f = function (n) { return l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); };
+    return [255 * f(0), 255 * f(8), 255 * f(4)];
+  }
+  function renderLc() {
+    var fill = $("#lc-fill"), pct = $("#lc-pct"), sl = $("#lc-slider");
+    fill.style.height = lc.level + "%";
+    pct.textContent = lc.on ? lc.level + "%" : "Off";
+    sl.setAttribute("aria-valuenow", lc.level);
+    var col, bg;
+    if (lc.tab === "white") { col = kelvinToRgb(lc.k); fill.style.background = rgbStr(col); }
+    else if (lc.tab === "color") { col = hslToRgb(lc.hue, lc.sat, 60); fill.style.background = rgbStr(col); }
+    else { col = PALETTES[lc.fx].rgb[1]; fill.style.background = "linear-gradient(0deg," + PALETTES[lc.fx].c.join(",") + ")"; }
+    fill.style.opacity = lc.on ? 1 : 0.25;
+    var a = lc.on ? 0.15 + 0.5 * lc.level / 100 : 0.05;
+    $("#lc-screen").style.background = "radial-gradient(120% 60% at 50% 45%, " + rgbStr(col, a) + ", rgba(35,40,46,0) 70%), linear-gradient(180deg,#3d3f43,#22262b)";
+    $("#lc-k").textContent = lc.k + " K";
+    $("#lc-h").textContent = lc.hue + "°";
+    $("#lc-s").textContent = lc.sat + "%";
+    var onBtn = $("#lc-on");
+    onBtn.classList.toggle("on", lc.on); onBtn.textContent = lc.on ? "ON" : "OFF"; onBtn.setAttribute("aria-pressed", lc.on ? "true" : "false");
+  }
+  var lcSlider = $("#lc-slider");
+  function levelFromEvent(e) {
+    var r = lcSlider.getBoundingClientRect();
+    return Math.round(clamp((r.bottom - e.clientY) / r.height, 0, 1) * 100);
+  }
+  var dragging = false;
+  lcSlider.addEventListener("pointerdown", function (e) {
+    dragging = true; try { lcSlider.setPointerCapture(e.pointerId); } catch (err) { }
+    lc.level = levelFromEvent(e); lc.on = lc.level > 0; renderLc();
+  });
+  lcSlider.addEventListener("pointermove", function (e) { if (!dragging) return; lc.level = levelFromEvent(e); lc.on = lc.level > 0; renderLc(); });
+  lcSlider.addEventListener("pointerup", function () { dragging = false; });
+  lcSlider.addEventListener("pointercancel", function () { dragging = false; });
+  lcSlider.addEventListener("keydown", function (e) {
+    var d = 0;
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") d = 5;
+    if (e.key === "ArrowDown" || e.key === "ArrowLeft") d = -5;
+    if (d) { e.preventDefault(); lc.level = clamp(lc.level + d, 0, 100); lc.on = lc.level > 0; renderLc(); }
+  });
+  $("#lc-on").addEventListener("click", function () { lc.on = !lc.on; if (lc.on && lc.level === 0) lc.level = 40; renderLc(); });
+  $$("#lc-screen .tabs button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      lc.tab = b.dataset.tab;
+      $$("#lc-screen .tabs button").forEach(function (x) { x.setAttribute("aria-selected", x === b ? "true" : "false"); });
+      $$("#lc-screen [data-pane]").forEach(function (p) { p.hidden = p.dataset.pane !== lc.tab; });
+      renderLc();
+    });
+  });
+  $("#lc-handle").addEventListener("click", function () {
+    var open = !$("#lc-sheet").classList.contains("open");
+    $("#lc-sheet").classList.toggle("open", open);
+    this.setAttribute("aria-expanded", open ? "true" : "false");
+    this.setAttribute("aria-label", open ? "Hide light settings" : "Show light settings");
+    $("#lc-sheet .sheet-inner").inert = !open;
+  });
+  $("#lc-cct").addEventListener("input", function (e) { lc.k = +e.target.value; renderLc(); });
+  $("#lc-hue").addEventListener("input", function (e) { lc.hue = +e.target.value; renderLc(); });
+  $("#lc-sat").addEventListener("input", function (e) { lc.sat = +e.target.value; renderLc(); });
+  renderLc();
+
+  /* ---------- report form mockup ---------- */
+  $("#rp-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    $("#rp-toast").textContent = "Mockup only. Nothing was sent.";
+  });
+
+  /* ---------- admin tabs ---------- */
+  $$("#adm nav button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      $$("#adm nav button").forEach(function (x) { x.setAttribute("aria-selected", x === b ? "true" : "false"); });
+      $$("#adm [data-ap]").forEach(function (p) { p.hidden = p.dataset.ap !== b.dataset.a; });
+    });
+  });
+
+  /* ---------- AI scene sampler ---------- */
+  var SCENES = [
+    { name: "Arcade at night", draw: function (g, W, H) {
+      g.fillStyle = "#0a0614"; g.fillRect(0, 0, W, H);
+      blob(g, W * 0.15, H * 0.6, W * 0.35, "rgba(255,43,214,0.9)");
+      blob(g, W * 0.85, H * 0.55, W * 0.35, "rgba(0,229,255,0.85)");
+      blob(g, W * 0.5, H * 0.12, W * 0.18, "rgba(255,225,77,0.95)");
+      blob(g, W * 0.5, H * 1.0, W * 0.4, "rgba(91,43,255,0.8)");
+      cab(g, W * 0.3, "#ff3b6b"); cab(g, W * 0.46, "#5b2bff"); cab(g, W * 0.62, "#00e5ff");
+    } },
+    { name: "Beach sunset", draw: function (g, W, H) {
+      var gr = g.createLinearGradient(0, 0, 0, H);
+      gr.addColorStop(0, "#2b2a6b"); gr.addColorStop(0.35, "#d0567a"); gr.addColorStop(0.55, "#ff9a3c"); gr.addColorStop(0.62, "#ffcf70"); gr.addColorStop(0.64, "#1f5f80"); gr.addColorStop(1, "#0b2a3d");
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+      blob(g, W * 0.62, H * 0.6, W * 0.12, "rgba(255,236,160,0.95)");
+    } },
+    { name: "Forest morning", draw: function (g, W, H) {
+      var gr = g.createLinearGradient(0, 0, 0, H);
+      gr.addColorStop(0, "#cfe6c4"); gr.addColorStop(0.4, "#5f9a5a"); gr.addColorStop(1, "#14301c");
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+      blob(g, W * 0.8, H * 0.1, W * 0.3, "rgba(255,240,190,0.9)");
+      for (var i = 0; i < 9; i++) { g.fillStyle = "rgba(20,45,25,0.75)"; g.fillRect(W * (0.05 + i * 0.11), H * 0.25, W * 0.03, H * 0.75); }
+    } }
+  ];
+  function blob(g, x, y, r, c) { var gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, c); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(0, 0, g.canvas.width, g.canvas.height); }
+  function cab(g, x, c) { var W = g.canvas.width, H = g.canvas.height; g.fillStyle = "#120b22"; g.fillRect(x, H * 0.35, W * 0.1, H * 0.65); g.fillStyle = c; g.fillRect(x + W * 0.012, H * 0.42, W * 0.076, H * 0.16); }
+  var FIXTURES = [
+    { name: "Ceiling strip", type: "strip", pts: [[0.05, 0.06], [0.95, 0.06]], px: 24 },
+    { name: "Shelf strip", type: "strip", pts: [[0.08, 0.88], [0.92, 0.88]], px: 24 },
+    { name: "Left lamp", type: "lamp", pt: [0.1, 0.6] },
+    { name: "Right lamp", type: "lamp", pt: [0.9, 0.55] }
+  ];
+  var aiIdx = 0, aiCanvas = $("#ai-canvas"), aiCtx = aiCanvas.getContext("2d");
+  function sampleAt(data, W, H, x, y, rad) {
+    var r = 0, g = 0, b = 0, n = 0, cx = Math.round(x * (W - 1)), cy = Math.round(y * (H - 1));
+    for (var dy = -rad; dy <= rad; dy += 2) for (var dx = -rad; dx <= rad; dx += 2) {
+      var px = clamp(cx + dx, 0, W - 1), py = clamp(cy + dy, 0, H - 1), o = (py * W + px) * 4;
+      r += data[o]; g += data[o + 1]; b += data[o + 2]; n++;
+    }
+    return [r / n, g / n, b / n];
+  }
+  function boost(c) { var m = Math.max(c[0], c[1], c[2], 1), k = Math.min(255 / m, 2.2); return [c[0] * k, c[1] * k, c[2] * k]; }
+  function drawAi() {
+    var W = aiCanvas.width, H = aiCanvas.height, sc = SCENES[aiIdx];
+    sc.draw(aiCtx, W, H);
+    var data = aiCtx.getImageData(0, 0, W, H).data;
+    var box = $("#ai-fix"); box.innerHTML = "";
+    FIXTURES.forEach(function (f) {
+      var cols = [];
+      if (f.type === "strip") {
+        for (var i = 0; i < f.px; i++) {
+          var u = i / (f.px - 1);
+          cols.push(boost(sampleAt(data, W, H, f.pts[0][0] + (f.pts[1][0] - f.pts[0][0]) * u, f.pts[0][1] + (f.pts[1][1] - f.pts[0][1]) * u, 8)));
+        }
+      } else { cols.push(boost(sampleAt(data, W, H, f.pt[0], f.pt[1], 24))); }
+      var row = document.createElement("div"); row.className = "fixture-row";
+      row.innerHTML = "<span>" + f.name + '</span><span class="px">' + cols.map(function (c) { return '<i style="background:' + rgbStr(c) + (f.type === "lamp" ? ";width:22px;height:22px" : "") + '"></i>'; }).join("") + "</span>";
+      box.appendChild(row);
+    });
+    aiCtx.save();
+    aiCtx.strokeStyle = "rgba(255,255,255,0.9)"; aiCtx.lineWidth = 2; aiCtx.setLineDash([8, 6]);
+    aiCtx.font = "12px Inter, system-ui, sans-serif"; aiCtx.fillStyle = "rgba(255,255,255,0.95)";
+    FIXTURES.forEach(function (f) {
+      if (f.type === "strip") {
+        aiCtx.beginPath(); aiCtx.moveTo(f.pts[0][0] * W, f.pts[0][1] * H); aiCtx.lineTo(f.pts[1][0] * W, f.pts[1][1] * H); aiCtx.stroke();
+        aiCtx.fillText(f.name, f.pts[0][0] * W, f.pts[0][1] * H + (f.pts[0][1] < 0.5 ? 18 : -8));
+      } else {
+        aiCtx.beginPath(); aiCtx.arc(f.pt[0] * W, f.pt[1] * H, 14, 0, Math.PI * 2); aiCtx.stroke();
+        aiCtx.fillText(f.name, f.pt[0] * W - 28, f.pt[1] * H + 32);
+      }
+    });
+    aiCtx.restore();
+    $("#ai-name").textContent = "Image: " + sc.name;
+  }
+  $("#ai-next").addEventListener("click", function () { aiIdx = (aiIdx + 1) % SCENES.length; drawAi(); });
+  drawAi();
+
+  /* ---------- contents highlighting ---------- */
+  var links = $$(".toc a");
+  if ("IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) {
+          var id = en.target.id;
+          links.forEach(function (a) { a.classList.toggle("active", a.getAttribute("href") === "#" + id); });
+        }
+      });
+    }, { rootMargin: "-10% 0px -80% 0px" });
+    $$("main section[id], main .sub[id]").forEach(function (s) { io.observe(s); });
+  }
+})();
+</script>
