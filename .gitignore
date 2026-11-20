@@ -30,3 +30,6 @@ deploy/secrets/
 
 # Dev secrets and state
 server/.dev/
+
+# Claude Code agent worktrees
+.claude/worktrees/
