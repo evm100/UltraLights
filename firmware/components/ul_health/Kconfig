@@ -1,0 +1,3 @@
+menu "UltraLights: health metrics (ul_health)"
+    comment "Always built: ul_mqtt publishes these every 60 s."
+endmenu

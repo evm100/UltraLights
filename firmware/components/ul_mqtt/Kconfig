@@ -1,0 +1,5 @@
+menu "UltraLights: MQTT (ul_mqtt)"
+    config UL_MQTT_ENABLE
+        bool "Connect to the broker with mutual TLS"
+        default y
+endmenu

@@ -1,0 +1,5 @@
+menu "UltraLights: setup page and reset button (ul_provision)"
+    config UL_PROVISION_ENABLE
+        bool "Setup access point, captive DNS and setup page"
+        default y
+endmenu

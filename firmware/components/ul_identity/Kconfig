@@ -1,0 +1,5 @@
+menu "UltraLights: identity and enrollment (ul_identity)"
+    config UL_IDENTITY_ENABLE
+        bool "On-chip key, HTTPS enrollment, certificate in NVS"
+        default y
+endmenu

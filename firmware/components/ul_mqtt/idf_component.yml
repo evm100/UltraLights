@@ -1,0 +1,6 @@
+dependencies:
+  idf:
+    version: ">=6.1"
+  # esp-mqtt left ESP-IDF in v6.
+  espressif/mqtt:
+    version: "==1.1.0"

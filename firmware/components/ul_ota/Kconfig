@@ -1,0 +1,8 @@
+menu "UltraLights: OTA updates (ul_ota)"
+    config UL_OTA_ENABLE
+        bool "Accept OTA commands and confirm new images"
+        default y
+        help
+            Without this component a new image is never marked valid, so with
+            rollback enabled it would roll back on its next reset. Keep it on.
+endmenu

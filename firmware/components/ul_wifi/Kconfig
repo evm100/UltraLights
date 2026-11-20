@@ -1,0 +1,9 @@
+menu "UltraLights: Wi-Fi (ul_wifi)"
+    config UL_WIFI_ENABLE
+        bool "Join Wi-Fi as a station"
+        default y
+        help
+            Station with exponential backoff (1 s to 60 s), the DNS override
+            from the setup page (re-applied after every lease and checked every
+            30 s) and SNTP time sync.
+endmenu
