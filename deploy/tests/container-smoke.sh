@@ -50,7 +50,12 @@ install -d -o mosquitto /run/mosquitto
 mosquitto -c /etc/mosquitto/mosquitto.conf -d
 sleep 2
 check "mosquitto listens on 8883 with TLS" "ss -ltn | grep -q ':8883 '"
-check "broker demands a client certificate" "echo | timeout 5 openssl s_client -tls1_2 -connect 127.0.0.1:8883 -servername $D 2>&1 | grep -qiE 'certificate required|alert|Acceptable client certificate CA names'"
+apt-get install -y -qq mosquitto-clients >/dev/null
+(cd /var/lib/ultralights && sudo -u ultralights env UL_ENV_FILE=/etc/ultralights/ultralights.env \
+  /usr/local/lib/ultralights/venv/bin/ulctl issue-client ul-c0ffee /var/lib/ultralights/t >/dev/null)
+pub() { timeout 8 mosquitto_pub -h 127.0.0.1 -p 8883 --cafile /etc/letsencrypt/live/$D/fullchain.pem --insecure -q 1 "$@" -t ul/v1/d/ul-c0ffee/status -m '{"online":true}'; }
+check "device certificate accepted by the broker" "pub -i ul-c0ffee --cert /var/lib/ultralights/t/ul-c0ffee.crt --key /var/lib/ultralights/t/ul-c0ffee.key"
+check "no client certificate is refused" "! pub -i anon 2>/dev/null"
 check "bridge reaches the broker (TLS up; self-signed cert is the only complaint)" "grep -q 'self-signed certificate' /tmp/api.log"
 [ "$fail" = 0 ] || { echo '--- api log'; tail -20 /tmp/api.log; echo '--- mosquitto log'; tail -20 /var/log/mosquitto/mosquitto.log 2>/dev/null; }
 exit $fail
