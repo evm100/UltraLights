@@ -98,7 +98,7 @@ require_certificate true
 use_identity_as_username true
 tls_version tlsv1.2
 EOF
-  docker rm -f $MQ >/dev/null 2>&1 || true
+  docker rm -fv $MQ >/dev/null 2>&1 || true
   say "starting Mosquitto ($MQ, mTLS on :8883)"
   docker run -d --name $MQ --network host --user "$(id -u):$(id -g)" \
     -v "$DEV:/ul" eclipse-mosquitto:2 mosquitto -c /ul/mosquitto/mosquitto.conf >/dev/null
@@ -195,11 +195,11 @@ EOF
     echo "https://$HOST  ($IP)   API 127.0.0.1:$API_PORT   MQTT :8883"
     ;;
   down)
-    docker rm -f $NG $MQ $PG >/dev/null 2>&1 || true
+    docker rm -fv $NG $MQ $PG >/dev/null 2>&1 || true
     say "dev containers removed (database volume ul-dev-pg-data kept)"
     ;;
   reset)
-    docker rm -f $NG $MQ $PG >/dev/null 2>&1 || true
+    docker rm -fv $NG $MQ $PG >/dev/null 2>&1 || true
     docker volume rm ul-dev-pg-data >/dev/null 2>&1 || true
     rm -rf "$DEV"
     say "dev stack, database and server/.dev removed"
