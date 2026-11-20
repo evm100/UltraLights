@@ -7,6 +7,8 @@ Rules:
 - A field means the same thing everywhere. If firmware and server disagree, the schema decides, and the schema is fixed first.
 - `v: 1` is the format version. Adding an optional field is allowed within v1. Renaming, removing or changing the meaning of a field needs v2.
 - Unknown fields are rejected (`additionalProperties: false`), so typos fail loudly in tests.
+- One exception keeps the device forward compatible: firmware ignores unknown fields in server-to-device messages (`config`, `set`, `live`, `cmd`, enrollment response) and still checks every known one. The server can add an optional field before every node is updated. Board descriptors and partition payloads stay strict.
+- Integers are written as integer text, never in exponent form. This matters for `seq` (16 digits).
 
 ## Files
 

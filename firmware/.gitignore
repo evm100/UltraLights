@@ -1,0 +1,5 @@
+# Downloaded by the component manager in any IDF project here (main app, test/qemu)
+managed_components/
+build/
+sdkconfig
+sdkconfig.old

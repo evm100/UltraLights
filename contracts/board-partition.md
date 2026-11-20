@@ -2,7 +2,19 @@
 
 Every node has a small data partition named `ul_board` (type `data`, subtype `0x40`, at least 4 KB). It holds the board descriptor and the one-time provisioning data. The node builder writes it, along with the firmware image, over Web Serial. A CLI fallback is `firmware/tools/` plus `contracts/tools/ulboard.py`. Firmware only ever reads it.
 
-The partition's offset and size are recorded in each firmware package's `manifest.json` (`board_partition`), so the builder never hard-codes them. Firmware should keep the offset the same across all partition tables so a descriptor can be rewritten without knowing the flash size. The proposed layout is: `nvs` at 0x9000 (16 KB), `otadata` at 0xD000, `ul_board` at 0xF000 (4 KB), and apps from 0x10000. The firmware track owns the final layout.
+The partition's offset and size are recorded in each firmware package's `manifest.json` (`board_partition`), so the builder never hard-codes them. The offset is the same in every partition table, so a descriptor can be rewritten without knowing the flash size.
+
+Layout (`firmware/partitions/`, details in `firmware/README.md`):
+
+| Item | Offset | Size |
+|---|---|---|
+| Partition table | 0xC000 | 4 KB |
+| `nvs` | 0xD000 | 24 KB |
+| `otadata` | 0x13000 | 8 KB |
+| `ul_board` | 0x15000 | 4 KB |
+| Apps | from 0x20000 | |
+
+The partition table sits at 0xC000 rather than the default 0x8000 so a secure-boot bootloader has room later.
 
 ## Format
 
@@ -20,7 +32,7 @@ All integers are little endian.
 
 - The builder writes compact, key-sorted JSON (`ulboard.canonical`), so the same descriptor always gives the same CRC.
 - The CRC, as 8 lower-case hex digits, is `board_crc` in `info` and in the enrollment request.
-- Firmware must check magic, format, length and CRC before parsing, then validate the board against `chips.json` rules. It refuses to drive any pin that fails, and reports why in `info.config_error` and an `evt` error. It also checks that `board.chip` matches the chip it's running on.
+- Firmware must check magic, format, length and CRC before parsing, then validate the board against `chips.json` rules. If any pin rule fails, or `board.chip` doesn't match the chip it runs on, the firmware rejects the whole board and drives no outputs. `info.config_error` then reads `board rejected: <codes>`, using the same codes as `tools/pins.py`. The provisioning data still works, so a rejected node can enroll and report its error. Pin warnings are only logged.
 - An erased or invalid partition means "no board". The node then opens the setup page with a notice, and drives no outputs.
 
 ## Test vector

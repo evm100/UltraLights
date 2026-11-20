@@ -18,22 +18,18 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "mbedtls/pk.h"
-#include "mbedtls/x509_csr.h"
 #include "nvs.h"
-#include "psa/crypto.h"
 #include "sdkconfig.h"
 #include "ul_board.h"
 #include "ul_contract.h"
 #include "ul_core.h"
 #include "ul_identity.h"
+#include "ul_identity_crypto.h"
 #include "ul_wifi.h"
 
 static const char *TAG = "ul_identity";
 
 #define NVS_NS        "ul_id"
-#define KEY_PEM_MAX   400
-#define CSR_PEM_MAX   1024
 #define RESP_MAX      8192
 #define RETRY_MIN_S   10
 #define RETRY_MAX_S   300
@@ -119,34 +115,14 @@ static void forget_cert(void)
 
 static esp_err_t generate_key(void)
 {
-    psa_key_attributes_t attr = PSA_KEY_ATTRIBUTES_INIT;
-    psa_set_key_type(&attr, PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_SECP_R1));
-    psa_set_key_bits(&attr, 256);
-    psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_SIGN_HASH | PSA_KEY_USAGE_EXPORT);
-    psa_set_key_algorithm(&attr, PSA_ALG_ECDSA(PSA_ALG_SHA_256));
-    mbedtls_svc_key_id_t id;
     int64_t t0 = esp_timer_get_time();
-    psa_status_t st = psa_generate_key(&attr, &id);
-    if (st != PSA_SUCCESS) {
-        ESP_LOGE(TAG, "key generation failed: %d", (int)st);
-        return ESP_FAIL;
-    }
-    mbedtls_pk_context pk;
-    mbedtls_pk_init(&pk);
-    char *pem = calloc(1, KEY_PEM_MAX);
-    int rc = pem ? mbedtls_pk_copy_from_psa(id, &pk) : -1;
-    if (rc == 0) {
-        rc = mbedtls_pk_write_key_pem(&pk, (unsigned char *)pem, KEY_PEM_MAX);
-    }
-    mbedtls_pk_free(&pk);
-    psa_destroy_key(id);
-    if (rc != 0) {
-        free(pem);
-        ESP_LOGE(TAG, "key export failed: -0x%04x", (unsigned)-rc);
-        return ESP_FAIL;
+    char *pem = NULL;
+    esp_err_t err = ul_id_generate_key(&pem);
+    if (err != ESP_OK) {
+        return err;
     }
     nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    err = nvs_open(NVS_NS, NVS_READWRITE, &h);
     if (err == ESP_OK) {
         err = nvs_set_blob(h, "key", pem, strlen(pem));
         nvs_commit(h);
@@ -161,41 +137,13 @@ static esp_err_t generate_key(void)
     return ESP_OK;
 }
 
-static char *make_csr(const char *device_id)
-{
-    mbedtls_pk_context pk;
-    mbedtls_x509write_csr csr;
-    mbedtls_pk_init(&pk);
-    mbedtls_x509write_csr_init(&csr);
-    char *out = calloc(1, CSR_PEM_MAX);
-    char subject[32];
-    snprintf(subject, sizeof(subject), "CN=%s", device_id);
-    int rc = out ? mbedtls_pk_parse_key(&pk, (const unsigned char *)s_key, strlen(s_key) + 1, NULL, 0) : -1;
-    if (rc == 0) {
-        mbedtls_x509write_csr_set_key(&csr, &pk);
-        mbedtls_x509write_csr_set_md_alg(&csr, MBEDTLS_MD_SHA256);
-        rc = mbedtls_x509write_csr_set_subject_name(&csr, subject);
-    }
-    if (rc == 0) {
-        rc = mbedtls_x509write_csr_pem(&csr, (unsigned char *)out, CSR_PEM_MAX);
-    }
-    mbedtls_x509write_csr_free(&csr);
-    mbedtls_pk_free(&pk);
-    if (rc != 0) {
-        ESP_LOGE(TAG, "CSR failed: -0x%04x", (unsigned)-rc);
-        free(out);
-        return NULL;
-    }
-    return out;
-}
-
 /* ---------- enrollment ---------- */
 
 typedef enum { ENROLL_OK, ENROLL_RETRY, ENROLL_STOP } enroll_rc_t;
 
 static enroll_rc_t enroll_once(const ul_provision_t *p)
 {
-    char *csr = make_csr(p->device_id);
+    char *csr = ul_id_make_csr(s_key, p->device_id);
     if (!csr) {
         return ENROLL_STOP;
     }
