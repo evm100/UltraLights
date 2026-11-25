@@ -23,6 +23,8 @@ The server host runs Ubuntu Server 26.04 LTS and is set up from a clone of this 
 - **Device CA:** created once (`ulctl ca init`), plus the bridge's client certificate and the CRL.
 - **Web UI:** built and copied to `/var/www/ultralights`.
 - **nginx:** any v5 site for the domain is backed up to `/var/backups/ultralights-v5/nginx/` and disabled. The existing Let's Encrypt certificate is reused; certbot (webroot) runs only if none exists.
+  - On evmserver, **:443 belongs to NBE's stream router** (`/etc/nginx/nbe-stream.conf`). It peeks at the TLS ALPN: `mqtt` goes to NBE's broker, everything else to `127.0.0.1:8443` with PROXY protocol. When `install.sh` finds such a router (an nginx `stream` block with `ssl_preread` on 443), the site listens on the address the other sites use behind it instead of 443. Without the router it listens on 443 itself. `--https-listen ADDR:PORT` overrides the detection.
+  - `nginx -t` doesn't catch two blocks binding the same port: a reload looks fine and the next restart fails with `bind() to 0.0.0.0:443 failed (98: Address already in use)`.
 - **Mosquitto:**
   - `/etc/mosquitto` is backed up once to `/var/backups/ultralights-v5/mosquitto.tar.gz`.
   - The listener goes in `conf.d/ultralights.conf`, with the broker files synced.

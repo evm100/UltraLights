@@ -10,6 +10,8 @@
 #   --skip-admin      don't prompt for the first admin account
 #   --no-certbot      never request a certificate (testing; nginx/Mosquitto need one to start)
 #   --no-start        install units but don't start or restart anything
+#   --https-listen A  serve HTTPS on A ("127.0.0.1:8443") with PROXY protocol, behind a :443
+#                     stream router; normally detected from the nginx config
 #
 # What it never does: stop or disable services it didn't create (v5's API, containers, units).
 # It prints the commands for you instead. See deploy/README.md for the cutover runbook.
@@ -21,6 +23,7 @@ CHECK=0
 SKIP_ADMIN=0
 NO_CERTBOT=0
 NO_START=0
+HTTPS_BEHIND=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --check) CHECK=1 ;;
@@ -29,7 +32,8 @@ while [ $# -gt 0 ]; do
     --skip-admin) SKIP_ADMIN=1 ;;
     --no-certbot) NO_CERTBOT=1 ;;
     --no-start) NO_START=1 ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    --https-listen) HTTPS_BEHIND="$2"; shift ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
   shift
@@ -97,6 +101,37 @@ broker_preflight() {
   done
 }
 
+# HTTPS listener. Normally the site listens on 443 itself. On a host where an nginx stream block
+# already owns :443 (an ssl_preread router passing TLS through with PROXY protocol, as NBE's
+# /etc/nginx/nbe-stream.conf does), a second "listen 443" stops nginx on its next restart. The site
+# then listens where the other sites behind the router do ("listen 127.0.0.1:8443 ssl proxy_protocol").
+https_preflight() {
+  [ -z "$HTTPS_BEHIND" ] || { echo "   https: behind a :443 router on $HTTPS_BEHIND (--https-listen)"; return 0; }
+  command -v nginx >/dev/null 2>&1 || return 0
+  local dump
+  dump="$(nginx -T 2>/dev/null)" || return 0
+  printf '%s\n' "$dump" | awk '
+    /^[[:space:]]*stream[[:space:]]*\{/ { s = 1 }
+    s && /^[[:space:]]*listen[[:space:]]+([^;]*:)?443[[:space:];]/ { l = 1 }
+    s && /^[[:space:]]*ssl_preread[[:space:]]+on/ { p = 1 }
+    END { exit !(l && p) }' || return 0
+  HTTPS_BEHIND="$(printf '%s\n' "$dump" | grep -oE '^[[:space:]]*listen[[:space:]]+[0-9.]+:[0-9]+[[:space:]]+ssl[^;]*proxy_protocol' |
+    awk '{print $2}' | sort | uniq -c | sort -rn | awk 'NR == 1 {print $2}')"
+  if [ -n "$HTTPS_BEHIND" ]; then
+    echo "   https: :443 is owned by an nginx stream router; the site will listen on $HTTPS_BEHIND (PROXY protocol), like the other sites behind it"
+  else
+    BLOCKERS+=("an nginx stream block owns :443 (ssl_preread) but no site listens behind it with 'ssl proxy_protocol'; pass --https-listen ADDR:PORT")
+  fi
+}
+https_listen() { # the lines that replace __HTTPS_LISTEN__ in the site template
+  if [ -z "$HTTPS_BEHIND" ]; then
+    printf '    listen 443 ssl;\n    listen [::]:443 ssl;\n'
+  else
+    printf '    listen %s ssl proxy_protocol;\n' "$HTTPS_BEHIND"
+    printf '    set_real_ip_from %s;\n    real_ip_header proxy_protocol;\n    port_in_redirect off;\n' "${HTTPS_BEHIND%:*}"
+  fi
+}
+
 preflight() {
   bold "Preflight for $DOMAIN"
   if [ -r /etc/os-release ]; then
@@ -149,6 +184,7 @@ preflight() {
     done < <(grep -lsE "server_name[^;]*\b${DOMAIN//./\\.}\b" /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf 2>/dev/null || true)
   fi
 
+  https_preflight
   broker_preflight
 
   if [ "$SYSTEMD" = 1 ]; then
@@ -265,7 +301,8 @@ rsync -a --delete "$REPO/web/dist/" "$WEBROOT/"
 # ---------------------------------------------------------------- certificate
 LE="/etc/letsencrypt/live/$DOMAIN"
 nginx_site() { # $1 = template
-  sed -e "s|__DOMAIN__|$DOMAIN|g" -e "s|__API_PORT__|$API_PORT|g" -e "s|__WEBROOT__|$WEBROOT|g" "$1"
+  sed -e "s|__DOMAIN__|$DOMAIN|g" -e "s|__API_PORT__|$API_PORT|g" -e "s|__WEBROOT__|$WEBROOT|g" "$1" |
+    awk -v block="$(https_listen)" '$1 == "__HTTPS_LISTEN__" { print block; next } { print }'
 }
 backup_v5_sites() {
   while IFS= read -r f; do
