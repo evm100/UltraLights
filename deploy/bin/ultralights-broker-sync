@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installed as /usr/local/sbin/ultralights-broker-sync. Copies the broker's TLS files into
-# /etc/mosquitto/ultralights/ (readable by mosquitto) and restarts Mosquitto when any changed:
+# /etc/mosquitto/certs/ultralights/ (readable by mosquitto; a path its AppArmor profile allows) and restarts Mosquitto when any changed:
 #   server.crt / server.key   Let's Encrypt certificate for the domain (shared with nginx)
 #   ca-chain.crt / crl.pem    device CA chain and revocation list from /etc/ultralights/pki
 # Run by: install.sh (with --no-restart; it restarts the broker itself), the certbot deploy hook,
@@ -12,9 +12,10 @@ RESTART=1; [ "${1:-}" = --no-restart ] && RESTART=0
 ENV=/etc/ultralights/ultralights.env
 DOMAIN="$(sed -n 's/^UL_PUBLIC_HOST=//p' "$ENV")"
 PKI="$(sed -n 's/^UL_PKI_DIR=//p' "$ENV")"
-DEST=/etc/mosquitto/ultralights
+DEST=/etc/mosquitto/certs/ultralights
 LE="/etc/letsencrypt/live/$DOMAIN"
 
+install -d -m 0755 "$(dirname "$DEST")"
 install -d -o root -g mosquitto -m 0750 "$DEST"
 changed=0
 put() { # src dest mode

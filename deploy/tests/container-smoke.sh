@@ -44,7 +44,7 @@ check "HTTP redirects to HTTPS" "curl -s -o /dev/null -w '%{http_code}' --resolv
 check "enrollment endpoint answers per contract" "curl -sk --resolve $D:443:127.0.0.1 -H 'content-type: application/json' -d '{}' https://$D/api/v1/enroll | grep -q bad_request"
 check "database migrated" "sudo -u postgres psql -d ultralights -tAc 'select count(*) from board_templates' | grep -q 1"
 check "device CA created" "test -f /etc/ultralights/pki/device-ca.crt && test -f /etc/ultralights/pki/ul-server.key"
-check "broker files synced" "test -f /etc/mosquitto/ultralights/crl.pem && test -f /etc/mosquitto/ultralights/server.key"
+check "broker files synced" "test -f /etc/mosquitto/certs/ultralights/crl.pem && test -f /etc/mosquitto/certs/ultralights/server.key && test -f /etc/mosquitto/ultralights.acl"
 check "secrets not world-readable" "[ \$(stat -c %a /etc/ultralights/pki/device-ca.key) = 600 ] && [ \$(stat -c %a /etc/ultralights/ultralights.env) = 640 ]"
 install -d -o mosquitto /run/mosquitto
 mosquitto -c /etc/mosquitto/mosquitto.conf -d

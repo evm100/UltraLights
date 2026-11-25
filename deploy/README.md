@@ -10,7 +10,7 @@ The server host runs Ubuntu Server 26.04 LTS and is set up from a clone of this 
 | `nginx/ultralights.conf` | Site template: SPA, `/api/` proxy (REST + WebSocket), HTTP→HTTPS |
 | `mosquitto/ultralights.conf`, `mosquitto/acl` | Broker: mutual TLS on 8883; the certificate CN is the username; each device is limited to its own topics. The dev broker uses the same ACL. |
 | `systemd/` | `ultralights-api`, `ultralights-scheduler` (idle placeholder), `ultralights-broker-sync` (+ `.path` watching the CRL) |
-| `bin/ultralights-broker-sync` | Copies the Let's Encrypt certificate and the device CA chain/CRL to `/etc/mosquitto/ultralights/`, then restarts Mosquitto if anything changed |
+| `bin/ultralights-broker-sync` | Copies the Let's Encrypt certificate and the device CA chain/CRL to `/etc/mosquitto/certs/ultralights/`, then restarts Mosquitto if anything changed |
 | `tests/container-smoke.sh` | Runs `install.sh` twice in a throwaway `ubuntu:26.04` container and checks the result |
 
 ## What `install.sh` sets up
@@ -27,6 +27,7 @@ The server host runs Ubuntu Server 26.04 LTS and is set up from a clone of this 
   - `/etc/mosquitto` is backed up once to `/var/backups/ultralights-v5/mosquitto.tar.gz`.
   - The listener goes in `conf.d/ultralights.conf`, with the broker files synced.
   - The host broker can be **shared** with other projects (on evmserver, NBE has `conf.d/nbe.conf` on 8884). Mosquitto 2.0 allows only one global `acl_file`, so a shared broker needs `per_listener_settings true` (in `mosquitto.conf`, above `include_dir`), and every file's `acl_file`/`allow_anonymous` must come *after* its own `listener` line. Otherwise those options attach to the previous file's listener. The preflight checks both and blocks with the exact edits; it never edits other projects' files.
+  - Ubuntu's AppArmor profile for Mosquitto only allows reads from `/etc/mosquitto/*`, `conf.d/`, `certs/` and `ca_certificates/`, so the ACL is `/etc/mosquitto/ultralights.acl` and the TLS files live in `/etc/mosquitto/certs/ultralights/`. A denied read shows up as `Unable to open ...` in `/var/log/mosquitto/mosquitto.log` and as `apparmor="DENIED"` in `journalctl -k`.
   - Restarting Mosquitto briefly disconnects the other projects' clients too. If the broker won't start with our file, `install.sh` moves it to `/var/backups/ultralights-v5/ultralights.conf.rejected` and restarts the broker without it.
   - A certbot deploy hook keeps the broker certificate current.
 - **Services:** `ultralights-api` (127.0.0.1:8100; v5 used 8000, so they don't clash) and `ultralights-scheduler`, both enabled and started.

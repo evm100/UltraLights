@@ -316,8 +316,10 @@ say "Mosquitto (mutual TLS on 8883)"
 if [ ! -e "$BACKUP/mosquitto.tar.gz" ] && [ -d /etc/mosquitto ]; then
   tar -C /etc -czf "$BACKUP/mosquitto.tar.gz" mosquitto
 fi
-install -d -o root -g mosquitto -m 0750 /etc/mosquitto/ultralights
-install -o root -g mosquitto -m 0644 "$REPO/deploy/mosquitto/acl" /etc/mosquitto/ultralights/acl
+# Ubuntu's AppArmor profile lets Mosquitto read /etc/mosquitto/* and /etc/mosquitto/certs/** but not
+# other subdirectories, so the ACL sits at the top level and the TLS files under certs/.
+rm -rf /etc/mosquitto/ultralights            # earlier installs used this path; AppArmor denies it
+install -o mosquitto -g mosquitto -m 0600 "$REPO/deploy/mosquitto/acl" /etc/mosquitto/ultralights.acl
 install -o root -g root -m 0644 "$REPO/deploy/mosquitto/ultralights.conf" /etc/mosquitto/conf.d/ultralights.conf
 install -o root -g root -m 0755 "$REPO/deploy/bin/ultralights-broker-sync" /usr/local/sbin/ultralights-broker-sync
 install -d /etc/letsencrypt/renewal-hooks/deploy
@@ -339,7 +341,7 @@ restart_broker() {
   mv /etc/mosquitto/conf.d/ultralights.conf "$BACKUP/ultralights.conf.rejected"
   systemctl reset-failed mosquitto 2>/dev/null || true
   systemctl restart mosquitto || warn "Mosquitto doesn't start even without our listener"
-  die "Mosquitto rejected conf.d/ultralights.conf (journalctl -u mosquitto); it was moved to $BACKUP/ultralights.conf.rejected and the broker restarted without it"
+  die "Mosquitto rejected conf.d/ultralights.conf; it was moved to $BACKUP/ultralights.conf.rejected and the broker restarted without it. Look in /var/log/mosquitto/mosquitto.log (its errors go there, not to the journal) and journalctl -k | grep DENIED (AppArmor)"
 }
 
 say "systemd units"
