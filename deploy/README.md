@@ -26,6 +26,8 @@ The server host runs Ubuntu Server 26.04 LTS and is set up from a clone of this 
 - **Mosquitto:**
   - `/etc/mosquitto` is backed up once to `/var/backups/ultralights-v5/mosquitto.tar.gz`.
   - The listener goes in `conf.d/ultralights.conf`, with the broker files synced.
+  - The host broker can be **shared** with other projects (on evmserver, NBE has `conf.d/nbe.conf` on 8884). Mosquitto 2.0 allows only one global `acl_file`, so a shared broker needs `per_listener_settings true` (in `mosquitto.conf`, above `include_dir`), and every file's `acl_file`/`allow_anonymous` must come *after* its own `listener` line. Otherwise those options attach to the previous file's listener. The preflight checks both and blocks with the exact edits; it never edits other projects' files.
+  - Restarting Mosquitto briefly disconnects the other projects' clients too. If the broker won't start with our file, `install.sh` moves it to `/var/backups/ultralights-v5/ultralights.conf.rejected` and restarts the broker without it.
   - A certbot deploy hook keeps the broker certificate current.
 - **Services:** `ultralights-api` (127.0.0.1:8100; v5 used 8000, so they don't clash) and `ultralights-scheduler`, both enabled and started.
 - **Firewall:** if ufw is active, 80, 443 and 8883 are allowed.
@@ -53,6 +55,7 @@ Matches the blueprint's "Cutover from v5". Nothing from v5 is migrated: no users
    - the v5 nginx site for `lights.evm100.org`;
    - whatever holds ports 8883, 8000 and 1883;
    - the v5 Mosquitto container and any v5 units;
+   - changes a shared host Mosquitto needs (see above);
    - the commands to stop each of them.
 
 4. **Stop v5 yourself** using the printed commands. Typically:

@@ -68,6 +68,34 @@ listeners() {
 
 BLOCKERS=()
 STOP_HINTS=()
+BROKER_HINTS=()
+
+# The host Mosquitto may already serve other projects (their own files in conf.d). With the
+# default per_listener_settings false, Mosquitto allows one global acl_file, so adding ours stops
+# the broker for everyone. With true, each listener has its own security options, and they bind
+# to the listener line above them, so another file's options placed before its listener would
+# land on whichever listener the previous file left open. Both cases are blockers.
+MOSQ_SECURITY='acl_file|password_file|allow_anonymous|psk_file|plugin|plugin_opt_.*|auth_plugin|auth_opt_.*|auto_id_prefix|allow_zero_length_clientid'
+broker_preflight() {
+  local main="${1:-/etc/mosquitto}/mosquitto.conf" dir="${1:-/etc/mosquitto}/conf.d" others=() f pls
+  [ -r "$main" ] || return 0
+  for f in "$dir"/*.conf; do
+    [ -f "$f" ] && [ "$(basename "$f")" != ultralights.conf ] && others+=("$f")
+  done
+  [ ${#others[@]} -gt 0 ] || return 0
+  echo "   mosquitto: shared with ${others[*]}"
+  pls="$(grep -hE '^[[:space:]]*per_listener_settings[[:space:]]' "$main" "${others[@]}" | awk '{print $2}' | sort -u | xargs)"
+  if [ "$pls" != true ]; then
+    BLOCKERS+=("Mosquitto is shared with other projects but per_listener_settings is ${pls:-unset (false)}; it must be true")
+    BROKER_HINTS+=("in $main add 'per_listener_settings true' above include_dir, and delete any 'per_listener_settings false' in conf.d")
+  fi
+  for f in "${others[@]}"; do
+    if awk -v re="^($MOSQ_SECURITY)\$" '$1 == "listener" {exit 1} $1 ~ re {found=1; exit 0} END {exit !found}' "$f"; then
+      BLOCKERS+=("$f sets security options (acl_file, allow_anonymous, ...) before its listener line")
+      BROKER_HINTS+=("in $f move those options to just below its 'listener' line (and add 'allow_anonymous false' there if absent)")
+    fi
+  done
+}
 
 preflight() {
   bold "Preflight for $DOMAIN"
@@ -121,6 +149,8 @@ preflight() {
     done < <(grep -lsE "server_name[^;]*\b${DOMAIN//./\\.}\b" /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf 2>/dev/null || true)
   fi
 
+  broker_preflight
+
   if [ "$SYSTEMD" = 1 ]; then
     while read -r unit _; do
       case "$unit" in ultralights-*) continue ;; esac
@@ -139,6 +169,10 @@ preflight() {
   if [ ${#STOP_HINTS[@]} -gt 0 ]; then
     bold "Stop v5 yourself before installing (this script won't):"
     printf '%s\n' "${STOP_HINTS[@]}" | sort -u | sed 's/^/   /'
+  fi
+  if [ ${#BROKER_HINTS[@]} -gt 0 ]; then
+    bold "Mosquitto is shared; change its config yourself (this script won't edit other projects' files):"
+    printf '   %s\n' "${BROKER_HINTS[@]}"
   fi
   if [ ${#BLOCKERS[@]} -gt 0 ]; then
     bold "Blocking:"
@@ -294,9 +328,20 @@ cat >/etc/letsencrypt/renewal-hooks/deploy/ultralights-mosquitto <<'EOF'
 systemctl reload nginx 2>/dev/null || true
 EOF
 chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/ultralights-mosquitto
-/usr/local/sbin/ultralights-broker-sync
+/usr/local/sbin/ultralights-broker-sync --no-restart
 
 # ---------------------------------------------------------------- services
+# Mosquitto may also carry other projects' listeners. If it won't start with our file, take the
+# file back out and start it again, so a mistake here never leaves their broker down.
+restart_broker() {
+  systemctl reset-failed mosquitto 2>/dev/null || true
+  systemctl restart mosquitto && return 0
+  mv /etc/mosquitto/conf.d/ultralights.conf "$BACKUP/ultralights.conf.rejected"
+  systemctl reset-failed mosquitto 2>/dev/null || true
+  systemctl restart mosquitto || warn "Mosquitto doesn't start even without our listener"
+  die "Mosquitto rejected conf.d/ultralights.conf (journalctl -u mosquitto); it was moved to $BACKUP/ultralights.conf.rejected and the broker restarted without it"
+}
+
 say "systemd units"
 for u in ultralights-api.service ultralights-scheduler.service; do
   sed -e "s|__REPO__|$REPO|g" -e "s|__VENV__|$VENV|g" -e "s|__API_PORT__|$API_PORT|g" "$REPO/deploy/systemd/$u" >"/etc/systemd/system/$u"
@@ -306,7 +351,7 @@ if [ "$SYSTEMD" = 1 ]; then
   systemctl daemon-reload
   systemctl enable -q mosquitto ultralights-api ultralights-scheduler ultralights-broker-sync.path
   if [ "$NO_START" = 0 ]; then
-    systemctl restart mosquitto
+    restart_broker
     systemctl start ultralights-broker-sync.path
     systemctl restart ultralights-api ultralights-scheduler
   fi

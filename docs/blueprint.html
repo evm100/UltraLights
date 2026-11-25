@@ -1224,7 +1224,7 @@ sudo ./deploy/update.sh           # later: pull, migrate, rebuild web, restart</
                 <li>Python environment for the API, database and migrations, and the built web UI.</li>
                 <li>Device CA intermediate and other secrets, generated once into <code>/etc/ultralights/</code> and never into the repo.</li>
                 <li>nginx site for <code>lights.evm100.org</code> with a Let's Encrypt certificate, plus a renewal hook that also reloads Mosquitto.</li>
-                <li>Mosquitto on 8883 with mutual TLS, using that certificate for the server side and our CA for devices.</li>
+                <li>Mosquitto on 8883 with mutual TLS, using that certificate for the server side and our CA for devices. The host broker is shared with other projects (NBE on 8884), so it runs with <code>per_listener_settings true</code> and our ACL and anonymous-access settings sit under our own listener in <code>conf.d/ultralights.conf</code>. The installer never edits another project's broker files: if the shared config isn't ready, the preflight blocks and prints the change. If Mosquitto still rejects our file, the installer removes it and restarts the broker, so the other listeners come back.</li>
                 <li>systemd services: <code>ultralights-api</code> (API, WebSocket, MQTT bridge) and <code>ultralights-scheduler</code>.</li>
                 <li>Data under <code>/var/lib/ultralights/</code>: firmware artifacts, uploads, backups.</li>
               </ul>
@@ -1252,7 +1252,7 @@ sudo ./deploy/update.sh           # later: pull, migrate, rebuild web, restart</
           <p>v5 runs on the same Ubuntu Server 26.04 host, so the switch happens in one weekend while nobody depends on the lights. Nothing from v5 is migrated: no users, no node configs, no certificates. Every node starts from a blank builder.</p>
           <ol class="steps">
             <li><div><b>Before the weekend</b>: build and test both sides on the bench against a dev server on the workstation. Reflash one C3 and drive it end to end.</div></li>
-            <li><div><b>Preflight</b>: <code>sudo ./deploy/install.sh --check</code> changes nothing. It lists what's in the way: v5's nginx site for <code>lights.evm100.org</code>, whatever holds ports 8883 and 8000, the v5 Mosquitto container, and old services.</div></li>
+            <li><div><b>Preflight</b>: <code>sudo ./deploy/install.sh --check</code> changes nothing. It lists what's in the way: v5's nginx site for <code>lights.evm100.org</code>, whatever holds ports 8883 and 8000, the v5 Mosquitto container, old services, and any change the shared host Mosquitto needs before our listener can join it.</div></li>
             <li><div><b>Stop v5</b> yourself, following the commands the preflight prints. The script never stops services it didn't create.</div></li>
             <li><div><b>Install</b>: <code>sudo ./deploy/install.sh</code> backs up the v5 nginx site and Mosquitto config to <code>/var/backups/ultralights-v5/</code>, reuses the existing Let's Encrypt certificate, and installs the rest. v5's <code>/srv/firmware</code> is left alone.</div></li>
             <li><div><b>Create your admin account</b> (the script prompts once), sign in, and recreate each node in the builder as you inspect and reflash it.</div></li>

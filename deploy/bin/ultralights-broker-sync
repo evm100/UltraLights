@@ -3,9 +3,11 @@
 # /etc/mosquitto/ultralights/ (readable by mosquitto) and restarts Mosquitto when any changed:
 #   server.crt / server.key   Let's Encrypt certificate for the domain (shared with nginx)
 #   ca-chain.crt / crl.pem    device CA chain and revocation list from /etc/ultralights/pki
-# Run by: install.sh, the certbot deploy hook, and ultralights-broker-sync.path (CRL changes).
+# Run by: install.sh (with --no-restart; it restarts the broker itself), the certbot deploy hook,
+# and ultralights-broker-sync.path (CRL changes).
 # Mosquitto reads the CRL only at start, so a revocation costs every node a few seconds' reconnect.
 set -euo pipefail
+RESTART=1; [ "${1:-}" = --no-restart ] && RESTART=0
 
 ENV=/etc/ultralights/ultralights.env
 DOMAIN="$(sed -n 's/^UL_PUBLIC_HOST=//p' "$ENV")"
@@ -27,7 +29,7 @@ put "$LE/privkey.pem" server.key 0640
 put "$PKI/ca-chain.crt" ca-chain.crt 0644
 put "$PKI/crl.pem" crl.pem 0644
 
-if [ "$changed" = 1 ] && [ -d /run/systemd/system ] && systemctl is-active --quiet mosquitto; then
+if [ "$changed" = 1 ] && [ "$RESTART" = 1 ] && [ -d /run/systemd/system ] && systemctl is-active --quiet mosquitto; then
   systemctl restart mosquitto
   echo "mosquitto restarted with updated certificates"
 fi
