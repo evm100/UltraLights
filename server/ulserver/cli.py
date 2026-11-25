@@ -47,10 +47,10 @@ async def _create_admin(username: str, password: str) -> str:
     async with dbm.sessionmaker()() as db:
         u = (await db.execute(select(User).where(User.username == username))).scalar_one_or_none()
         if u is None:
-            db.add(User(username=username, password_hash=hash_password(password), role="admin", display_name=username))
+            db.add(User(username=username, password_hash=hash_password(password), is_admin=True, display_name=username))
             action = "created"
         else:
-            u.password_hash, u.role, u.active = hash_password(password), "admin", True
+            u.password_hash, u.is_admin, u.active = hash_password(password), True, True
             action = "updated"
         db.add(AuditLog(src="cli", action=f"admin_{action}", target=username))
         await db.commit()

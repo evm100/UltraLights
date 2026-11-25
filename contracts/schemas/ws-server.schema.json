@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lights.evm100.org/contracts/v1/ws-server.schema.json",
   "title": "Server to browser WebSocket message (/api/ws)",
-  "description": "snapshot first, then incremental updates. health and evt go to admins only; device views carry an admin block only for admins.",
+  "description": "snapshot first, then incremental updates, each filtered to what the viewer may see. health and evt go to admins only; device views carry an admin block only for admins. Close code 4001 means the viewer's access changed: reconnect for a fresh snapshot.",
   "type": "object",
   "required": ["t"],
   "oneOf": [
@@ -31,7 +31,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["key", "kind", "name", "caps", "room_id", "meta", "state", "desired"],
+            "required": ["key", "kind", "name", "caps", "room_id", "meta", "state", "desired", "can"],
             "additionalProperties": false,
             "properties": {
               "key": { "$ref": "common.schema.json#/$defs/key" },
@@ -41,7 +41,12 @@
               "room_id": { "type": ["integer", "null"] },
               "meta": { "type": "object", "description": "cct_range, pixels, max_level, channels from a node's info; part, source, leds, reachable from a bridge's." },
               "state": { "oneOf": [ { "type": "null" }, { "$ref": "state.schema.json" } ] },
-              "desired": { "oneOf": [ { "type": "null" }, { "$ref": "set.schema.json" } ] }
+              "desired": { "oneOf": [ { "type": "null" }, { "$ref": "set.schema.json" } ] },
+              "can": {
+                "type": "array", "uniqueItems": true,
+                "items": { "enum": ["view", "control", "color"] },
+                "description": "What this viewer may do: view; control (on/off, level, fades, pulses); color (color, white, warmth, effects). Outputs without view are never sent."
+              }
             }
           }
         },

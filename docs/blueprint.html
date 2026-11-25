@@ -1040,6 +1040,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
       <section id="people">
         <div class="sec-head"><span class="label">08 · People</span><h2>Accounts and permissions</h2></div>
         <p>There are four roles. <b>Owner</b> is the "moderator" level you described: the main person in a home, who manages its devices and people. <b>Member</b> is optional, for a partner or housemate who needs full control but shouldn't manage access. <b>Guests</b> get only what an owner grants them.</p>
+        <p>Roles belong to a <b>home membership</b>, not to the account. One person can own their own home, be a member of a friend's and a guest at a third, and a home can have several owners. <b>Admin</b> is a flag on the account rather than a home role: an admin sees every home whether or not they belong to it. The table is implemented once, in <code>server/ulserver/access.py</code>, and every API route, the WebSocket and the live fan-out go through it. Something a person can't see is reported as missing rather than forbidden, so other homes' devices don't leak.</p>
         <div class="tbl">
           <table>
             <thead><tr><th>Action</th><th>Admin (you)</th><th>Owner</th><th>Member</th><th>Guest</th></tr></thead>
@@ -1072,7 +1073,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
             <h4>How grants work</h4>
             <ul class="clean small">
               <li><b>Scope</b>: whole home, rooms or single devices.</li>
-              <li><b>Abilities</b>: view, control (on/off and level), color and effects.</li>
+              <li><b>Abilities</b>: view, control (on/off, level, fades and solenoid pulses), and color (color, white channel, warmth and effects). Motion sensors are view only for everyone. Each output the UI receives lists the viewer's abilities in <code>can</code>, and controls without the ability are not drawn.</li>
               <li><b>Device kinds</b>: lights only, or lights and switches. Solenoids are excluded unless granted explicitly.</li>
               <li><b>Time</b>: an optional weekly window and an expiry date.</li>
               <li>Guests join through a single-use invite link and can't see anything outside their grant, including other rooms' names.</li>

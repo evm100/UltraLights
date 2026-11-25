@@ -22,7 +22,7 @@ from . import contracts
 from .config import Settings
 from .hub import Hub
 from .models import AuditLog, Node, Output
-from .views import device_view
+from .views import target
 
 if TYPE_CHECKING:
     from .control import Control
@@ -151,12 +151,12 @@ class Bridge:
                 o.actual = doc
                 node.last_seen = now
                 await db.commit()
-                self.hub.broadcast({"t": "state", "dev": dev, "out": out, "state": doc}, node.home_id)
+                self.hub.broadcast_output({"t": "state", "dev": dev, "out": out, "state": doc}, target(node, o))
             elif schema == "health":
                 node.health = doc
                 node.last_seen = now
                 await db.commit()
-                self.hub.broadcast({"t": "health", "dev": dev, "health": doc}, node.home_id, admin_only=True)
+                self.hub.broadcast_admin({"t": "health", "dev": dev, "health": doc})
             elif schema == "evt":
                 if doc["type"] == "cmd_result":
                     fut = self.cmd_waiters.get(doc["cmd_id"])
@@ -165,7 +165,7 @@ class Bridge:
                 if doc["type"] == "error" or (doc["type"] == "cmd_result" and not doc["ok"]):
                     db.add(AuditLog(src="device", action="device_error", target=dev, detail=doc))
                     await db.commit()
-                self.hub.broadcast({"t": "evt", "dev": dev, "evt": doc}, node.home_id, admin_only=True)
+                self.hub.broadcast_admin({"t": "evt", "dev": dev, "evt": doc})
 
     async def _on_info(self, db: AsyncSession, node: Node, doc: dict, now: dt.datetime) -> None:
         if doc["id"] != node.device_id:
@@ -210,5 +210,4 @@ class Bridge:
 
     async def _push_device(self, db: AsyncSession, node: Node) -> None:
         outs = list((await db.execute(select(Output).where(Output.node_id == node.id))).scalars())
-        self.hub.broadcast({"t": "device", "device": device_view(node, outs, admin=False)}, node.home_id,
-                           admin_msg={"t": "device", "device": device_view(node, outs, admin=True)})
+        self.hub.broadcast_device(node, outs)

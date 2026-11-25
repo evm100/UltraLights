@@ -17,6 +17,7 @@ from fastapi import Depends, HTTPException, Request, WebSocket
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .access import Access, load_access
 from .config import get_settings
 from .db import get_db
 from .models import Session, User
@@ -73,6 +74,7 @@ async def end_session(db: AsyncSession, token: str) -> None:
 class Auth:
     user: User
     session: Session
+    access: Access
 
 
 async def _lookup(db: AsyncSession, token: str | None) -> Auth | None:
@@ -81,7 +83,7 @@ async def _lookup(db: AsyncSession, token: str | None) -> Auth | None:
     s = (await db.execute(select(Session).where(Session.token_hash == sha256(token)))).scalar_one_or_none()
     if s is None or s.expires_at < dt.datetime.now(dt.timezone.utc) or not s.user.active:
         return None
-    return Auth(s.user, s)
+    return Auth(s.user, s, await load_access(db, s.user))
 
 
 async def optional_auth(request: Request, db: AsyncSession = Depends(get_db)) -> Auth | None:
@@ -100,7 +102,7 @@ async def require_auth(request: Request, db: AsyncSession = Depends(get_db)) -> 
 
 
 async def require_admin(auth: Auth = Depends(require_auth)) -> Auth:
-    if auth.user.role != "admin":
+    if not auth.user.is_admin:
         raise HTTPException(403, "admin only")
     return auth
 

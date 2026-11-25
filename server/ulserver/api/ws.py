@@ -7,12 +7,13 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from .. import contracts
+from ..access import AccessDenied, abilities_for
 from ..bridge import NotConnected
 from ..control import Control, ControlError
 from ..db import sessionmaker
 from ..hub import Client, Hub
 from ..security import src_for, ws_auth
-from ..views import devices_for, visible_home_ids
+from ..views import devices_for
 
 router = APIRouter()
 log = logging.getLogger("ul.ws")
@@ -25,12 +26,11 @@ async def websocket(ws: WebSocket) -> None:
         if auth is None:
             await ws.close(code=4401)
             return
-        homes = await visible_home_ids(db, auth.user)
-        snapshot = await devices_for(db, auth.user)
+        snapshot = await devices_for(db, auth.access)
     await ws.accept()
     hub: Hub = ws.app.state.hub
     control: Control = ws.app.state.control
-    client = Client(ws, auth.user.id, auth.user.role == "admin", homes)
+    client = Client(ws, auth.access)
     hub.add(client)
     src = src_for(auth)
     await ws.send_text(json.dumps({"t": "snapshot", "devices": snapshot,
@@ -58,14 +58,12 @@ async def websocket(ws: WebSocket) -> None:
                 continue
             dev, out = msg["dev"], msg["out"]
             try:
-                info = control.get(dev, out)
-                if not (client.homes is None or (info.home_id is not None and info.home_id in client.homes)):
-                    raise ControlError("no_such_output", f"{dev}/{out}")
+                auth.access.require(control.get(dev, out), abilities_for(msg["state"]))
                 if t == "live":
                     control.live(dev, out, msg["state"], src)
                 elif t == "set":
                     await control.set(dev, out, msg["state"], src)
-            except ControlError as e:
+            except (AccessDenied, ControlError) as e:
                 await send({"t": "error", "error": e.code, "detail": e.detail[:200], "dev": dev, "out": out})
             except NotConnected:
                 await send({"t": "error", "error": "broker_offline", "dev": dev, "out": out})

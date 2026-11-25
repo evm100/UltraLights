@@ -13,12 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import contracts
 from .. import firmware as fwm
+from ..access import ADMIN_ACCESS, HOME_ROLES
 from ..bridge import NotConnected
 from ..control import Control, ControlError
 from ..db import get_db
 from ..enroll import issue_token, write_crl
 from ..models import (
-    ROLES,
     AuditLog,
     BoardTemplate,
     Certificate,
@@ -142,7 +142,7 @@ async def list_nodes(request: Request, db: AsyncSession = Depends(get_db)) -> li
     errs = request.app.state.bridge.contract_errors
     res = []
     for n in nodes:
-        v = device_view(n, by.get(n.id, []), admin=True)
+        v = device_view(n, by.get(n.id, []), ADMIN_ACCESS)
         v["contract_errors"] = len(errs.get(n.device_id, []))
         res.append(v)
     return res
@@ -167,7 +167,7 @@ async def node_detail(dev: str, request: Request, db: AsyncSession = Depends(get
     outs = (await db.execute(select(Output).where(Output.node_id == n.id))).scalars().all()
     toks = (await db.execute(select(EnrollToken).where(EnrollToken.node_id == n.id).order_by(EnrollToken.id.desc()))).scalars().all()
     certs = (await db.execute(select(Certificate).where(Certificate.node_id == n.id).order_by(Certificate.id.desc()))).scalars().all()
-    v = device_view(n, list(outs), admin=True)
+    v = device_view(n, list(outs), ADMIN_ACCESS)
     is_node = n.kind == "node"
     v.update({
         "board": n.board,
@@ -518,32 +518,43 @@ async def delete_firmware(pid: int, auth: Auth = Depends(require_admin), db: Asy
 class UserIn(BaseModel):
     username: str = Field(min_length=2, max_length=64, pattern=r"^[a-z0-9_.-]+$")
     password: str = Field(min_length=10, max_length=256)
-    role: str = "owner"
+    is_admin: bool = False
     display_name: str = ""
-    home_id: int | None = None
+    home_id: int | None = None  # optional first membership
+    home_role: str = "owner"
+
+
+def _check_role(role: str) -> None:
+    if role not in HOME_ROLES:
+        raise HTTPException(422, f"role must be one of {', '.join(HOME_ROLES)}")
 
 
 @router.get("/users")
 async def list_users(db: AsyncSession = Depends(get_db)) -> list[dict]:
     users = (await db.execute(select(User).order_by(User.username))).scalars().all()
     mem = (await db.execute(select(HomeMember))).scalars().all()
-    return [{"id": u.id, "username": u.username, "display_name": u.display_name, "role": u.role, "active": u.active,
+    return [{"id": u.id, "username": u.username, "display_name": u.display_name, "is_admin": u.is_admin,
+             "active": u.active,
              "homes": [{"home_id": m.home_id, "role": m.role} for m in mem if m.user_id == u.id]} for u in users]
 
 
 @router.post("/users")
 async def create_user(body: UserIn, auth: Auth = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> dict:
-    if body.role not in ROLES:
-        raise HTTPException(422, f"role must be one of {ROLES}")
+    if body.home_id is not None:
+        _check_role(body.home_role)
+        if await db.get(Home, body.home_id) is None:
+            raise HTTPException(404, "no such home")
     if (await db.execute(select(User).where(User.username == body.username))).scalar_one_or_none():
         raise HTTPException(409, "username taken")
-    u = User(username=body.username, password_hash=hash_password(body.password), role=body.role,
+    u = User(username=body.username, password_hash=hash_password(body.password), is_admin=body.is_admin,
              display_name=body.display_name)
     db.add(u)
     await db.flush()
     if body.home_id is not None:
-        db.add(HomeMember(home_id=body.home_id, user_id=u.id, role="owner" if body.role in ("admin", "owner") else body.role))
-    db.add(AuditLog(src=_src(auth), action="user_created", target=body.username, detail={"role": body.role}))
+        db.add(HomeMember(home_id=body.home_id, user_id=u.id, role=body.home_role))
+    db.add(AuditLog(src=_src(auth), action="user_created", target=body.username,
+                    detail={"is_admin": body.is_admin, "home_id": body.home_id,
+                            "home_role": body.home_role if body.home_id is not None else None}))
     await db.commit()
     return {"id": u.id}
 
@@ -577,19 +588,35 @@ class MemberIn(BaseModel):
 
 
 @router.post("/homes/{hid}/members")
-async def add_member(hid: int, body: MemberIn, request: Request, db: AsyncSession = Depends(get_db)) -> dict:
+async def add_member(hid: int, body: MemberIn, request: Request, auth: Auth = Depends(require_admin),
+                     db: AsyncSession = Depends(get_db)) -> dict:
+    """Add someone to a home or change their role there. Each home membership has its own
+    role, so an owner of one home can be a member, guest or another owner elsewhere."""
+    _check_role(body.role)
     if await db.get(Home, hid) is None or await db.get(User, body.user_id) is None:
         raise HTTPException(404, "no such home or user")
-    if body.role not in ("owner", "member", "guest"):
-        raise HTTPException(422, "role must be owner, member or guest")
     m = await db.get(HomeMember, (hid, body.user_id))
     if m is None:
         db.add(HomeMember(home_id=hid, user_id=body.user_id, role=body.role))
     else:
         m.role = body.role
+    db.add(AuditLog(src=_src(auth), action="member_set", target=f"home:{hid}",
+                    detail={"user_id": body.user_id, "role": body.role}))
     await db.commit()
-    homes = {r[0] for r in await db.execute(select(HomeMember.home_id).where(HomeMember.user_id == body.user_id))}
-    request.app.state.hub.refresh_user(body.user_id, homes)
+    request.app.state.hub.refresh_user(body.user_id)
+    return {"ok": True}
+
+
+@router.delete("/homes/{hid}/members/{uid}")
+async def remove_member(hid: int, uid: int, request: Request, auth: Auth = Depends(require_admin),
+                        db: AsyncSession = Depends(get_db)) -> dict:
+    m = await db.get(HomeMember, (hid, uid))
+    if m is None:
+        raise HTTPException(404, "not a member")
+    await db.delete(m)
+    db.add(AuditLog(src=_src(auth), action="member_removed", target=f"home:{hid}", detail={"user_id": uid}))
+    await db.commit()
+    request.app.state.hub.refresh_user(uid)
     return {"ok": True}
 
 

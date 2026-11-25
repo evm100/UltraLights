@@ -3,6 +3,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     Boolean,
     DateTime,
     ForeignKey,
@@ -15,8 +16,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-
-ROLES = ("admin", "owner", "member", "guest")
 
 
 class Base(DeclarativeBase):
@@ -33,7 +32,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True)
     display_name: Mapped[str] = mapped_column(String(64), default="")
     password_hash: Mapped[str] = mapped_column(String(255))
-    role: Mapped[str] = mapped_column(String(16))  # admin | owner | member | guest
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)  # home roles live on HomeMember
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = _now()
 
@@ -58,9 +57,10 @@ class Home(Base):
 
 class HomeMember(Base):
     __tablename__ = "home_members"
+    __table_args__ = (CheckConstraint("role IN ('owner', 'member', 'guest')", name="home_members_role"),)
     home_id: Mapped[int] = mapped_column(ForeignKey("homes.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    role: Mapped[str] = mapped_column(String(16))  # owner | member | guest
+    role: Mapped[str] = mapped_column(String(16))  # owner | member | guest (access.HOME_ROLES)
 
 
 class Room(Base):

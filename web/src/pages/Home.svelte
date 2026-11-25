@@ -4,6 +4,7 @@
   import { live, current, sendSet } from "../lib/live.svelte.js";
   import { kelvinToRgb, css } from "../lib/color.js";
   import { tiles, partsOf, summary, stateOf, reachable } from "../lib/parts.js";
+  import { canControl } from "../lib/access.js";
 
   let homes = $state([]);
   onMount(async () => {
@@ -12,9 +13,9 @@
 
   // One tile per output, except a combined device (a bridged PC), which is one tile for all its parts.
   let items = $derived(tiles(Object.values(live.devices)).map((x) => {
-    if (!x.combined) return { ...x, key: x.dev.id + "/" + x.o.key, name: x.o.name, caps: x.o.caps, s: current(x.o), href: `#/light/${x.dev.id}/${x.o.key}` };
+    if (!x.combined) return { ...x, key: x.dev.id + "/" + x.o.key, name: x.o.name, caps: x.o.caps, control: canControl(x.o), s: current(x.o), href: `#/light/${x.dev.id}/${x.o.key}` };
     const parts = partsOf(x.dev);
-    return { ...x, key: x.dev.id, name: x.dev.name, caps: ["onoff", "level", "color"], s: summary(parts), parts,
+    return { ...x, key: x.dev.id, name: x.dev.name, caps: ["onoff", "level", "color"], control: parts.some(canControl), s: summary(parts), parts,
              href: `#/light/${x.dev.id}` };
   }));
   let rooms = $derived(homes.flatMap((h) => h.rooms));
@@ -75,7 +76,7 @@
                 <strong>{x.name}</strong>
                 <span class="small muted">{x.dev.online ? (s.on ? `On ${pct(x)}` : "Off") : "Offline"}</span>
               </div>
-              {#if x.caps.includes("onoff")}
+              {#if x.caps.includes("onoff") && x.control}
                 <button class="pw" class:on={s.on} aria-label={s.on ? "Turn off" : "Turn on"} onclick={(e) => toggle(e, x)} disabled={!x.dev.online}>
                   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3v8M7.5 6.5a7 7 0 1 0 9 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 </button>

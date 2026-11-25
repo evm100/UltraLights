@@ -45,7 +45,7 @@ def test_login_and_csrf(client, admin_creds):
     assert client.post("/api/admin/homes", json={"name": "X"}).status_code == 403
     assert client.post("/api/admin/homes", json={"name": "X"}, headers={"X-UL-CSRF": "wrong"}).status_code == 403
     assert client.post("/api/admin/homes", json={"name": "Home"}, headers={"X-UL-CSRF": r.json()["csrf"]}).status_code == 200
-    assert client.get("/api/auth/me").json()["role"] == "admin"
+    assert client.get("/api/auth/me").json()["admin"] is True
 
 
 def test_builder_rejects_pin_errors(admin):
@@ -205,7 +205,7 @@ def test_owner_sees_only_own_home(client, admin):
     d2 = new_node(admin, name="In theirs")
     admin.put(f"/api/admin/nodes/{d1}", json={"home_id": h1})
     admin.put(f"/api/admin/nodes/{d2}", json={"home_id": h2})
-    r = admin.post("/api/admin/users", json={"username": "owner1", "password": "owner password 1", "role": "owner", "home_id": h1})
+    r = admin.post("/api/admin/users", json={"username": "owner1", "password": "owner password 1", "home_id": h1, "home_role": "owner"})
     assert r.status_code == 200
     admin.post("/api/auth/logout")
     client.headers.pop("X-UL-CSRF", None)

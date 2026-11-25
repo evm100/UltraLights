@@ -12,6 +12,7 @@ import pytest
 from conftest import CONTRACTS, SERVER
 
 from ulserver import db as dbm
+from ulserver.access import Access
 from ulserver.bridge import Bridge, tls_context
 from ulserver.config import Settings, get_settings
 from ulserver.control import Control
@@ -69,7 +70,7 @@ async def test_bridge_end_to_end(migrated_db, tmp_path):
 
     hub = Hub()
     seen: asyncio.Queue = asyncio.Queue()
-    hub.add(Client(ws=None, user_id=1, admin=True, homes=None, queue=seen))  # type: ignore[arg-type]
+    hub.add(Client(ws=None, access=Access(1, admin=True), queue=seen))  # type: ignore[arg-type]
     bridge = Bridge(s, hub, sm)
     control = Control(bridge.publish, sm, live_interval=0.02)
     control.cmd_waiters = bridge.cmd_waiters

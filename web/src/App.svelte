@@ -11,7 +11,7 @@
   onMount(restore);
 
   let section = $derived(route.parts[0] || "home");
-  let isAdmin = $derived(session.user?.role === "admin");
+  let isAdmin = $derived(!!session.user?.admin);
 </script>
 
 {#if !session.ready}

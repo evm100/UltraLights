@@ -404,7 +404,7 @@ if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: 
 fi
 
 # ---------------------------------------------------------------- first admin
-admins="$(sudo -u postgres psql -d ultralights -qtAc "select count(*) from users where role='admin'" 2>/dev/null || echo 0)"
+admins="$(sudo -u postgres psql -d ultralights -qtAc "select count(*) from users where is_admin" 2>/dev/null || echo 0)"
 if [ "$admins" = 0 ] && [ "$SKIP_ADMIN" = 0 ] && [ -t 0 ]; then
   bold "Create your admin account"
   read -rp "Username: " admin_user

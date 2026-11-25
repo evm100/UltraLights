@@ -11,6 +11,7 @@
   import { kelvinToRgb, hsvToRgb, rgbToHsv, css } from "../lib/color.js";
   import { partsOf, summary, stateOf, reachable, partIcon, PART_ICONS } from "../lib/parts.js";
   import { post, errText } from "../lib/api.js";
+  import { usableCaps } from "../lib/access.js";
 
   let { dev, out } = $props();
 
@@ -21,7 +22,8 @@
   let part = $derived(combined && sel !== "all" ? parts.find((p) => p.key === sel) : null);
   // The output whose capabilities and settings the controls show.
   let o = $derived(combined ? (part ?? parts[0]) : device?.outputs.find((x) => x.key === out));
-  let caps = $derived(combined ? [...new Set(parts.flatMap((p) => p.caps))] : (o?.caps ?? []));
+  // Capabilities the output has and the viewer may use (see lib/access.js).
+  let caps = $derived(combined ? [...new Set(parts.flatMap((p) => usableCaps(p)))] : usableCaps(o));
   let cctRange = $derived(o?.meta?.cct_range ?? [2700, 6500]);
   let shownState = $derived(combined ? (part ? stateOf(part) : summary(parts)) : current(o));
   // Who receives what the controls send.
