@@ -1,0 +1,28 @@
+[project]
+name = "ul-openrgb"
+version = "0.1.0"
+description = "UltraLights bridge agent: one PC's OpenRGB lighting as one UltraLights device"
+requires-python = ">=3.11"
+dependencies = [
+  "aiomqtt>=2.3",
+  "openrgb-python>=0.3.8",
+  "cryptography>=41",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "jsonschema>=4.18", "referencing>=0.35"]
+
+[project.scripts]
+ul-openrgb = "ul_openrgb.cli:main"
+
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ul_openrgb*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]

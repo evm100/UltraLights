@@ -1,20 +1,32 @@
 <script>
   // Light control screen: ON pill, big percentage, tall brightness slider, and WHITE / COLOR
   // tabs that appear only when the output has the cct / color capability.
+  // A combined device (a bridged PC) is one light: the same controls drive all its parts or,
+  // with the "Applies to" picker under the color sliders, one part.
   import { untrack } from "svelte";
   import VSlider from "../components/VSlider.svelte";
   import HSlider from "../components/HSlider.svelte";
   import { live, current, sendLive, sendSet } from "../lib/live.svelte.js";
   import { liveSender } from "../lib/throttle.js";
   import { kelvinToRgb, hsvToRgb, rgbToHsv, css } from "../lib/color.js";
+  import { partsOf, summary, stateOf, reachable, partIcon, PART_ICONS } from "../lib/parts.js";
   import { post, errText } from "../lib/api.js";
 
   let { dev, out } = $props();
 
   let device = $derived(live.devices[dev]);
-  let o = $derived(device?.outputs.find((x) => x.key === out));
-  let caps = $derived(o?.caps ?? []);
+  let combined = $derived(!!device?.combined);
+  let parts = $derived(combined ? partsOf(device) : []);
+  let sel = $state(untrack(() => out) ?? "all"); // combined only: "all" or a part key
+  let part = $derived(combined && sel !== "all" ? parts.find((p) => p.key === sel) : null);
+  // The output whose capabilities and settings the controls show.
+  let o = $derived(combined ? (part ?? parts[0]) : device?.outputs.find((x) => x.key === out));
+  let caps = $derived(combined ? [...new Set(parts.flatMap((p) => p.caps))] : (o?.caps ?? []));
   let cctRange = $derived(o?.meta?.cct_range ?? [2700, 6500]);
+  let shownState = $derived(combined ? (part ? stateOf(part) : summary(parts)) : current(o));
+  // Who receives what the controls send.
+  let targets = $derived(combined ? (part ? [part.key] : parts.map((p) => p.key)) : [out]);
+  let unreachable = $derived((part ? [part] : parts).filter((p) => !reachable(p)));
 
   // Local values follow the device unless the user is holding a control (and for a moment after).
   let on = $state(false);
@@ -31,7 +43,7 @@
   let note = $state("");
 
   $effect(() => {
-    const s = current(o);
+    const s = shownState;
     resync;
     if (!o) return;
     untrack(() => {
@@ -47,11 +59,17 @@
     if (tab === null && o) tab = caps.includes("cct") ? "white" : caps.includes("color") ? "color" : null;
   });
 
-  const sender = liveSender((p) => sendLive(dev, out, p), (p) => sendSet(dev, out, p));
+  const sendAll = (fn) => (p) => { for (const k of targets) fn(dev, k, p); };
+  const sender = liveSender(sendAll(sendLive), sendAll(sendSet));
   function hold() {
     holdUntil = performance.now() + 1500;
     clearTimeout(resyncTimer);
     resyncTimer = setTimeout(() => resync++, 1550);
+  }
+  function pick(key) {
+    sel = key;
+    holdUntil = 0; // show the new target's values right away
+    resync++;
   }
 
   function onLevel(v) { hold(); level = v; on = v > 0; sender.update(v > 0 ? { on: true, level: v } : { on: false }); }
@@ -65,7 +83,7 @@
   function endSat(v) { hold(); sat = v; sender.release({ color: rgb(), on: true }); }
   function onWhite(v) { hold(); white = v; sender.update({ white: v }); }
   function endWhite(v) { hold(); white = v; sender.release({ white: v, on: true }); }
-  function toggle() { hold(); on = !on; sendSet(dev, out, { on }); }
+  function toggle() { hold(); on = !on; sendAll(sendSet)({ on }); }
 
   async function pulse() {
     note = "";
@@ -81,6 +99,16 @@
   let kelvinTrack = $derived(`linear-gradient(90deg, ${css(kelvinToRgb(cctRange[0]))}, ${css(kelvinToRgb((cctRange[0] + cctRange[1]) / 2))}, ${css(kelvinToRgb(cctRange[1]))})`);
   const hueTrack = "linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)";
   let satTrack = $derived(`linear-gradient(90deg, #fff, ${css(hsvToRgb(hue, 1, 1))})`);
+
+  // Part picker swatches: a part's own color when lit; "All" mixes the lit parts' colors.
+  const tint = (s) => (s.on && s.color ? css(s.color) : "var(--faint)");
+  let allTint = $derived.by(() => {
+    const lit = parts.map(stateOf).filter((s) => s.on && s.color).map((s) => css(s.color));
+    if (lit.length < 2) return lit[0] ?? "var(--faint)";
+    return `conic-gradient(${[...lit, lit[0]].join(", ")})`;
+  });
+  let title = $derived(combined ? device?.name : (o?.name ?? out));
+  let subtitle = $derived(combined ? (part ? part.name : `All ${parts.length} parts`) : (device?.name ?? dev));
 </script>
 
 <main class="screen" style={`--tint:${css(shown, on ? 0.18 + level * 0.35 : 0.04)}`}>
@@ -89,8 +117,8 @@
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </a>
     <div class="title">
-      <div class="name">{o?.name ?? out}</div>
-      <div class="sub">{device?.name ?? dev}{device && !device.online ? " · offline" : ""}</div>
+      <div class="name">{title}</div>
+      <div class="sub">{subtitle}{device && !device.online ? " · offline" : ""}</div>
     </div>
     <span class="back"></span>
   </header>
@@ -114,9 +142,15 @@
       {:else if caps.includes("onoff")}
         <div class="big-switch" class:on>{on ? "On" : "Off"}</div>
       {/if}
+      {#if combined && device.online && unreachable.length}
+        <p class="small muted away">
+          {unreachable.map((p) => p.name).join(", ")} {unreachable.length === 1 ? "isn't" : "aren't"} reachable right now
+          (that machine or its OpenRGB is off). {unreachable.length === 1 ? "It gets" : "They get"} these settings when {unreachable.length === 1 ? "it's" : "they're"} back.
+        </p>
+      {/if}
     </section>
 
-    {#if caps.includes("cct") || caps.includes("color")}
+    {#if caps.includes("cct") || caps.includes("color") || combined}
       <section class="sheet">
         <div class="tabs" role="tablist">
           {#if caps.includes("color")}
@@ -147,6 +181,28 @@
             </div>
           {/if}
         {/if}
+
+        {#if combined && parts.length > 1}
+          <div class="applies">
+            <span class="label">Applies to</span>
+            <div class="chips" role="radiogroup" aria-label="Which part the controls change">
+              <button role="radio" aria-checked={sel === "all"} class:active={sel === "all"} onclick={() => pick("all")} title="All parts">
+                <span class="ico ring" style={`background:${allTint}`}>
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d={PART_ICONS.all} fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </span><span class="nm">All</span>
+              </button>
+              {#each parts as p (p.key)}
+                {@const ps = stateOf(p)}
+                <button role="radio" aria-checked={sel === p.key} class:active={sel === p.key} class:gone={!reachable(p)} onclick={() => pick(p.key)}
+                        title={reachable(p) ? `${p.name}: ${ps.on ? `on ${Math.round((ps.level ?? 1) * 100)}%` : "off"}` : `${p.name}: unreachable`}>
+                  <span class="ico" style={`color:${tint(ps)}`}>
+                    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d={partIcon(p)} fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </span><span class="nm">{p.name}</span>
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
       </section>
     {/if}
   {/if}
@@ -169,6 +225,7 @@
   .pct { font-size: 2.6rem; font-weight: 300; letter-spacing: 0.02em; }
   .big-switch { margin-top: 40px; font-size: 3rem; font-weight: 300; color: var(--muted); }
   .big-switch.on { color: var(--text); }
+  .away { max-width: 34ch; text-align: center; margin: 0; }
   .sheet {
     background: var(--glass-strong); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
     border-top: 1px solid var(--line); border-radius: 22px 22px 0 0; padding: 14px 22px 28px; display: flex; flex-direction: column; gap: 12px;
@@ -179,5 +236,19 @@
   .sw { width: 18px; height: 18px; border-radius: 50%; display: inline-block; }
   .ctl { display: flex; flex-direction: column; align-items: center; gap: 2px; }
   .ctl :global(.hs) { width: 100%; }
+  .applies { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+  /* Equal columns: five or six parts fit a phone; more wrap to a second row. */
+  .chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 6px; width: 100%; }
+  .chips button {
+    display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 4px 7px; border-radius: 16px; min-width: 0;
+    border: 1px solid transparent; background: none; color: var(--muted); font-size: 0.72rem; font-weight: 600; cursor: pointer;
+  }
+  .chips button.active { background: var(--glass-2); border-color: var(--line); color: var(--text); }
+  .chips button.gone .ico { border-style: dashed; opacity: 0.55; }
+  .nm { max-width: 100%; overflow: hidden; text-align: center; line-height: 1.15; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; hyphens: auto; overflow-wrap: break-word; }
+  .ico { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(0, 0, 0, 0.35); border: 1.5px solid var(--line); }
+  .chips button.active .ico { border-color: var(--text); }
+  .ring { color: #fff; }
+  .ring svg { filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)); }
   .center { text-align: center; margin-top: 30vh; }
 </style>

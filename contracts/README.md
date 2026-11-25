@@ -18,7 +18,7 @@ Rules:
 | `schemas/board.schema.json` | Board descriptor: channels, pins, reset button |
 | `schemas/partition.schema.json` | `ul_board` partition payload: board + provisioning (see `board-partition.md`) |
 | `schemas/output.schema.json` | One output built from channels (used by config and info) |
-| `schemas/{info,status,config,set,state,live,cmd,evt,health}.schema.json` | MQTT payloads |
+| `schemas/{info,status,config,set,state,live,cmd,evt,health}.schema.json` | MQTT payloads (`info` has a node and a bridge branch) |
 | `schemas/enroll-{request,response}.schema.json` | HTTPS enrollment |
 | `schemas/firmware-manifest.schema.json` | `manifest.json` inside a firmware package |
 | `chips.json` | Per-chip pin rules and limits for the builder and `ul_board` |
@@ -63,6 +63,16 @@ Broker ACL: a device may write only its own `info`, `status`, `state/+`, `evt` a
 ### Default mapping
 
 With no retained `config`, the device builds one output per channel, keyed by the channel id: `pwm` becomes `white`, `argb` becomes `argb`, `switch` becomes `relay`, `motion` becomes `motion`. A fresh node is therefore controllable before anyone configures it.
+
+## Bridges
+
+A bridge agent (today: the OpenRGB agent in `bridges/openrgb`) is a device like a node: an id from the server, a certificate from enrollment, the same topics, ACL, `set`, `live`, `state`, `status` and `cmd`. The differences:
+
+- `info` uses the **bridge** branch of `info.schema.json`: `bridge` (which agent), `fw` (agent version), `host`, `sources` (the foreign servers it drives and whether each answers), and outputs that are parts rather than board channels. A bridged output has `part` (what it is, for icons), `source`, `leds` and `reachable`. When a source goes down, its outputs stay, `reachable` turns false and the agent keeps their desired state, re-applying it when the source returns.
+- `combine: true` means the outputs are parts of one object (a PC). The UI shows one light with a part picker instead of one tile per output. "All" sends the same change to each output, each with its own `seq`.
+- There is no `config` topic: the agent's own config file defines its parts.
+- Enrollment uses the bridge branch of `enroll-request.schema.json` (`bridge` and `fw` instead of `chip`, `mac` and `board_crc`). A node token can't enroll a bridge and the other way round (`chip_mismatch`).
+- `cmd`: `identify` (optionally one `out`) and `reboot` (restarts the agent, never the machine). Every other op answers `unsupported`.
 
 ## Enrollment
 

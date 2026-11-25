@@ -2,18 +2,40 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lights.evm100.org/contracts/v1/enroll-request.schema.json",
   "title": "Enrollment request (POST https://{server}/api/v1/enroll, JSON)",
-  "description": "Sent by a node that has a token but no certificate. The CSR must use an EC P-256 key generated on the chip, with subject CN equal to device_id.",
+  "description": "Sent by a node or a bridge agent that has a token but no certificate. The CSR must use an EC P-256 key generated on the device (a node's chip, or the agent's host), with subject CN equal to device_id.",
   "type": "object",
-  "required": ["device_id", "token", "csr", "chip", "mac", "fw", "board_crc"],
-  "additionalProperties": false,
-  "properties": {
-    "device_id": { "$ref": "common.schema.json#/$defs/device_id" },
+  "oneOf": [
+    {
+      "description": "ESP32 node.",
+      "required": ["device_id", "token", "csr", "chip", "mac", "fw", "board_crc"],
+      "additionalProperties": false,
+      "properties": {
+        "device_id": { "$ref": "common.schema.json#/$defs/device_id" },
+        "token": { "$ref": "#/$defs/token" },
+        "csr": { "$ref": "#/$defs/csr" },
+        "chip": { "$ref": "common.schema.json#/$defs/chip" },
+        "mac": { "$ref": "common.schema.json#/$defs/mac" },
+        "fw": { "$ref": "common.schema.json#/$defs/semver" },
+        "profile": { "$ref": "common.schema.json#/$defs/profile" },
+        "board_crc": { "$ref": "common.schema.json#/$defs/hex32" }
+      }
+    },
+    {
+      "description": "Bridge agent.",
+      "required": ["device_id", "token", "csr", "bridge", "fw"],
+      "additionalProperties": false,
+      "properties": {
+        "device_id": { "$ref": "common.schema.json#/$defs/device_id" },
+        "token": { "$ref": "#/$defs/token" },
+        "csr": { "$ref": "#/$defs/csr" },
+        "bridge": { "$ref": "common.schema.json#/$defs/bridge" },
+        "fw": { "$ref": "common.schema.json#/$defs/semver" },
+        "host": { "type": "string", "maxLength": 64 }
+      }
+    }
+  ],
+  "$defs": {
     "token": { "type": "string", "pattern": "^[A-Za-z0-9_-]{32,64}$" },
-    "csr": { "type": "string", "pattern": "^-----BEGIN CERTIFICATE REQUEST-----", "maxLength": 4096 },
-    "chip": { "$ref": "common.schema.json#/$defs/chip" },
-    "mac": { "$ref": "common.schema.json#/$defs/mac" },
-    "fw": { "$ref": "common.schema.json#/$defs/semver" },
-    "profile": { "$ref": "common.schema.json#/$defs/profile" },
-    "board_crc": { "$ref": "common.schema.json#/$defs/hex32" }
+    "csr": { "type": "string", "pattern": "^-----BEGIN CERTIFICATE REQUEST-----", "maxLength": 4096 }
   }
 }

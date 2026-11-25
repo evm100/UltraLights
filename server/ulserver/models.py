@@ -76,9 +76,11 @@ class Node(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     device_id: Mapped[str] = mapped_column(String(9), unique=True)  # ul-xxxxxx
     name: Mapped[str] = mapped_column(String(64))
-    chip: Mapped[str] = mapped_column(String(16))
+    kind: Mapped[str] = mapped_column(String(16), default="node", server_default="node")  # node | bridge
+    chip: Mapped[str | None] = mapped_column(String(16))  # None for bridges
+    bridge: Mapped[str | None] = mapped_column(String(16))  # bridges only: which agent (openrgb)
     home_id: Mapped[int | None] = mapped_column(ForeignKey("homes.id", ondelete="SET NULL"), index=True)
-    board: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    board: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # None for bridges
     board_crc: Mapped[str | None] = mapped_column(String(8))  # crc of the last provisioned payload
     config: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # contracts config (v, rev, outputs)
     config_rev: Mapped[int] = mapped_column(Integer, default=0)

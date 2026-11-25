@@ -1,0 +1,2 @@
+{ "v": 1, "id": "ul-4c2e19", "bridge": "openrgb", "fw": "0.1.0", "chip": "esp32c3",
+  "outputs": [ { "key": "gpu", "kind": "rgb", "caps": ["onoff", "level", "color"] } ] }

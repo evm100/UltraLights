@@ -32,18 +32,31 @@ def output_view(o: Output) -> dict[str, Any]:
     }
 
 
+def _output_order(n: Node):
+    """Nodes: by key. Bridges: the order the agent lists its parts in (the UI's part order)."""
+    if n.kind == "bridge":
+        pos = {od["key"]: i for i, od in enumerate((n.info or {}).get("outputs", []))}
+        return lambda o: (pos.get(o.key, len(pos)), o.key)
+    return lambda o: o.key
+
+
 def device_view(n: Node, outputs: list[Output], admin: bool) -> dict[str, Any]:
     v: dict[str, Any] = {
         "id": n.device_id,
         "name": n.name,
         "chip": n.chip,
+        "kind": n.kind,
+        "combined": n.kind == "bridge" and bool((n.info or {}).get("combine")),
         "home_id": n.home_id,
         "online": n.online,
-        "outputs": [output_view(o) for o in sorted(outputs, key=lambda o: o.key)],
+        "outputs": [output_view(o) for o in sorted(outputs, key=_output_order(n))],
     }
     if admin:
         v["admin"] = {
-            "board": n.board.get("board"),
+            "board": (n.board or {}).get("board"),
+            "bridge": n.bridge,
+            "host": (n.info or {}).get("host"),
+            "sources": (n.info or {}).get("sources", []),
             "fw": (n.info or {}).get("fw"),
             "profile": (n.info or {}).get("profile"),
             "board_crc": n.board_crc,

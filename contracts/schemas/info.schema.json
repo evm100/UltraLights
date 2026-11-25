@@ -2,24 +2,81 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lights.evm100.org/contracts/v1/info.schema.json",
   "title": "Device info (topic ul/v1/d/{id}/info, retained, QoS 1, device to server)",
-  "description": "Published after every connect and after a config is applied.",
-  "type": "object",
-  "required": ["v", "id", "chip", "fw", "profile", "board", "board_crc", "mac", "channels", "outputs", "config_rev"],
-  "additionalProperties": false,
-  "properties": {
-    "v": { "const": 1 },
-    "id": { "$ref": "common.schema.json#/$defs/device_id" },
-    "chip": { "$ref": "common.schema.json#/$defs/chip" },
-    "fw": { "$ref": "common.schema.json#/$defs/semver" },
-    "profile": { "$ref": "common.schema.json#/$defs/profile" },
-    "idf": { "type": "string", "maxLength": 32 },
-    "board": { "$ref": "common.schema.json#/$defs/name" },
-    "hw_rev": { "type": "string", "maxLength": 16 },
-    "board_crc": { "$ref": "common.schema.json#/$defs/hex32", "description": "CRC32 of the ul_board payload, so the server can tell which descriptor the node runs." },
-    "mac": { "$ref": "common.schema.json#/$defs/mac" },
-    "channels": { "type": "array", "items": { "$ref": "board.schema.json#/$defs/channel" } },
-    "outputs": { "type": "array", "items": { "allOf": [ { "$ref": "output.schema.json" }, { "required": ["caps"] } ] } },
-    "config_rev": { "type": "integer", "minimum": 0, "description": "0 = default mapping." },
-    "config_error": { "type": "string", "maxLength": 200, "description": "Set when the last config was rejected (unknown channel, role mismatch); the previous mapping stays." }
+  "description": "Published after every connect and whenever the outputs change. A node describes its board (and is re-sent after a config is applied); a bridge agent describes the parts it drives and whether each one is reachable.",
+  "oneOf": [
+    { "$ref": "#/$defs/node" },
+    { "$ref": "#/$defs/bridge" }
+  ],
+  "$defs": {
+    "node": {
+      "type": "object",
+      "description": "An ESP32 node: board channels grouped into outputs.",
+      "required": ["v", "id", "chip", "fw", "profile", "board", "board_crc", "mac", "channels", "outputs", "config_rev"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 1 },
+        "id": { "$ref": "common.schema.json#/$defs/device_id" },
+        "chip": { "$ref": "common.schema.json#/$defs/chip" },
+        "fw": { "$ref": "common.schema.json#/$defs/semver" },
+        "profile": { "$ref": "common.schema.json#/$defs/profile" },
+        "idf": { "type": "string", "maxLength": 32 },
+        "board": { "$ref": "common.schema.json#/$defs/name" },
+        "hw_rev": { "type": "string", "maxLength": 16 },
+        "board_crc": { "$ref": "common.schema.json#/$defs/hex32", "description": "CRC32 of the ul_board payload, so the server can tell which descriptor the node runs." },
+        "mac": { "$ref": "common.schema.json#/$defs/mac" },
+        "channels": { "type": "array", "items": { "$ref": "board.schema.json#/$defs/channel" } },
+        "outputs": { "type": "array", "items": { "allOf": [ { "$ref": "output.schema.json" }, { "required": ["caps"] } ] } },
+        "config_rev": { "type": "integer", "minimum": 0, "description": "0 = default mapping." },
+        "config_error": { "type": "string", "maxLength": 200, "description": "Set when the last config was rejected (unknown channel, role mismatch); the previous mapping stays." }
+      }
+    },
+    "bridge": {
+      "type": "object",
+      "description": "A bridge agent: a program beside a foreign system (OpenRGB) that presents it as one device. Its outputs are parts of that system, not board channels, so there is no config topic.",
+      "required": ["v", "id", "bridge", "fw", "outputs"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "const": 1 },
+        "id": { "$ref": "common.schema.json#/$defs/device_id" },
+        "bridge": { "$ref": "common.schema.json#/$defs/bridge" },
+        "fw": { "$ref": "common.schema.json#/$defs/semver", "description": "Agent version." },
+        "host": { "type": "string", "maxLength": 64, "description": "Host name of the machine the agent runs on." },
+        "combine": { "type": "boolean", "default": false, "description": "The outputs are parts of one object (a PC). The UI shows one light with a part picker instead of one light per output." },
+        "sources": {
+          "type": "array",
+          "maxItems": 8,
+          "description": "Foreign servers the agent drives, e.g. one OpenRGB SDK server per machine.",
+          "items": {
+            "type": "object",
+            "required": ["key", "online"],
+            "additionalProperties": false,
+            "properties": {
+              "key": { "$ref": "common.schema.json#/$defs/key" },
+              "name": { "$ref": "common.schema.json#/$defs/name" },
+              "address": { "type": "string", "maxLength": 80 },
+              "online": { "type": "boolean" },
+              "devices": { "type": "array", "maxItems": 32, "items": { "type": "string", "maxLength": 80 }, "description": "Device names the source reports." },
+              "error": { "type": "string", "maxLength": 200 }
+            }
+          }
+        },
+        "outputs": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/bridged_output" } }
+      }
+    },
+    "bridged_output": {
+      "type": "object",
+      "required": ["key", "kind", "caps"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "$ref": "common.schema.json#/$defs/key" },
+        "kind": { "$ref": "common.schema.json#/$defs/kind" },
+        "name": { "$ref": "common.schema.json#/$defs/name" },
+        "caps": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/cap" }, "uniqueItems": true },
+        "part": { "$ref": "common.schema.json#/$defs/part" },
+        "source": { "$ref": "common.schema.json#/$defs/key", "description": "Key of the source that drives this output." },
+        "leds": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "reachable": { "type": "boolean", "default": true, "description": "false while its source is down or none of its devices is found. The output keeps its desired state and gets it back when it returns." }
+      }
+    }
   }
 }

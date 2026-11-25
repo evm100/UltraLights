@@ -221,3 +221,54 @@ def test_token_expiry_is_seven_days(admin):
     body, _ = provision(admin, dev)
     exp = dt.datetime.fromisoformat(body["token_expires"])
     assert dt.timedelta(days=6, hours=23) < exp - dt.datetime.now(dt.timezone.utc) <= dt.timedelta(days=7)
+
+
+def bridge_body(dev, token, csr):
+    return {"device_id": dev, "token": token, "csr": csr, "bridge": "openrgb", "fw": "0.1.0", "host": "pve"}
+
+
+def test_bridge_pairing_and_enrollment(admin, pki):
+    r = admin.post("/api/admin/bridges", json={"name": "Desktop", "bridge": "openrgb"})
+    assert r.status_code == 200, r.text
+    dev, tok = r.json()["id"], r.json()["token"]
+    assert r.json()["server"] == "lights.test"
+    assert admin.post("/api/admin/bridges", json={"name": "X", "bridge": "hue"}).status_code == 422
+
+    # Board-only operations refuse a bridge; the detail view still works.
+    assert admin.post(f"/api/admin/nodes/{dev}/provision", json={}).status_code == 422
+    assert admin.put(f"/api/admin/nodes/{dev}/config", json={"outputs": []}).status_code == 422
+    assert admin.put(f"/api/admin/nodes/{dev}", json={"board": C3_BOARD}).status_code == 422
+    d = admin.get(f"/api/admin/nodes/{dev}").json()
+    assert (d["kind"], d["chip"], d["board"], d["admin"]["bridge"]) == ("bridge", None, None, "openrgb")
+
+    def post(body):
+        r = admin.post("/api/v1/enroll", json=body)
+        contracts.validate("enroll-response", r.json())
+        return r
+
+    _, csr = make_csr(dev)
+    r = post(enroll_body(dev, tok, csr))  # a bridge can't enroll as a node
+    assert (r.status_code, r.json()["error"]) == (400, "chip_mismatch")
+    r = post(bridge_body(dev, tok, csr))
+    assert r.status_code == 200, r.text
+    cert = x509.load_pem_x509_certificate(r.json()["cert"].encode())
+    assert cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value == dev
+
+    # ...and a node can't enroll as a bridge.
+    ndev = new_node(admin, name="Bench 2")
+    _, payload = provision(admin, ndev)
+    _, ncsr = make_csr(ndev)
+    r = post(bridge_body(ndev, payload["provision"]["token"], ncsr))
+    assert (r.status_code, r.json()["error"]) == (400, "chip_mismatch")
+
+    # A fresh pairing token re-enrolls the agent (moved host, lost key); nodes use the blob instead.
+    assert admin.post(f"/api/admin/nodes/{ndev}/pairing").status_code == 422
+    r = admin.post(f"/api/admin/nodes/{dev}/pairing")
+    assert r.status_code == 200 and r.json()["token"] != tok
+    _, csr2 = make_csr(dev)
+    assert post(bridge_body(dev, r.json()["token"], csr2)).status_code == 200
+
+    # Device views of nodes and bridges both match the WebSocket contract.
+    contracts.validate("ws-server", {"t": "snapshot", "devices": admin.get("/api/devices").json()})
+    nodes = [{k: v for k, v in n.items() if k != "contract_errors"} for n in admin.get("/api/admin/nodes").json()]
+    contracts.validate("ws-server", {"t": "snapshot", "devices": nodes})

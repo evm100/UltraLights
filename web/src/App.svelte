@@ -19,7 +19,7 @@
 {:else if !session.user}
   <Login />
 {:else if section === "light"}
-  <Light dev={route.parts[1]} out={route.parts[2]} />
+  {#key route.parts.slice(1, 3).join("/")}<Light dev={route.parts[1]} out={route.parts[2]} />{/key}
 {:else}
   <header class="top">
     <a class="brand" href="#/" aria-label="Home">

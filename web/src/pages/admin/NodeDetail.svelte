@@ -7,6 +7,7 @@
   import { describe } from "../../lib/pins.js";
   import { flash, download, b64ToBytes, webSerialAvailable } from "../../lib/flash.js";
   import OutputMap from "./OutputMap.svelte";
+  import BridgeDetail from "./BridgeDetail.svelte";
 
   let { dev } = $props();
 
@@ -111,6 +112,8 @@
 
 {#if !n}
   {#if error}<div class="msg err">{error}</div>{:else}<p class="muted">Loading…</p>{/if}
+{:else if n.kind === "bridge"}
+  <BridgeDetail node={n} {homes} onchange={load} />
 {:else}
   <div class="row">
     <a href="#/admin/nodes" class="btn ghost sm">← Nodes</a>

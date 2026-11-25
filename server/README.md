@@ -19,6 +19,7 @@ Every payload going to or coming from a device is validated against `../contract
 | `ulserver/bridge.py` | MQTT bridge: validates inbound messages, stores them, fans them out to browsers |
 | `ulserver/control.py`, `realtime.py` | set / live / config / cmd; seq allocator; per-(device, output) coalescer at 20 Hz |
 | `ulserver/simdev.py`, `tools/simdevice.py` | Simulated node that speaks the device contract |
+| `../bridges/openrgb` | OpenRGB bridge agent (one PC = one combined device); created from **Nodes → Add PC** (`POST /api/admin/bridges`, `POST /api/admin/nodes/{id}/pairing`) |
 | `ulserver/cli.py` | `ulctl` |
 | `tools/dev.sh` | Dev stack |
 | `tools/smoke.py` | End-to-end check against a running server |
@@ -66,6 +67,7 @@ deploy/tests/container-smoke.sh    # install.sh in a throwaway ubuntu:26.04 cont
 The bridge integration test runs against the dev broker and is skipped when the broker isn't up. It covers:
 - enrollment of a simulated device, then MQTT over mTLS;
 - set, live, cmd and config;
+- the OpenRGB agent with simulated OpenRGB servers (parts, a source dropping out and returning);
 - the cross-device ACL;
 - rejection of a rogue CA.
 

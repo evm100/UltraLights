@@ -75,7 +75,12 @@ async def enroll(db: AsyncSession, pki: DevicePKI, s: Settings, req: Any) -> tup
     node = await db.get(Node, tok.node_id)
     if node is None or node.device_id != req["device_id"]:
         return _err(400, "device_mismatch", "token belongs to another device")
-    if node.chip != req["chip"]:
+    is_bridge = "bridge" in req
+    if is_bridge != (node.kind == "bridge"):
+        return _err(400, "chip_mismatch", f"{node.device_id} is a {node.kind}")
+    if is_bridge and node.bridge != req["bridge"]:
+        return _err(400, "chip_mismatch", f"{node.device_id} is a {node.bridge} bridge")
+    if not is_bridge and node.chip != req["chip"]:
         return _err(400, "chip_mismatch", f"node is {node.chip}")
     try:
         csr = pki.check_csr(req["csr"], req["device_id"])
@@ -108,8 +113,9 @@ async def enroll(db: AsyncSession, pki: DevicePKI, s: Settings, req: Any) -> tup
     tok.used_pubkey_sha256 = pub
     tok.cert_id = row.id
     node.enrolled_at = now
-    db.add(AuditLog(src=f"device:{node.device_id}", action="enrolled", target=node.device_id,
-                    detail={"serial": row.serial, "fw": req["fw"], "mac": req["mac"], "board_crc": req["board_crc"]}))
+    detail = {"serial": row.serial, "fw": req["fw"]}
+    detail.update({k: req[k] for k in ("mac", "board_crc", "bridge", "host") if k in req})
+    db.add(AuditLog(src=f"device:{node.device_id}", action="enrolled", target=node.device_id, detail=detail))
     await db.commit()
     if old:
         await write_crl(db, pki)

@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "id": "ul-4c2e19",
+  "bridge": "openrgb",
+  "fw": "0.1.0",
+  "host": "pve",
+  "combine": true,
+  "sources": [
+    { "key": "pve", "name": "Proxmox host", "address": "127.0.0.1:6742", "online": true,
+      "devices": ["Gigabyte X570 AORUS MASTER", "Corsair Dominator Platinum", "Corsair Dominator Platinum", "Corsair Lighting Node Pro"] },
+    { "key": "vm", "name": "GPU VM", "address": "192.168.1.41:6742", "online": false, "error": "connection refused" }
+  ],
+  "outputs": [
+    { "key": "gpu", "kind": "rgb", "name": "Graphics card", "caps": ["onoff", "level", "color"], "part": "gpu", "source": "vm", "leds": 1, "reachable": false },
+    { "key": "ram", "kind": "rgb", "name": "Memory", "caps": ["onoff", "level", "color"], "part": "ram", "source": "pve", "leds": 24, "reachable": true },
+    { "key": "board", "kind": "rgb", "name": "Motherboard", "caps": ["onoff", "level", "color"], "part": "board", "source": "pve", "leds": 8, "reachable": true },
+    { "key": "fans", "kind": "rgb", "name": "Fans", "caps": ["onoff", "level", "color"], "part": "fans", "source": "pve", "leds": 48, "reachable": true }
+  ]
+}

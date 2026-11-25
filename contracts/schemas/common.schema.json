@@ -22,6 +22,8 @@
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "mac": { "type": "string", "pattern": "^[0-9a-f]{2}(:[0-9a-f]{2}){5}$" },
     "pem_cert": { "type": "string", "pattern": "^-----BEGIN CERTIFICATE-----", "maxLength": 8192 },
-    "profile": { "type": "string", "pattern": "^c[36]-[a-z0-9-]{1,24}$", "description": "Firmware image: chip prefix plus feature set, e.g. c3-lights, c6-lights, c6-full." }
+    "profile": { "type": "string", "pattern": "^c[36]-[a-z0-9-]{1,24}$", "description": "Firmware image: chip prefix plus feature set, e.g. c3-lights, c6-lights, c6-full." },
+    "bridge": { "enum": ["openrgb"], "description": "Which bridge agent speaks for a bridged device." },
+    "part": { "enum": ["gpu", "ram", "board", "fans", "cooler", "strip", "keyboard", "mouse", "headset", "case", "other"], "description": "What a bridged output physically is, for icons and default names." }
   }
 }

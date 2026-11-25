@@ -171,11 +171,16 @@ class Bridge:
         if doc["id"] != node.device_id:
             self._contract_error(node.device_id, "info", f"info.id {doc['id']} does not match topic")
             return
-        if doc["chip"] != node.chip:
+        is_bridge = "bridge" in doc
+        if is_bridge != (node.kind == "bridge"):
+            self._contract_error(node.device_id, "info", f"device sent {'bridge' if is_bridge else 'node'} info, it is a {node.kind}")
+            return
+        if not is_bridge and doc["chip"] != node.chip:
             self._contract_error(node.device_id, "info", f"device reports {doc['chip']}, node is {node.chip}")
         node.info = doc
         node.last_seen = now
         existing = {o.key: o for o in (await db.execute(select(Output).where(Output.node_id == node.id))).scalars()}
+        meta_keys = ("part", "source", "leds", "reachable") if is_bridge else ("cct_range", "pixels", "max_level", "channels")
         seen = set()
         for od in doc["outputs"]:
             seen.add(od["key"])
@@ -185,9 +190,16 @@ class Bridge:
                 db.add(o)
             o.kind = od["kind"]
             o.caps = od["caps"]
+            prev = o.meta or {}
+            meta = {k: od[k] for k in meta_keys if k in od}
             if od.get("name"):
-                o.name = od["name"]
-            o.meta = {k: od[k] for k in ("cct_range", "pixels", "max_level", "channels") if k in od}
+                # A node's names come from the server's own config, so they always win. A bridge names
+                # its parts from the agent's config; an admin rename here sticks until the agent's name changes.
+                if not is_bridge or not o.name or o.name == prev.get("info_name") or od["name"] != prev.get("info_name"):
+                    o.name = od["name"]
+                if is_bridge:
+                    meta["info_name"] = od["name"]
+            o.meta = meta
         stale = [k for k in existing if k not in seen]
         if stale:
             await db.execute(delete(Output).where(Output.node_id == node.id, Output.key.in_(stale)))

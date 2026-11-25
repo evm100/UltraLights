@@ -150,6 +150,11 @@ details.more > .body p, details.more > .body li { max-width: 68ch; }
 .figure { display: grid; gap: 8px; min-width: 0; }
 .figure .canvas { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
 .figcap { font-size: 0.85rem; color: var(--muted); max-width: 72ch; }
+.pc-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; max-width: 340px; padding: 12px; border-radius: var(--radius); background: #1d1916; }
+.pc-pick span { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 2px; border-radius: 14px; font-size: 0.72rem; font-weight: 600; color: #b9b1a7; border: 1px solid transparent; }
+.pc-pick span.on { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.14); color: #f4efe8; }
+.pc-pick span.gone i { border-style: dashed; opacity: 0.55; }
+.pc-pick i { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 18px; background: rgba(0,0,0,0.35); border: 1.5px solid rgba(255,255,255,0.12); }
 svg text { font-family: var(--f-body); }
 .d-box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
 .d-zone { fill: var(--sunk); stroke: var(--line); stroke-width: 1; stroke-dasharray: 5 4; }
@@ -550,7 +555,8 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
             </details>
             <details class="more"><summary>Bridge agents <span class="muted small">OpenRGB now, others later</span></summary>
               <div class="body">
-                <p>A bridge is a small program that sits next to a foreign system and translates it into the device contract. The OpenRGB agent on your PC publishes one device per OpenRGB controller, with <code>color</code> and <code>argb</code> capabilities. The server and UI can't tell it apart from a C6 node.</p>
+                <p>A bridge is a small program that sits next to a foreign system and translates it into the device contract. It enrolls with a one-time code and connects over mutual TLS like a node, and its info message uses the contract's bridge branch: parts instead of board channels, and no config topic.</p>
+                <p><span class="tag new">Decided</span> The OpenRGB agent (<code>bridges/openrgb</code>) publishes <b>one device per PC</b>, with one <code>rgb</code> output per part (GPU, memory, board, fans) and <code>combine: true</code>, so the UI shows the PC as one light (see <a href="#pc-light">A PC is one light</a>). It runs on the Proxmox host and drives two OpenRGB SDK servers, because GPU passthrough splits the hardware between the host and the VM. An earlier draft had one device per OpenRGB controller. That would have put four RAM sticks and a fan hub on the home screen as separate lights.</p>
                 <p>A Matter bridge would be the same idea in reverse: it exposes UltraLights devices to Apple or Google Home.</p>
               </div>
             </details>
@@ -972,6 +978,50 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
             <p class="figcap">Report a problem: reachable from every device screen and the help menu.</p>
           </div>
         </div>
+        <details class="more" id="pc-light"><summary>A PC is one light <span class="muted small">OpenRGB bridge, decided 2026-11-25</span></summary>
+          <div class="body">
+            <p>GPU passthrough splits the PC's lighting between two machines. The VM owns the graphics card and the Proxmox host keeps the memory, motherboard and fans. Each machine runs <code>openrgb --server</code> for the hardware it can see. One agent on the host talks to both SDK servers and appears to UltraLights as a single device. The host is the right place for it because it is up whenever the PC is, while the VM may not be.</p>
+            <div class="figure">
+              <div class="canvas">
+                <svg viewBox="0 0 780 250" width="780" height="250" role="img" aria-label="OpenRGB bridge: an agent on the Proxmox host drives the host's and the GPU VM's OpenRGB servers and publishes one device to the server">
+                  <rect x="12" y="12" width="420" height="226" rx="12" class="d-zone"/>
+                  <text x="28" y="36" class="d-title">Proxmox host</text>
+                  <rect x="28" y="52" width="170" height="58" rx="8" class="d-box"/><text x="42" y="76" class="d-text">ul-openrgb agent</text><text x="42" y="94" class="d-sub">one identity, one MQTT link</text>
+                  <rect x="28" y="150" width="170" height="70" rx="8" class="d-box"/><text x="42" y="174" class="d-text">openrgb --server :6742</text><text x="42" y="192" class="d-sub">SMBus / USB</text><text x="42" y="208" class="d-sub">RAM ×4 · board · fan hub</text>
+                  <path d="M113 110 L113 148" class="d-line" marker-end="url(#ah)"/><text x="120" y="134" class="d-lbl">SDK</text>
+                  <rect x="250" y="150" width="166" height="70" rx="8" class="d-item"/><text x="262" y="174" class="d-text">parts: ram, board, fans</text><text x="262" y="192" class="d-sub">reachable while this</text><text x="262" y="208" class="d-sub">server answers</text>
+                  <rect x="470" y="130" width="296" height="108" rx="12" class="d-zone"/>
+                  <text x="486" y="154" class="d-title">GPU VM (passthrough)</text>
+                  <rect x="486" y="164" width="170" height="60" rx="8" class="d-box"/><text x="500" y="188" class="d-text">openrgb --server :6742</text><text x="500" y="206" class="d-sub">I2C · RTX 4080 → part gpu</text>
+                  <path d="M198 100 L451 100 L451 194 L484 194" class="d-line" marker-end="url(#ah)"/><text x="262" y="94" class="d-lbl">SDK over the LAN</text>
+                  <rect x="560" y="16" width="206" height="62" rx="8" class="d-box"/><text x="574" y="40" class="d-text">lights.evm100.org</text><text x="574" y="58" class="d-sub">one device, combine: true</text>
+                  <path d="M198 66 L558 46" class="d-line d-warm" marker-end="url(#ahw)"/><text x="330" y="50" class="d-lbl">MQTT, mutual TLS</text>
+                </svg>
+              </div>
+              <p class="figcap">If the VM is off, only the GPU part shows as unreachable. The agent keeps its desired state and re-applies it when the VM's OpenRGB returns. Parts come from <code>/etc/ul-openrgb/agent.toml</code>: devices are matched by OpenRGB type or name, so the four DIMMs are one part.</p>
+            </div>
+            <div class="grid2">
+              <div class="stack">
+                <h4>On the light screen</h4>
+                <p class="small">The home screen shows one Desktop tile, with a dot per part in that part's color. Its light screen is the usual one: ON pill, big percentage, tall brightness slider, then COLOR with hue and vibrancy. Under the two color sliders an <b>Applies to</b> row picks what the controls change: All, or a single part. The subtitle names the target (<i>All 4 parts</i>, <i>Graphics card</i>) so it's always clear what the big slider will move.</p>
+                <div class="pc-pick" aria-hidden="true">
+                  <span class="on"><i style="background:conic-gradient(#ff28c8,#3c78ff,#8c3cff,#ff28c8)"></i>All</span>
+                  <span class="gone"><i style="color:#ff28c8">▭</i>GPU</span><span><i style="color:#3c78ff">▤</i>Memory</span>
+                  <span><i style="color:#8a8178">▣</i>Board</span><span><i style="color:#8c3cff">✺</i>Fans</span>
+                </div>
+              </div>
+              <div class="stack">
+                <h4>Why this shape</h4>
+                <ul class="clean small">
+                  <li><b>Equal columns, not a select box.</b> They show every part's color at once and switch in one tap, and five or six fit a phone. More wrap to a second row.</li>
+                  <li><b>Each part is a real output</b> with its own retained set, state and seq. Per-part control is part of the contract, with no special case. "All" sends the same change to every part.</li>
+                  <li><b>All mode</b> shows the first lit part's color and the highest lit level. The All swatch blends the parts' colors when they differ.</li>
+                  <li><b>No OpenRGB profiles.</b> Scenes will cover saved looks for every light, so the PC doesn't need its own preset system. Hardware effects (rainbow, breathing) can come later through the <code>effect</code> capability.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </details>
         <details class="more"><summary>Interface rules <span class="muted small">to keep it this simple</span></summary>
           <div class="body">
             <ul class="clean">
@@ -980,6 +1030,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
               <li>The ON pill and the brightness bar are separate: turning off remembers the level.</li>
               <li>Everything a person can do by tapping, the AI can do through the same API, and both show up in the activity log.</li>
               <li>Phone first. On desktop the same screens sit side by side (rooms list beside the selected light).</li>
+              <li>An object with several lit parts (a PC) is one light. Its parts are picked under the color sliders and never appear as separate tiles.</li>
             </ul>
           </div>
         </details>
@@ -1422,7 +1473,7 @@ docs/        this blueprint, decisions</code></pre>
               <li><div><b>Bench, then cutover.</b> A reflashed legacy C3 node, created from a blank builder, enrolls with the server (dev server first, then the deployed one after the weekend cutover). Its white channels and strip (solid color) are controlled live from <code>lights.evm100.org</code> with the light control screen.</div></li>
               <li><div><b>Homes and people.</b> Roles, guest grants, rooms list, scenes, schedules, relays.</div></li>
               <li><div><b>Fleet.</b> Admin panel, health, build worker, OTA, problem reports.</div></li>
-              <li><div><b>Color and ARGB.</b> RGB, RGBW, RGB+CCT, building blocks, clips, OpenRGB bridge, solenoids.</div></li>
+              <li><div><b>Color and ARGB.</b> RGB, RGBW, RGB+CCT, building blocks, clips, solenoids. <span class="tag keep">Done early</span> The OpenRGB bridge: one PC, one light.</div></li>
               <li><div><b>Fabrication.</b> PCB bring-up page, self-test, power calibration profiles, secure boot on production boards.</div></li>
               <li><div><b>Sensors and larger installs.</b> Motion inputs feeding the scheduler; ESP-NOW mesh and gateway for venues.</div></li>
               <li><div><b>AI.</b> Text to scene and schedules, then room layout and image to scene.</div></li>

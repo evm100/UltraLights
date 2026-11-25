@@ -54,6 +54,11 @@ def _ctl(request: Request) -> Control:
     return request.app.state.control
 
 
+def _require_board_node(n: Node) -> None:
+    if n.kind != "node":
+        raise HTTPException(422, {"error": "not_a_board", "detail": f"{n.device_id} is a {n.bridge} bridge; it has no board"})
+
+
 # ---------------------------------------------------------------- boards
 class BoardIn(BaseModel):
     board: dict[str, Any]
@@ -163,12 +168,13 @@ async def node_detail(dev: str, request: Request, db: AsyncSession = Depends(get
     toks = (await db.execute(select(EnrollToken).where(EnrollToken.node_id == n.id).order_by(EnrollToken.id.desc()))).scalars().all()
     certs = (await db.execute(select(Certificate).where(Certificate.node_id == n.id).order_by(Certificate.id.desc()))).scalars().all()
     v = device_view(n, list(outs), admin=True)
+    is_node = n.kind == "node"
     v.update({
         "board": n.board,
         "config": n.config,
-        "default_outputs": contracts.default_outputs(n.board),
+        "default_outputs": contracts.default_outputs(n.board) if is_node else [],
         "info": n.info,
-        "checks": contracts.check_board(n.board),
+        "checks": contracts.check_board(n.board) if is_node else {"errors": [], "warnings": []},
         "tokens": [_token_view(t, n.device_id) for t in toks],
         "certs": [_cert_view(c) for c in certs],
         "contract_errors": list(request.app.state.bridge.contract_errors.get(dev, [])),
@@ -189,6 +195,7 @@ async def update_node(dev: str, body: NodePatch, request: Request, auth: Auth = 
             raise HTTPException(422, "no such home")
         n.home_id = body.home_id
     if body.board is not None:
+        _require_board_node(n)
         _require_clean_board(body.board)
         if body.board["chip"] != n.chip and n.enrolled_at is not None:
             raise HTTPException(422, "chip can't change on an enrolled node; create a new node instead")
@@ -223,6 +230,47 @@ async def delete_node(dev: str, request: Request, auth: Auth = Depends(require_a
     return {"ok": True}
 
 
+# ---------------------------------------------------------------- bridges
+class BridgeIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    bridge: str = Field(pattern="^openrgb$")
+    home_id: int | None = None
+
+
+@router.post("/bridges")
+async def create_bridge(body: BridgeIn, request: Request, auth: Auth = Depends(require_admin),
+                        db: AsyncSession = Depends(get_db)) -> dict:
+    """A bridged device (the OpenRGB agent on a PC). It has no board: the agent enrolls with the
+    returned one-time token and then describes its parts in info."""
+    if body.home_id is not None and await db.get(Home, body.home_id) is None:
+        raise HTTPException(422, "no such home")
+    n = Node(device_id=await _new_device_id(db), name=body.name, kind="bridge", bridge=body.bridge, chip=None,
+             board=None, home_id=body.home_id, config_rev=0)
+    db.add(n)
+    await db.flush()
+    db.add(AuditLog(src=_src(auth), action="bridge_created", target=n.device_id, detail={"bridge": body.bridge}))
+    pairing = await _pairing(request, db, n, auth)
+    return {"id": n.device_id, **pairing}
+
+
+async def _pairing(request: Request, db: AsyncSession, n: Node, auth: Auth) -> dict:
+    s = request.app.state.settings
+    tok = await issue_token(db, n, auth.user.id, s.token_days)
+    await db.commit()
+    return {"token": tok, "server": s.public_host,
+            "token_expires": (dt.datetime.now(UTC) + dt.timedelta(days=s.token_days)).isoformat()}
+
+
+@router.post("/nodes/{dev}/pairing")
+async def bridge_pairing(dev: str, request: Request, auth: Auth = Depends(require_admin),
+                         db: AsyncSession = Depends(get_db)) -> dict:
+    """New one-time enrollment token for a bridge agent (re-installs, moved host, lost key)."""
+    n = await _node(db, dev)
+    if n.kind != "bridge":
+        raise HTTPException(422, {"error": "not_a_bridge", "detail": "nodes get their token in the ul_board blob"})
+    return {"id": n.device_id, **await _pairing(request, db, n, auth)}
+
+
 # ---------------------------------------------------------------- provisioning
 class ProvisionIn(BaseModel):
     token: bool = True
@@ -241,6 +289,7 @@ async def provision(dev: str, body: ProvisionIn, request: Request, auth: Auth = 
     unless token=false (descriptor-only rewrite of an enrolled node)."""
     s = request.app.state.settings
     n = await _node(db, dev)
+    _require_board_node(n)
     _require_clean_board(n.board)
     prov: dict[str, Any] = {"device_id": n.device_id, "server": body.server or s.public_host}
     if s.mqtt_port != 8883:
@@ -296,6 +345,7 @@ class ConfigIn(BaseModel):
 async def put_config(dev: str, body: ConfigIn, request: Request, auth: Auth = Depends(require_admin),
                      db: AsyncSession = Depends(get_db)) -> dict:
     n = await _node(db, dev)
+    _require_board_node(n)
     rev = n.config_rev + 1
     if body.outputs is None:
         cfg = None

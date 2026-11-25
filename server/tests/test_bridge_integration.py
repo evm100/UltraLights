@@ -21,6 +21,7 @@ from ulserver.pki import DevicePKI, cert_pem, init_dev_tls, key_pem, new_key
 from ulserver.simdev import SimDevice
 
 DEV = SERVER / ".dev"
+AGENT = SERVER.parent / "bridges" / "openrgb"
 BOARD = json.loads((CONTRACTS / "examples/board/c3-bench.json").read_text())
 
 
@@ -154,6 +155,109 @@ async def test_bridge_end_to_end(migrated_db, tmp_path):
         # Clear every retained topic this test created.
         for t in ["config", "status", "info"] + [f"set/{k}" for k in ("warm", "cool", "strip", "relay", "main", "fan")] + \
                  [f"state/{k}" for k in ("warm", "cool", "strip", "relay", "main", "fan")]:
+            await bridge.publish(f"ul/v1/d/{dev}/{t}", None, schema=None, qos=1, retain=True)
+        bridge.stop()
+        btask.cancel()
+        await asyncio.gather(btask, return_exceptions=True)
+        await dbm.dispose()
+
+
+async def test_openrgb_agent_end_to_end(migrated_db, tmp_path):
+    """The real OpenRGB agent (simulated OpenRGB servers) against the bridge and the dev broker."""
+    import sys
+    sys.path.insert(0, str(AGENT))
+    from ul_openrgb import config as agent_config
+    from ul_openrgb.agent import Agent
+    from ul_openrgb.sources import SimBackend
+
+    s = Settings(database_url=get_settings().database_url, mqtt_host="127.0.0.1", mqtt_port=8883,
+                 mqtt_check_hostname=False, mqtt_ca_file=str(DEV / "tls" / "tls-ca.crt"), pki_dir=DEV / "pki")
+    devpki = DevicePKI(DEV / "pki")
+    dev = f"ul-{secrets.token_hex(3)}"
+    sm = dbm.sessionmaker()
+    async with sm() as db:
+        db.add(Node(device_id=dev, name="Desktop", kind="bridge", bridge="openrgb", chip=None, board=None))
+        await db.commit()
+    hub = Hub()
+    bridge = Bridge(s, hub, sm)
+    control = Control(bridge.publish, sm, live_interval=0.02)
+    control.cmd_waiters = bridge.cmd_waiters
+    bridge.control = control
+    btask = asyncio.create_task(bridge.run())
+    await asyncio.wait_for(bridge.connected.wait(), 5)
+
+    state = tmp_path / "agent"
+    state.mkdir()
+    cert, key = write_identity(state, devpki, dev)
+    cert.rename(state / "device.crt")
+    key.rename(state / "device.key")
+    cfg = agent_config.parse({
+        "server": "ul-dev.lan", "connect": "127.0.0.1", "device_id": dev, "server_ca": str(DEV / "tls" / "tls-ca.crt"),
+        "state_dir": str(state),
+        "sources": {"pve": {"host": "sim", "name": "Proxmox host"}, "vm": {"host": "sim", "name": "GPU VM"}},
+        "parts": {"gpu": {"name": "Graphics card", "source": "vm", "match": ["type:gpu"]},
+                  "ram": {"name": "Memory", "source": "pve", "match": ["type:dram"]},
+                  "fans": {"name": "Fans", "source": "pve", "match": ["name:Lighting Node"]}}})
+    pve, vm = SimBackend(), SimBackend()
+    agent = Agent(cfg, backends={"pve": pve, "vm": vm})
+    atask = asyncio.create_task(agent.run())
+
+    async def outputs():
+        async with sm() as db:
+            n = (await db.execute(Node.__table__.select().where(Node.device_id == dev))).first()
+            rows = (await db.execute(Output.__table__.select().where(Output.node_id == n.id))).all()
+            return n, {r.key: r for r in rows}
+    try:
+        async def reachable():
+            n, o = await outputs()
+            return n.online and set(o) == {"gpu", "ram", "fans"} and all(r.meta.get("reachable") for r in o.values())
+        await until(reachable, 8, "agent online with all parts reachable")
+        n, o = await outputs()
+        assert n.info["combine"] is True and o["fans"].meta["part"] == "fans" and o["ram"].kind == "rgb"
+        assert o["gpu"].name == "Graphics card"
+
+        # set: each part is its own output with its own seq; the agent draws it on the right source.
+        await control.set(dev, "ram", {"on": True, "level": 1.0, "color": [255, 0, 0], "fade_ms": 0}, "ui:1")
+        await until(lambda: pve.colors.get("Sim DRAM") == (255, 0, 0), what="ram drawn")
+        await control.set(dev, "gpu", {"on": True, "level": 1.0, "color": [0, 0, 255], "fade_ms": 0}, "ui:1")
+        await until(lambda: vm.colors.get("Sim GPU") == (0, 0, 255), what="gpu drawn")
+        assert pve.colors.get("Sim GPU") is None, "the GPU on the other source is not part of any output there"
+
+        async def actual(key, **want):
+            _, o = await outputs()
+            a = o[key].actual or {}
+            return all(a.get(k) == v for k, v in want.items())
+        await until(lambda: actual("gpu", color=[0, 0, 255], on=True), what="gpu state stored")
+
+        # live: partial updates stream; the final state lands.
+        for lvl in (0.2, 0.4, 0.6):
+            control.live(dev, "ram", {"level": lvl}, "ui:1")
+            await asyncio.sleep(0.03)
+        await until(lambda: actual("ram", level=0.6), what="live level reported")
+
+        # The VM goes down: only the GPU becomes unreachable, and gets its state back on return.
+        vm.up = False
+        await control.set(dev, "gpu", {"color": [0, 255, 0]}, "ui:1")
+
+        async def gpu_reach(v):
+            _, o = await outputs()
+            return o["gpu"].meta.get("reachable") is v and o["ram"].meta.get("reachable") is True
+        await until(lambda: gpu_reach(False), 6, "gpu unreachable")
+        vm.colors.clear()
+        vm.up = True
+        await until(lambda: gpu_reach(True), 8, "gpu back")
+        await until(lambda: vm.colors.get("Sim GPU") == (0, 255, 0), what="gpu re-applied after its source returned")
+
+        # Commands: identify works, a node-only op is refused.
+        r = await control.cmd(dev, "identify", {"ms": 1000, "out": "fans"}, "admin:1", wait=3)
+        assert r["result"]["ok"] is True
+        r = await control.cmd(dev, "wifi_reset", {}, "admin:1", wait=3)
+        assert r["result"] == {"type": "cmd_result", "cmd_id": r["id"], "ok": False, "error": "unsupported"}
+        assert not bridge.contract_errors.get(dev), bridge.contract_errors.get(dev)
+    finally:
+        agent.stop()
+        await asyncio.wait_for(atask, 5)
+        for t in ["status", "info"] + [f"set/{k}" for k in ("gpu", "ram", "fans")] + [f"state/{k}" for k in ("gpu", "ram", "fans")]:
             await bridge.publish(f"ul/v1/d/{dev}/{t}", None, schema=None, qos=1, retain=True)
         bridge.stop()
         btask.cancel()

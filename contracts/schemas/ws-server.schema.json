@@ -22,7 +22,9 @@
       "properties": {
         "id": { "$ref": "common.schema.json#/$defs/device_id" },
         "name": { "type": "string" },
-        "chip": { "$ref": "common.schema.json#/$defs/chip" },
+        "chip": { "oneOf": [ { "$ref": "common.schema.json#/$defs/chip" }, { "type": "null" } ], "description": "null for a bridged device." },
+        "kind": { "enum": ["node", "bridge"] },
+        "combined": { "type": "boolean", "description": "Show the outputs as one light with a part picker (a bridged PC)." },
         "home_id": { "type": ["integer", "null"] },
         "online": { "type": "boolean" },
         "outputs": {
@@ -37,7 +39,7 @@
               "name": { "type": "string" },
               "caps": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/cap" } },
               "room_id": { "type": ["integer", "null"] },
-              "meta": { "type": "object", "description": "cct_range, pixels, max_level, channels from info." },
+              "meta": { "type": "object", "description": "cct_range, pixels, max_level, channels from a node's info; part, source, leds, reachable from a bridge's." },
               "state": { "oneOf": [ { "type": "null" }, { "$ref": "state.schema.json" } ] },
               "desired": { "oneOf": [ { "type": "null" }, { "$ref": "set.schema.json" } ] }
             }
@@ -48,6 +50,9 @@
           "description": "Admins only.",
           "properties": {
             "board": { "type": ["string", "null"] },
+            "bridge": { "type": ["string", "null"] },
+            "host": { "type": ["string", "null"] },
+            "sources": { "type": "array" },
             "fw": { "type": ["string", "null"] },
             "profile": { "type": ["string", "null"] },
             "board_crc": { "type": ["string", "null"] },
