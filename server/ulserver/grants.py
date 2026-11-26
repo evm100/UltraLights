@@ -9,7 +9,8 @@ from dataclasses import dataclass, replace
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-LIGHT_KINDS = frozenset({"white", "cct", "rgb", "rgbw", "rgbcct", "argb"})
+# cycle: lights with their own controller, stepped by a servo pressing its button.
+LIGHT_KINDS = frozenset({"white", "cct", "rgb", "rgbw", "rgbcct", "argb", "cycle"})
 GRANT_KIND = {**{k: "light" for k in LIGHT_KINDS}, "relay": "switch", "solenoid": "solenoid", "motion": "sensor"}
 UTC = dt.timezone.utc
 

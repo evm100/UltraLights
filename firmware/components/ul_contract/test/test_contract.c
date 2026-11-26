@@ -118,6 +118,8 @@ static void roundtrip_state(const char *path, const char *name)
     TEST_ASSERT_EQUAL_UINT16(a.cct, b.cct);
     TEST_ASSERT_EQUAL_UINT8_ARRAY(a.color, b.color, 3);
     TEST_ASSERT_EQUAL_STRING(a.effect, b.effect);
+    TEST_ASSERT_EQUAL_STRING(a.mode, b.mode);
+    TEST_ASSERT_EQUAL_STRING(a.at, b.at);
     TEST_ASSERT_EQUAL_STRING(a.src, b.src);
     TEST_ASSERT_TRUE(a.seq == b.seq);
     free(enc);
@@ -204,6 +206,19 @@ static void test_cmd_fields(void)
     TEST_ASSERT_EQUAL_STRING("d6a06165d26385fdd0a039479b1f4c08e3a0d6664c59edfd060b938971d95465", c.sha256);
     TEST_ASSERT_EQUAL_STRING("0.1.0", c.version);
     free(j);
+    j = ut_read(EX("cmd/sync.json"), &n);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, ul_cmd_decode(j, n, &c, errbuf, sizeof(errbuf)), errbuf);
+    TEST_ASSERT_EQUAL(UL_OP_SYNC, c.op);
+    TEST_ASSERT_EQUAL_STRING("xmas", c.out);
+    TEST_ASSERT_EQUAL_STRING("color", c.at);
+    free(j);
+    const char *off = "{\"id\":\"abcdefgh\",\"op\":\"sync\",\"out\":\"xmas\",\"at\":\"off\"}";
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, ul_cmd_decode(off, strlen(off), &c, errbuf, sizeof(errbuf)), errbuf);
+    TEST_ASSERT_EQUAL_STRING("off", c.at);
+    /* A set can't select "off" as a mode: off is on: false. */
+    const char *bad = "{\"on\":true,\"mode\":\"off\",\"seq\":1}";
+    ul_state_msg_t m;
+    TEST_ASSERT_EQUAL_INT(-1, ul_set_decode(bad, strlen(bad), &m, errbuf, sizeof(errbuf)));
 }
 
 /* ---------- encoders reproduce the examples ---------- */
@@ -259,6 +274,49 @@ static void test_info_encode(void)
     ut_emit("info", "c3-bench-cct", enc);
     free(enc);
     free(j);
+
+    /* A servo board: its cycle output carries the channel's modes. */
+    j = ut_read(EX("board/c3-xmas-servo.json"), &n);
+    cJSON *root = cJSON_Parse(j);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, ul_board_from_cjson(root, &b, errbuf, sizeof(errbuf)), errbuf);
+    cJSON_Delete(root);
+    free(j);
+    TEST_ASSERT_EQUAL(UL_CH_SERVO, b.ch[0].type);
+    TEST_ASSERT_EQUAL_UINT8(62, b.ch[0].press_deg);
+    TEST_ASSERT_EQUAL_UINT8(95, b.ch[0].rest_deg);
+    TEST_ASSERT_EQUAL_UINT16(250, b.ch[0].hold_ms);
+    TEST_ASSERT_EQUAL_UINT16(400, b.ch[0].release_ms);
+    TEST_ASSERT_EQUAL_UINT8(3, b.ch[0].n_modes);
+    TEST_ASSERT_EQUAL_STRING("alternating", b.ch[0].modes[2]);
+    ul_mapping_default(&b, &c);
+    in.config_rev = 0;
+    in.config_error = NULL;
+    enc = ul_info_encode(&in);
+    ut_emit("info", "c3-xmas-servo", enc);
+    TEST_ASSERT_NOT_NULL(strstr(enc, "\"kind\":\"cycle\""));
+    TEST_ASSERT_NOT_NULL(strstr(enc, "\"caps\":[\"onoff\",\"mode\"]"));
+    TEST_ASSERT_NOT_NULL(strstr(enc, "\"modes\":[\"white\",\"color\",\"alternating\"]"));
+    free(enc);
+
+    /* Defaults: release_ms 400, one mode "on". */
+    const char *min = "{\"v\":1,\"chip\":\"esp32c3\",\"board\":\"x\",\"channels\":[{\"id\":\"s\",\"type\":\"servo\","
+                      "\"gpio\":4,\"press_deg\":10,\"rest_deg\":40,\"hold_ms\":100}]}";
+    root = cJSON_Parse(min);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, ul_board_from_cjson(root, &b, errbuf, sizeof(errbuf)), errbuf);
+    cJSON_Delete(root);
+    TEST_ASSERT_EQUAL_UINT16(400, b.ch[0].release_ms);
+    TEST_ASSERT_EQUAL_UINT8(1, b.ch[0].n_modes);
+    TEST_ASSERT_EQUAL_STRING("on", b.ch[0].modes[0]);
+    TEST_ASSERT_EQUAL_INT(0, ul_cycle_index(&b.ch[0], "off"));
+    TEST_ASSERT_EQUAL_INT(1, ul_cycle_index(&b.ch[0], "on"));
+    TEST_ASSERT_EQUAL_INT(-1, ul_cycle_index(&b.ch[0], "white"));
+    TEST_ASSERT_EQUAL_STRING("off", ul_cycle_name(&b.ch[0], 2));
+    /* A board round-trips through its encoder. */
+    cJSON *bj = ul_board_to_cjson(&b);
+    static ul_board_desc_t b2;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, ul_board_from_cjson(bj, &b2, errbuf, sizeof(errbuf)), errbuf);
+    cJSON_Delete(bj);
+    TEST_ASSERT_EQUAL_MEMORY(&b.ch[0], &b2.ch[0], sizeof(b.ch[0]));
 }
 
 static void test_status_encode(void)

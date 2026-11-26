@@ -39,7 +39,8 @@
         "cct": { "$ref": "common.schema.json#/$defs/kelvin" },
         "color": { "$ref": "common.schema.json#/$defs/rgb" },
         "white": { "$ref": "common.schema.json#/$defs/level" },
-        "effect": { "$ref": "set.schema.json#/$defs/effect" }
+        "effect": { "$ref": "set.schema.json#/$defs/effect" },
+        "mode": { "$ref": "set.schema.json#/$defs/mode" }
       }
     }
   }

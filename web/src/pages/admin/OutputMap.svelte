@@ -7,9 +7,10 @@
   const ROLES = {
     white: ["w"], cct: ["warm", "cool"], rgb: ["r", "g", "b"], rgbw: ["r", "g", "b", "w"],
     rgbcct: ["r", "g", "b", "warm", "cool"], argb: ["data"], relay: ["coil"], solenoid: ["coil"], motion: ["in"],
+    cycle: ["press"],
   };
-  const TYPE_FOR_ROLE = { w: "pwm", warm: "pwm", cool: "pwm", r: "pwm", g: "pwm", b: "pwm", data: "argb", coil: "switch", in: "motion" };
-  const KIND_NAMES = { white: "White", cct: "Dual white (CCT)", rgb: "RGB", rgbw: "RGBW", rgbcct: "RGB + CCT", argb: "ARGB strip", relay: "Relay", solenoid: "Solenoid", motion: "Motion" };
+  const TYPE_FOR_ROLE = { w: "pwm", warm: "pwm", cool: "pwm", r: "pwm", g: "pwm", b: "pwm", data: "argb", coil: "switch", in: "motion", press: "servo" };
+  const KIND_NAMES = { white: "White", cct: "Dual white (CCT)", rgb: "RGB", rgbw: "RGBW", rgbcct: "RGB + CCT", argb: "ARGB strip", relay: "Relay", solenoid: "Solenoid", motion: "Motion", cycle: "Button cycler (servo)" };
 
   const clone = (x) => JSON.parse(JSON.stringify(x));
   let editing = $state(false);
@@ -88,7 +89,7 @@
                 {#each rooms as r}<option value={r.id}>{r.name}</option>{/each}
               </select>
             </td>
-            <td class="small">{o.state ? (o.state.on ? `on${o.state.level !== undefined ? ` ${Math.round(o.state.level * 100)}%` : ""}` : "off") : "–"}
+            <td class="small">{o.state ? (o.state.on ? `on${o.state.level !== undefined ? ` ${Math.round(o.state.level * 100)}%` : ""}${o.state.mode ? ` · ${o.state.mode}` : ""}` : "off") : "–"}{o.state?.at && o.state.at !== (o.state.on ? o.state.mode : "off") ? ` (at ${o.state.at})` : ""}
               <a href={`#/light/${node.id}/${o.key}`} class="small">control</a></td>
           </tr>
         {:else}

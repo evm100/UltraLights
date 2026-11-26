@@ -124,14 +124,16 @@ void ul_board_check_pins(const ul_board_desc_t *b, ul_pin_report_t *r)
             }
         }
         CLAIM(ch->gpio, false);
-        if (ch->type == UL_CH_PWM) {
+        if (ch->type == UL_CH_PWM || ch->type == UL_CH_SERVO) {
+            /* Servos share LEDC with PWM: a channel each, and one 50 Hz timer between them. */
+            uint32_t hz = ch->type == UL_CH_SERVO ? UL_SERVO_HZ : ch->hz;
             pwm++;
             bool seen = false;
             for (int k = 0; k < n_freqs; k++) {
-                seen |= freqs[k] == ch->hz;
+                seen |= freqs[k] == hz;
             }
             if (!seen) {
-                freqs[n_freqs++] = ch->hz;
+                freqs[n_freqs++] = hz;
             }
         } else if (ch->type == UL_CH_ARGB) {
             argb++;

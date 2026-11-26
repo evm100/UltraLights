@@ -4,6 +4,7 @@
   import { sendSet } from "../lib/live.svelte.js";
   import { kelvinToRgb, css } from "../lib/color.js";
   import { stateOf, reachable } from "../lib/parts.js";
+  import { cycleStatus } from "../lib/cycle.js";
 
   let { items } = $props();
 
@@ -34,7 +35,7 @@
       <div class="row" style="justify-content:space-between;align-items:flex-start">
         <div class="stack" style="gap:2px">
           <strong>{x.name}</strong>
-          <span class="small muted">{!x.dev.online ? "Offline" : x.o?.kind === "solenoid" ? (s.on ? "Open" : "Closed") : s.on ? `On ${pct(x)}` : "Off"}</span>
+          <span class="small muted">{!x.dev.online ? "Offline" : x.o?.kind === "solenoid" ? (s.on ? "Open" : "Closed") : x.o?.kind === "cycle" ? cycleStatus(x.o, s) : s.on ? `On ${pct(x)}` : "Off"}</span>
         </div>
         {#if x.caps.includes("onoff") && x.control}
           <button class="pw" class:on={s.on} aria-label={s.on ? "Turn off" : "Turn on"} onclick={(e) => toggle(e, x)} disabled={!x.dev.online}>

@@ -63,7 +63,15 @@ Broker ACL: a device may write only its own `info`, `status`, `state/+`, `evt` a
 
 ### Default mapping
 
-With no retained `config`, the device builds one output per channel, keyed by the channel id: `pwm` becomes `white`, `argb` becomes `argb`, `switch` becomes `relay`, `motion` becomes `motion`. A fresh node is therefore controllable before anyone configures it.
+With no retained `config`, the device builds one output per channel, keyed by the channel id: `pwm` becomes `white`, `argb` becomes `argb`, `switch` becomes `relay`, `motion` becomes `motion`, `servo` becomes `cycle`. A fresh node is therefore controllable before anyone configures it.
+
+### Cycle outputs (a servo pressing an appliance's button)
+
+Some lights have their own controller that steps through modes on a button press and can't be opened. A `servo` channel presses that button; its board entry holds the angles, the hold and release times, and the appliance's `modes` in button order (off is implicit, after the last). The `cycle` output on top of it has caps `onoff` and `mode`.
+
+- `set` carries `on` and `mode`. `mode` is kept while off, so `{"on": true}` alone returns to the last mode (the tile power button relies on this). The device works out how many presses get it from where the appliance is to `on ? mode : off`, always forward, and does them one after another. A press is always complete: press angle, hold, back to rest, settle. A new `set` mid-sequence re-plans after the running press.
+- `state` adds `at`: where the device believes the appliance is. It counts presses and saves the count to flash after each one. While `at` differs from the target, the servo is still pressing. `info` lists the output's `modes`, so the server and UI don't need the board.
+- The count is open loop. If someone uses the appliance's own button, `cmd` `sync` tells the device what the appliance is really showing. It takes that as both position and target without pressing, and the server then publishes a matching retained `set`, so a reconnect can't press it back.
 
 ## Bridges
 

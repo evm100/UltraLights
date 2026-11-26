@@ -40,6 +40,22 @@ void ul_state_init(ul_out_state_t *s, const ul_output_def_t *d);
  */
 int ul_state_apply(ul_out_state_t *s, const ul_output_def_t *d, const ul_state_msg_t *m, bool live);
 
+/*
+ * cycle outputs: an appliance that steps off -> modes[0] -> ... -> off on each
+ * press of its own button (a servo presses it). Positions: 0 = off, i = modes[i-1].
+ * cur.mode is the selected mode (kept while off); cur.at is where the appliance is.
+ */
+void ul_cycle_init(ul_out_state_t *s, const ul_output_def_t *d, const ul_channel_desc_t *ch);
+/* ul_state_apply, then keep cur.mode one of the channel's modes. */
+int ul_cycle_apply(ul_out_state_t *s, const ul_output_def_t *d, const ul_channel_desc_t *ch,
+                   const ul_state_msg_t *m, bool live);
+/* Position the state wants: 0 when off, else the selected mode's. */
+int ul_cycle_target(const ul_channel_desc_t *ch, const ul_state_msg_t *st);
+/* Presses to get from one position to another (always forward, 0..n_modes). */
+int ul_cycle_presses(const ul_channel_desc_t *ch, int from, int to);
+/* The appliance is really at `at`: take it as both position and target. */
+void ul_cycle_sync(ul_out_state_t *s, const ul_channel_desc_t *ch, int at);
+
 /* Perceived level (0..1) to light output (0..1), CIE 1931 lightness. */
 float ul_curve_cie(float level);
 /* sRGB component (0..255) to linear light (0..1). */

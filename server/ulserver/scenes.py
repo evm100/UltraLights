@@ -18,8 +18,8 @@ from .models import AuditLog, Node, Output, Room, Scene, SceneRun
 from .views import target
 
 NOT_IN_SCENES = frozenset({"solenoid", "motion"})  # valves only open for a set time; sensors are inputs
-SCENE_FIELDS = ("on", "level", "cct", "color", "white", "effect")
-FIELD_CAP = {"level": "level", "cct": "cct", "color": "color", "white": "white", "effect": "effect"}
+SCENE_FIELDS = ("on", "level", "cct", "color", "white", "effect", "mode")
+FIELD_CAP = {"level": "level", "cct": "cct", "color": "color", "white": "white", "effect": "effect", "mode": "mode"}
 
 
 class SceneError(ValueError):

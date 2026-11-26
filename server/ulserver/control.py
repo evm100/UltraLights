@@ -20,9 +20,9 @@ from .realtime import Coalescer, Key, SeqAllocator
 
 log = logging.getLogger("ul.control")
 
-STATE_FIELDS = ("on", "level", "cct", "color", "white", "effect")
+STATE_FIELDS = ("on", "level", "cct", "color", "white", "effect", "mode")
 LIVE_FIELDS = ("on", "level", "cct", "color", "white", "fade_ms")
-FIELD_CAP = {"level": "level", "cct": "cct", "color": "color", "white": "white", "effect": "effect"}
+FIELD_CAP = {"level": "level", "cct": "cct", "color": "color", "white": "white", "effect": "effect", "mode": "mode"}
 
 Publisher = Callable[..., Awaitable[None]]
 
@@ -86,6 +86,10 @@ def build_set(o: OutputInfo, fields: dict[str, Any]) -> dict[str, Any]:
         p["white"] = m.get("white", 0.0)
     if "effect" in caps and "effect" in m:
         p["effect"] = m["effect"]
+    if "mode" in caps:
+        # cycle: the selected mode, kept while off so on: true alone returns to it.
+        modes = contracts.cycle_modes(o.meta)
+        p["mode"] = m["mode"] if m.get("mode") in modes else modes[0]
     if "fade_ms" in fields:
         p["fade_ms"] = fields["fade_ms"]
     return p
@@ -153,6 +157,8 @@ class Control:
     async def set(self, dev: str, out: str, fields: dict[str, Any], src: str) -> dict[str, Any]:
         o = self.get(dev, out)
         f = filter_fields(o, fields, STATE_FIELDS + ("fade_ms",))
+        if "mode" in f and f["mode"] not in contracts.cycle_modes(o.meta):
+            raise ControlError("invalid", f"{dev}/{out} has no mode {f['mode']!r}")
         self.coalescer.cancel((dev, out))
         payload = build_set(o, f)
         payload["src"] = src

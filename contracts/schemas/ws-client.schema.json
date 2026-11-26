@@ -41,6 +41,7 @@
             "color": { "$ref": "common.schema.json#/$defs/rgb" },
             "white": { "$ref": "common.schema.json#/$defs/level" },
             "effect": { "$ref": "set.schema.json#/$defs/effect" },
+            "mode": { "$ref": "set.schema.json#/$defs/mode" },
             "fade_ms": { "$ref": "common.schema.json#/$defs/fade_ms" }
           }
         }

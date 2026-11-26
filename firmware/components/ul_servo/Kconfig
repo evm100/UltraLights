@@ -1,0 +1,29 @@
+menu "UltraLights: servo button presser (ul_servo)"
+    config UL_SERVO_ENABLE
+        bool "Drive servo channels (press an appliance's own button)"
+        default y
+        help
+            A servo channel presses a button: press angle, hold, back to the
+            rest angle, settle. ul_core counts the presses for cycle outputs.
+
+    config UL_SERVO_DETACH
+        bool "Stop the servo signal between presses"
+        depends on UL_SERVO_ENABLE
+        default y
+        help
+            After each press settles, the signal stops, so the servo doesn't
+            hum or jitter while it waits. Turn off for a servo that must hold
+            its rest angle against a load.
+
+    config UL_SERVO_MIN_US
+        int "Pulse width for 0 degrees (us)"
+        depends on UL_SERVO_ENABLE
+        range 300 1500
+        default 500
+
+    config UL_SERVO_MAX_US
+        int "Pulse width for 180 degrees (us)"
+        depends on UL_SERVO_ENABLE
+        range 1500 2700
+        default 2500
+endmenu

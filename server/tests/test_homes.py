@@ -271,6 +271,45 @@ def test_valves_pulse_within_their_limit_and_close(garden_client, garden):
     assert c.post(f"/api/devices/{dev}/outputs/valve/close").status_code == 404
 
 
+@pytest.fixture()
+def xmas_client(pki, home):
+    """The bench node with a servo-pressed appliance output, as the device would report it."""
+    nid = _sql("SELECT id FROM nodes WHERE device_id = :d", d=home["dev"])[0][0]
+    _sql("INSERT INTO outputs (node_id, key, kind, name, caps, meta) VALUES "
+         "(:n, 'xmas', 'cycle', 'Tree', '[\"onoff\", \"mode\"]', '{\"modes\": [\"white\", \"color\", \"alternating\"]}')", n=nid)
+    with _captured_app() as c:
+        yield c
+
+
+def test_cycle_sync_then_matching_set(xmas_client, home):
+    """Sync tells the device where the appliance is (no presses), and only once it agrees is
+    the retained set changed to match, so a reconnect doesn't press it back."""
+    from ulserver import contracts
+
+    c, dev = xmas_client, home["dev"]
+    _login(c, home["users"]["mem"][0])
+    r = c.put(f"/api/devices/{dev}/outputs/xmas", json={"on": True, "mode": "color"})
+    assert r.status_code == 200, r.text
+    assert r.json()["mode"] == "color"
+    assert c.put(f"/api/devices/{dev}/outputs/xmas", json={"mode": "disco"}).status_code == 422
+
+    r = c.post(f"/api/devices/{dev}/outputs/xmas/sync", json={"at": "alternating"})
+    assert r.status_code == 200 and r.json()["result"]["ok"] is True, r.text
+    (t1, cmd), (t2, st) = c.sent[-2], c.sent[-1]
+    assert t1 == f"ul/v1/d/{dev}/cmd" and cmd["op"] == "sync" and cmd["out"] == "xmas" and cmd["at"] == "alternating"
+    contracts.validate("cmd", cmd)
+    assert t2 == f"ul/v1/d/{dev}/set/xmas" and st["on"] is True and st["mode"] == "alternating"
+
+    c.post(f"/api/devices/{dev}/outputs/xmas/sync", json={"at": "off"})
+    assert c.sent[-1][1]["on"] is False and c.sent[-1][1]["mode"] == "alternating"  # remembered for next on
+
+    assert c.post(f"/api/devices/{dev}/outputs/xmas/sync", json={"at": "disco"}).status_code == 422
+    r = c.post(f"/api/devices/{dev}/outputs/warm/sync", json={"at": "off"})
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "not_a_cycle"
+    _login(c, home["users"]["far"][0])
+    assert c.post(f"/api/devices/{dev}/outputs/xmas/sync", json={"at": "off"}).status_code == 404
+
+
 def test_owner_sets_valve_run_limit(garden_client, garden):
     c, hid, dev = garden_client, garden["hid"], garden["dev"]
     _login(c, garden["users"]["own"][0])

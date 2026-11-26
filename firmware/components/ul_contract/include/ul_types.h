@@ -23,12 +23,13 @@ extern "C" {
 #define UL_SERVER_CA_SZ   4096
 #define UL_MAX_PIXELS     1500
 #define UL_MAX_PULSE_MS   7200000  /* solenoid pulse and max_on_ms ceiling: 2 h (contracts output/cmd) */
+#define UL_MAX_MODES      7        /* servo channel: modes after off (contracts board $defs/modes) */
 
 typedef enum { UL_CHIP_ESP32C3 = 0, UL_CHIP_ESP32C6 = 1, UL_CHIP_COUNT } ul_chip_t;
 
 /* ---------- board descriptor ---------- */
 
-typedef enum { UL_CH_PWM = 0, UL_CH_ARGB, UL_CH_SWITCH, UL_CH_MOTION } ul_ch_type_t;
+typedef enum { UL_CH_PWM = 0, UL_CH_ARGB, UL_CH_SWITCH, UL_CH_MOTION, UL_CH_SERVO } ul_ch_type_t;
 
 typedef enum {
     UL_ORDER_GRB = 0, UL_ORDER_RGB, UL_ORDER_BRG, UL_ORDER_RBG, UL_ORDER_GBR, UL_ORDER_BGR,
@@ -51,6 +52,12 @@ typedef struct {
     ul_chipset_t chipset;   /* default ws2812 */
     /* switch, motion */
     bool active_low;
+    /* servo: presses an appliance's mode button */
+    uint8_t press_deg, rest_deg;
+    uint16_t hold_ms;
+    uint16_t release_ms;    /* default 400 */
+    uint8_t n_modes;        /* default 1: {"on"} */
+    char modes[UL_MAX_MODES][UL_KEY_SZ];
 } ul_channel_desc_t;
 
 typedef struct {
@@ -87,18 +94,19 @@ typedef struct {
 
 typedef enum {
     UL_KIND_WHITE = 0, UL_KIND_CCT, UL_KIND_RGB, UL_KIND_RGBW, UL_KIND_RGBCCT,
-    UL_KIND_ARGB, UL_KIND_RELAY, UL_KIND_SOLENOID, UL_KIND_MOTION, UL_KIND_COUNT
+    UL_KIND_ARGB, UL_KIND_RELAY, UL_KIND_SOLENOID, UL_KIND_MOTION, UL_KIND_CYCLE, UL_KIND_COUNT
 } ul_kind_t;
 
 typedef enum {
     UL_ROLE_W = 0, UL_ROLE_WARM, UL_ROLE_COOL, UL_ROLE_R, UL_ROLE_G, UL_ROLE_B,
-    UL_ROLE_DATA, UL_ROLE_COIL, UL_ROLE_IN, UL_ROLE_COUNT
+    UL_ROLE_DATA, UL_ROLE_COIL, UL_ROLE_IN, UL_ROLE_PRESS, UL_ROLE_COUNT
 } ul_role_t;
 
 typedef enum {
     UL_CAP_ONOFF  = 1 << 0, UL_CAP_LEVEL = 1 << 1, UL_CAP_CCT    = 1 << 2,
     UL_CAP_COLOR  = 1 << 3, UL_CAP_WHITE = 1 << 4, UL_CAP_EFFECT = 1 << 5,
     UL_CAP_PULSE  = 1 << 6, UL_CAP_MOTION = 1 << 7, UL_CAP_POWER = 1 << 8,
+    UL_CAP_MODE   = 1 << 9,
 } ul_cap_t;
 
 typedef enum { UL_CURVE_CIE = 0, UL_CURVE_LINEAR } ul_curve_t;
@@ -131,6 +139,7 @@ enum {
     UL_F_ON = 1 << 0, UL_F_LEVEL = 1 << 1, UL_F_CCT = 1 << 2, UL_F_COLOR = 1 << 3,
     UL_F_WHITE = 1 << 4, UL_F_EFFECT = 1 << 5, UL_F_FADE = 1 << 6, UL_F_SRC = 1 << 7,
     UL_F_SEQ = 1 << 8, UL_F_PULSE_LEFT = 1 << 9, UL_F_MOTION = 1 << 10,
+    UL_F_MODE = 1 << 11, UL_F_AT = 1 << 12,
 };
 
 typedef struct {
@@ -146,13 +155,15 @@ typedef struct {
     uint64_t seq;
     uint32_t pulse_ms_left;
     bool motion;
+    char mode[UL_KEY_SZ];   /* cycle: selected mode (kept while off) */
+    char at[UL_KEY_SZ];     /* cycle (state only): where the appliance is, "off" or a mode */
 } ul_state_msg_t;
 
 /* ---------- cmd ---------- */
 
 typedef enum {
     UL_OP_IDENTIFY = 0, UL_OP_REBOOT, UL_OP_WIFI_RESET, UL_OP_FACTORY_RESET,
-    UL_OP_PULSE, UL_OP_OTA, UL_OP_SELFTEST, UL_OP_CLOSE,
+    UL_OP_PULSE, UL_OP_OTA, UL_OP_SELFTEST, UL_OP_CLOSE, UL_OP_SYNC,
     UL_OP_COUNT
 } ul_op_t;
 
@@ -162,7 +173,8 @@ typedef struct {
     int64_t ts;         /* 0 = absent */
     char src[UL_SRC_SZ];
     uint32_t ms;        /* identify (default 5000), pulse */
-    char out[UL_KEY_SZ]; /* identify (optional), pulse, close */
+    char out[UL_KEY_SZ]; /* identify (optional), pulse, close, sync */
+    char at[UL_KEY_SZ];  /* sync: "off" or a mode */
     char url[384];
     char sha256[65];
     char version[32];

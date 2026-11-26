@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "chip": "esp32c3",
+  "board": "Christmas lights button",
+  "channels": [
+    {
+      "id": "xmas",
+      "name": "Christmas lights",
+      "type": "servo",
+      "gpio": 4,
+      "press_deg": 62,
+      "rest_deg": 95,
+      "hold_ms": 250,
+      "release_ms": 400,
+      "modes": ["white", "color", "alternating"]
+    }
+  ],
+  "reset_button": { "gpio": 9 }
+}

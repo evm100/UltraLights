@@ -27,6 +27,11 @@ typedef struct {
     const ul_channel_ops_t *ops;
     void *ctx;
     ul_ch_type_t type;
+    const ul_channel_desc_t *desc;
+    /* servo: the appliance it presses (kept per channel, so it survives config changes) */
+    bool busy;                    /* a press is running */
+    int at;                       /* where the appliance is: 0 = off, i = modes[i-1] */
+    char mode[UL_KEY_SZ];         /* selected mode, as last saved */
 } chan_t;
 
 typedef struct {
@@ -124,6 +129,7 @@ esp_err_t ul_core_register_channel(const char *id, const ul_channel_ops_t *ops, 
     c->ops = ops;
     c->ctx = ctx;
     c->type = s_board->ch[bi].type;
+    c->desc = &s_board->ch[bi];
     return ESP_OK;
 }
 
@@ -153,12 +159,113 @@ static void chan_off(int ci)
     }
 }
 
+/* ---------- cycle outputs: pressing an appliance's own button ---------- */
+
+static chan_t *press_chan(int idx)
+{
+    int ci = s_rt[idx].ch[UL_ROLE_PRESS];
+    return s_cfg.out[idx].kind == UL_KIND_CYCLE && ci >= 0 ? &s_chans[ci] : NULL;
+}
+
+/* The press channel's description, from the board even when its driver is missing. */
+static const ul_channel_desc_t *press_desc(int idx)
+{
+    if (s_cfg.out[idx].kind != UL_KIND_CYCLE) {
+        return NULL;
+    }
+    int bi = ul_board_find_channel(s_board, s_cfg.out[idx].ch[UL_ROLE_PRESS]);
+    return bi < 0 ? NULL : &s_board->ch[bi];
+}
+
+static void save_cycles(void);
+
+/* One press toward the target if none is running. Called with the lock held. */
+static void cycle_step(int idx)
+{
+    chan_t *c = press_chan(idx);
+    if (!c || c->busy || !c->ops->press) {
+        return;
+    }
+    int target = ul_cycle_target(c->desc, &s_rt[idx].st.cur);
+    if (ul_cycle_presses(c->desc, c->at, target) == 0) {
+        return;
+    }
+    c->busy = true;
+    esp_err_t err = c->ops->press(c->ctx);
+    if (err != ESP_OK) {
+        c->busy = false;
+        ul_core_report_error("press_failed", s_cfg.out[idx].key, "%s: %s", c->id, esp_err_to_name(err));
+    }
+}
+
+/* Fresh state for output idx (channels bound); cycle outputs start from their channel. */
+static void init_out_state(int idx)
+{
+    const ul_output_def_t *d = &s_cfg.out[idx];
+    const ul_channel_desc_t *pd = press_desc(idx);
+    if (!pd) {
+        ul_state_init(&s_rt[idx].st, d);
+        return;
+    }
+    ul_cycle_init(&s_rt[idx].st, d, pd);
+    chan_t *c = press_chan(idx);
+    if (c) {
+        if (ul_cycle_index(pd, c->mode) > 0) {
+            snprintf(s_rt[idx].st.cur.mode, UL_KEY_SZ, "%s", c->mode);
+        }
+        snprintf(s_rt[idx].st.cur.at, UL_KEY_SZ, "%s", ul_cycle_name(pd, c->at));
+    }
+}
+
+void ul_core_press_done(const char *channel_id, bool ok)
+{
+    int idx = -1;
+    LOCK();
+    int ci = find_chan(channel_id);
+    if (ci < 0) {
+        UNLOCK();
+        return;
+    }
+    chan_t *c = &s_chans[ci];
+    c->busy = false;
+    if (ok) {
+        c->at = (c->at + 1) % (c->desc->n_modes + 1);
+    }
+    for (int i = 0; i < s_cfg.n; i++) {
+        if (s_rt[i].ch[UL_ROLE_PRESS] == ci) {
+            idx = i;
+        }
+    }
+    if (idx >= 0) {
+        snprintf(s_rt[idx].st.cur.at, UL_KEY_SZ, "%s", ul_cycle_name(c->desc, c->at));
+    }
+    if (ok) {
+        save_cycles(); /* every press: a reboot must not lose count */
+    }
+    if (idx >= 0) {
+        if (ok) {
+            cycle_step(idx);
+        } else {
+            ul_core_report_error("press_failed", s_cfg.out[idx].key, "%s: press not completed", c->id);
+        }
+    }
+    UNLOCK();
+    if (idx >= 0) {
+        post_state(idx);
+    }
+}
+
 /* ---------- driving outputs ---------- */
 
 static void drive(int idx, const ul_state_msg_t *target, uint32_t fade_ms)
 {
     const ul_output_def_t *d = &s_cfg.out[idx];
     out_rt_t *rt = &s_rt[idx];
+    if (d->kind == UL_KIND_CYCLE) {
+        rt->shown = *target;
+        cycle_step(idx); /* the target is already in rt->st.cur */
+        return;
+    }
     int n = 1;
     if (fade_ms >= 300) {
         n = (int)(fade_ms / 100);
@@ -239,6 +346,80 @@ static void save_states(void *arg)
         nvs_commit(h);
         nvs_close(h);
     }
+    save_cycles();
+}
+
+/* Servo channels: where each appliance is and its selected mode. Saved on every press. */
+typedef struct __attribute__((packed)) {
+    char ch[UL_KEY_SZ];
+    uint8_t at;
+    char mode[UL_KEY_SZ];
+} saved_cycle_t;
+
+static void save_cycles(void)
+{
+    saved_cycle_t rec[UL_MAX_CHANNELS];
+    int n = 0;
+    LOCK();
+    for (int ci = 0; ci < s_nchan; ci++) {
+        chan_t *c = &s_chans[ci];
+        if (c->type != UL_CH_SERVO) {
+            continue;
+        }
+        for (int i = 0; i < s_cfg.n; i++) {
+            if (s_rt[i].ch[UL_ROLE_PRESS] == ci) {
+                memcpy(c->mode, s_rt[i].st.cur.mode, sizeof(c->mode));
+            }
+        }
+        memset(&rec[n], 0, sizeof(rec[n]));
+        memcpy(rec[n].ch, c->id, sizeof(rec[n].ch));
+        rec[n].at = (uint8_t)c->at;
+        memcpy(rec[n].mode, c->mode, sizeof(rec[n].mode));
+        n++;
+    }
+    UNLOCK();
+    if (n == 0) {
+        return;
+    }
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_blob(h, "cycles", rec, (size_t)n * sizeof(saved_cycle_t));
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+static void load_cycles(void)
+{
+    saved_cycle_t rec[UL_MAX_CHANNELS];
+    size_t len = sizeof(rec);
+    int n = 0;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+        if (nvs_get_blob(h, "cycles", rec, &len) == ESP_OK) {
+            n = (int)(len / sizeof(saved_cycle_t));
+        }
+        nvs_close(h);
+    }
+    for (int ci = 0; ci < s_nchan; ci++) {
+        chan_t *c = &s_chans[ci];
+        if (c->type != UL_CH_SERVO) {
+            continue;
+        }
+        c->at = 0;
+        snprintf(c->mode, sizeof(c->mode), "%s", ul_cycle_name(c->desc, 1));
+        for (int k = 0; k < n; k++) {
+            if (strncmp(rec[k].ch, c->id, UL_KEY_SZ) != 0) {
+                continue;
+            }
+            /* The modes may have changed since (a rewritten board): stay in range. */
+            c->at = rec[k].at <= c->desc->n_modes ? rec[k].at : 0;
+            rec[k].mode[UL_KEY_SZ - 1] = '\0';
+            if (ul_cycle_index(c->desc, rec[k].mode) > 0) {
+                memcpy(c->mode, rec[k].mode, sizeof(c->mode));
+            }
+        }
+    }
 }
 
 static void schedule_save(void)
@@ -261,7 +442,7 @@ static void restore_states(void)
     }
     for (int i = 0; i < s_cfg.n; i++) {
         const ul_output_def_t *d = &s_cfg.out[i];
-        ul_state_init(&s_rt[i].st, d);
+        init_out_state(i);
         s_rt[i].shown = s_rt[i].st.cur;
         s_rt[i].shown.on = false;
         ul_state_msg_t *c = &s_rt[i].st.cur;
@@ -372,8 +553,8 @@ static void identify_tick(void *arg)
             continue;
         }
         ul_kind_t k = s_cfg.out[i].kind;
-        if (k == UL_KIND_RELAY || k == UL_KIND_SOLENOID || k == UL_KIND_MOTION) {
-            continue; /* identify blinks lights only: never cycle relays or valves */
+        if (k == UL_KIND_RELAY || k == UL_KIND_SOLENOID || k == UL_KIND_MOTION || k == UL_KIND_CYCLE) {
+            continue; /* identify blinks lights only: never cycle relays, valves or servos */
         }
         if (done) {
             drive(i, &s_rt[i].st.cur, 0);
@@ -469,12 +650,14 @@ esp_err_t ul_core_apply(const char *key, const ul_state_msg_t *msg, bool live)
         UNLOCK();
         return ESP_ERR_NOT_SUPPORTED; /* solenoids only pulse; motion is an input */
     }
-    if (!ul_state_apply(&s_rt[idx].st, d, msg, live)) {
+    const ul_channel_desc_t *pd = press_desc(idx);
+    int applied = pd ? ul_cycle_apply(&s_rt[idx].st, d, pd, msg, live) : ul_state_apply(&s_rt[idx].st, d, msg, live);
+    if (!applied) {
         UNLOCK();
         return ESP_ERR_INVALID_STATE;
     }
     uint32_t fade = (msg->fields & UL_F_FADE) ? msg->fade_ms : (live ? 60 : 400);
-    if (s_identify_idx == -2) {
+    if (s_identify_idx == -2 || pd) {
         drive(idx, &s_rt[idx].st.cur, fade);
     }
     schedule_save();
@@ -524,17 +707,18 @@ esp_err_t ul_core_apply_config(const char *json, size_t len)
     for (int i = 0; i < s_cfg.n; i++) {
         const ul_output_def_t *d = &s_cfg.out[i];
         memset(&s_rt[i], 0, sizeof(s_rt[i]));
-        ul_state_init(&s_rt[i].st, d);
+        bind_channels(i);
+        init_out_state(i);
         s_rt[i].shown = s_rt[i].st.cur;
         s_rt[i].shown.on = false;
         for (int k = 0; k < old_cfg.n; k++) {
-            if (strcmp(old_cfg.out[k].key, d->key) == 0 && old_cfg.out[k].kind == d->kind) {
+            if (strcmp(old_cfg.out[k].key, d->key) == 0 && old_cfg.out[k].kind == d->kind &&
+                (d->kind != UL_KIND_CYCLE || strcmp(old_cfg.out[k].ch[UL_ROLE_PRESS], d->ch[UL_ROLE_PRESS]) == 0)) {
                 s_rt[i].st = old_rt[k].st;
                 s_rt[i].shown = old_rt[k].shown;
                 break;
             }
         }
-        bind_channels(i);
         for (int r = 0; r < UL_ROLE_COUNT; r++) {
             if (s_rt[i].ch[r] >= 0) {
                 used[s_rt[i].ch[r]] = true;
@@ -606,6 +790,38 @@ esp_err_t ul_core_close(const char *key)
     return ESP_OK;
 }
 
+esp_err_t ul_core_sync(const char *key, const char *at, const char *src)
+{
+    LOCK();
+    int idx = ul_core_find_output(key);
+    if (idx < 0 || s_cfg.out[idx].kind != UL_KIND_CYCLE) {
+        UNLOCK();
+        return idx < 0 ? ESP_ERR_NOT_FOUND : ESP_ERR_NOT_SUPPORTED;
+    }
+    chan_t *c = press_chan(idx);
+    if (!c) {
+        UNLOCK();
+        return ESP_ERR_NOT_FOUND;
+    }
+    if (c->busy) {
+        UNLOCK();
+        return ESP_ERR_INVALID_STATE;
+    }
+    int pos = ul_cycle_index(c->desc, at);
+    if (pos < 0) {
+        UNLOCK();
+        return ESP_ERR_INVALID_ARG;
+    }
+    c->at = pos;
+    ul_cycle_sync(&s_rt[idx].st, c->desc, pos);
+    snprintf(s_rt[idx].st.cur.src, sizeof(s_rt[idx].st.cur.src), "%s", src && src[0] ? src : "device");
+    save_cycles();
+    schedule_save();
+    UNLOCK();
+    post_state(idx);
+    return ESP_OK;
+}
+
 esp_err_t ul_core_identify(const char *key, uint32_t ms)
 {
     LOCK();
@@ -673,9 +889,12 @@ esp_err_t ul_core_boot(void)
         run_stage(UL_STAGE_DRIVER);
         LOCK();
         load_config();
-        restore_states();
+        load_cycles();
         for (int i = 0; i < s_cfg.n; i++) {
             bind_channels(i);
+        }
+        restore_states();
+        for (int i = 0; i < s_cfg.n; i++) {
             drive(i, &s_rt[i].st.cur, s_cfg.out[i].kind == UL_KIND_RELAY ? 0 : 300);
         }
         UNLOCK();

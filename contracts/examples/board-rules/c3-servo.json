@@ -1,0 +1,8 @@
+{ "_expect": { "errors": ["too_many_pwm:7", "too_many_pwm_freqs:5"], "warnings": [] },
+  "v": 1, "chip": "esp32c3", "board": "Servo shares LEDC",
+  "channels": [
+    { "id": "p1", "type": "pwm", "gpio": 0, "hz": 1000 }, { "id": "p2", "type": "pwm", "gpio": 1, "hz": 2000 },
+    { "id": "p3", "type": "pwm", "gpio": 3, "hz": 3000 }, { "id": "p4", "type": "pwm", "gpio": 4, "hz": 4000 },
+    { "id": "p5", "type": "pwm", "gpio": 5, "hz": 4000 }, { "id": "p6", "type": "pwm", "gpio": 6, "hz": 4000 },
+    { "id": "xmas", "type": "servo", "gpio": 7, "press_deg": 60, "rest_deg": 90, "hold_ms": 250 } ],
+  "reset_button": { "gpio": 9 } }

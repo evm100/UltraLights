@@ -2,7 +2,8 @@
 import { tiles, partsOf, summary, stateOf } from "./parts.js";
 import { canControl } from "./access.js";
 
-export const LIGHT_KINDS = ["white", "cct", "rgb", "rgbw", "rgbcct", "argb"];
+// cycle: lights with their own controller, stepped by a servo pressing its button.
+export const LIGHT_KINDS = ["white", "cct", "rgb", "rgbw", "rgbcct", "argb", "cycle"];
 
 /** One tile per output, except a combined device (a bridged PC), which is one tile for all its parts. */
 export function tileItems(devices) {

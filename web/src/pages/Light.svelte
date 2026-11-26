@@ -12,6 +12,7 @@
   import { partsOf, summary, stateOf, reachable, partIcon, PART_ICONS } from "../lib/parts.js";
   import { usableCaps } from "../lib/access.js";
   import Valve from "../components/Valve.svelte";
+  import Cycle from "../components/Cycle.svelte";
 
   let { dev, out } = $props();
 
@@ -129,6 +130,8 @@
         <VSlider value={on ? level : 0} oninput={onLevel} onchange={endLevel} fill={css(shown.map((c) => Math.round(c * 0.25 + 244 * 0.75)), 0.95)} disabled={!device.online} />
       {:else if o.kind === "solenoid"}
         <Valve {dev} {o} online={device.online} large />
+      {:else if o.kind === "cycle"}
+        <Cycle {dev} {o} online={device.online} />
       {:else if caps.includes("onoff")}
         <div class="big-switch" class:on>{on ? "On" : "Off"}</div>
       {/if}

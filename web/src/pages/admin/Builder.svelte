@@ -29,14 +29,19 @@
   let busy = $state(false);
   let editing = $state(null);
 
-  const TYPES = [["pwm", "PWM"], ["argb", "ARGB strip"], ["switch", "Switch"], ["motion", "Motion"]];
+  const TYPES = [["pwm", "PWM"], ["argb", "ARGB strip"], ["switch", "Switch"], ["motion", "Motion"], ["servo", "Servo"]];
+  // A servo presses an appliance's own mode button: these are the defaults for a new row
+  // (tune the angles and hold on the real thing). modes is edited as comma-separated text.
+  const SERVO = { press_deg: 60, rest_deg: 90, hold_ms: 250, release_ms: 400, modesText: "on" };
+  const modeList = (t) => t.split(",").map((m) => m.trim().toLowerCase()).filter(Boolean);
   const ORDERS = ["GRB", "RGB", "BRG", "RBG", "GBR", "BGR", "GRBW", "RGBW"];
 
   function load(board) {
     chip = board.chip;
     boardName = board.board ?? "";
     hwRev = board.hw_rev ?? "";
-    rows = (board.channels ?? []).map((c) => ({ hz: DEFAULT_HZ, pixels: 60, order: "GRB", chipset: "ws2812", active_low: false, invert: false, name: "", ...c }));
+    rows = (board.channels ?? []).map((c) => ({ hz: DEFAULT_HZ, pixels: 60, order: "GRB", chipset: "ws2812", active_low: false, invert: false, name: "", ...SERVO,
+                                                ...c, ...(c.modes ? { modesText: c.modes.join(", ") } : {}) }));
     resetOn = !!board.reset_button;
     resetGpio = board.reset_button?.gpio ?? CHIPS[chip].boot_button;
     resetLow = board.reset_button?.active_low ?? true;
@@ -68,14 +73,14 @@
   }
 
   function nextId(type) {
-    const base = { pwm: "pwm", argb: "strip", switch: "sw", motion: "motion" }[type];
+    const base = { pwm: "pwm", argb: "strip", switch: "sw", motion: "motion", servo: "servo" }[type];
     for (let i = 1; ; i++) if (!rows.some((r) => r.id === `${base}${i}`)) return `${base}${i}`;
   }
 
   function add(type = "pwm") {
     const used = new Set(rows.map((r) => r.gpio));
     const free = pinOptions(chip).find((p) => !p.note && !used.has(p.gpio) && p.gpio !== resetGpio);
-    rows.push({ id: nextId(type), name: "", type, gpio: free?.gpio ?? 0, hz: DEFAULT_HZ, pixels: 60, order: "GRB", chipset: "ws2812", active_low: false, invert: false });
+    rows.push({ id: nextId(type), name: "", type, gpio: free?.gpio ?? 0, hz: DEFAULT_HZ, pixels: 60, order: "GRB", chipset: "ws2812", active_low: false, invert: false, ...SERVO });
   }
 
   let board = $derived.by(() => {
@@ -85,6 +90,11 @@
       if (r.type === "pwm") { c.hz = Number(r.hz); if (r.invert) c.invert = true; }
       if (r.type === "argb") { c.pixels = Number(r.pixels); c.order = r.order; c.chipset = r.chipset; }
       if ((r.type === "switch" || r.type === "motion") && r.active_low) c.active_low = true;
+      if (r.type === "servo") {
+        c.press_deg = Number(r.press_deg); c.rest_deg = Number(r.rest_deg);
+        c.hold_ms = Number(r.hold_ms); c.release_ms = Number(r.release_ms);
+        c.modes = modeList(r.modesText);
+      }
       return c;
     }) };
     if (hwRev.trim()) b.hw_rev = hwRev.trim();
@@ -94,7 +104,18 @@
   });
   let idErrors = $derived(rows.filter((r) => !/^[a-z][a-z0-9_]{0,15}$/.test(r.id)).map((r) => `Channel id "${r.id}" must be lower case letters, digits or _ and start with a letter.`));
   let checks = $derived(checkBoard(board));
-  let blocked = $derived(checks.errors.length > 0 || idErrors.length > 0 || rows.some((r) => r.type === "argb" && !(r.pixels >= 1 && r.pixels <= 1500)));
+  let servoErrors = $derived(rows.filter((r) => r.type === "servo").flatMap((r) => {
+    const e = [], m = modeList(r.modesText), n = (v, lo, hi) => Number.isInteger(Number(v)) && Number(v) >= lo && Number(v) <= hi;
+    if (!n(r.press_deg, 0, 180) || !n(r.rest_deg, 0, 180)) e.push(`${r.id}: angles are 0 to 180 degrees.`);
+    if (!n(r.hold_ms, 20, 5000)) e.push(`${r.id}: hold is 20 to 5000 ms.`);
+    if (!n(r.release_ms, 50, 5000)) e.push(`${r.id}: release is 50 to 5000 ms.`);
+    if (m.length < 1 || m.length > 7) e.push(`${r.id}: list 1 to 7 modes (off is implied).`);
+    if (m.some((x) => !/^[a-z][a-z0-9_]{0,15}$/.test(x))) e.push(`${r.id}: mode names are lower case letters, digits or _.`);
+    if (m.includes("off")) e.push(`${r.id}: leave "off" out of the modes; it comes after the last one.`);
+    if (new Set(m).size !== m.length) e.push(`${r.id}: a mode is listed twice.`);
+    return e;
+  }));
+  let blocked = $derived(checks.errors.length > 0 || idErrors.length > 0 || servoErrors.length > 0 || rows.some((r) => r.type === "argb" && !(r.pixels >= 1 && r.pixels <= 1500)));
   let pins = $derived(pinOptions(chip));
 
   async function save() {
@@ -163,6 +184,12 @@
             <label class="mini">px<input type="number" min="1" max="1500" bind:value={r.pixels} /></label>
             <select bind:value={r.order} aria-label="Color order">{#each ORDERS as o}<option>{o}</option>{/each}</select>
             <select bind:value={r.chipset} aria-label="Chipset"><option>ws2812</option><option>sk6812</option><option>ws2811</option></select>
+          {:else if r.type === "servo"}
+            <label class="mini" title="Angle that pushes the button">press°<input type="number" min="0" max="180" bind:value={r.press_deg} /></label>
+            <label class="mini" title="Angle clear of the button">rest°<input type="number" min="0" max="180" bind:value={r.rest_deg} /></label>
+            <label class="mini" title="How long it holds the press, travel included">hold ms<input type="number" min="20" max="5000" bind:value={r.hold_ms} /></label>
+            <label class="mini" title="Time back to rest before the next press">release ms<input type="number" min="50" max="5000" bind:value={r.release_ms} /></label>
+            <label class="mini modes" title="The appliance's modes in button order, starting after off">modes<input bind:value={r.modesText} placeholder="white, color, alternating" /></label>
           {:else}
             <label class="mini chk"><input type="checkbox" bind:checked={r.active_low} />active low</label>
           {/if}
@@ -174,6 +201,7 @@
       <button class="btn sm" onclick={() => add("pwm")}>+ PWM</button>
       <button class="btn sm" onclick={() => add("argb")}>+ Strip</button>
       <button class="btn sm" onclick={() => add("switch")}>+ Switch</button>
+      <button class="btn sm" onclick={() => add("servo")}>+ Servo</button>
     </div>
 
     <div class="row">
@@ -195,7 +223,7 @@
     <div class="glass panel stack">
       <span class="label">Checks · {CHIPS[chip].name}</span>
       <ul class="checks">
-        {#each [...idErrors] as m}<li class="err">{m}</li>{/each}
+        {#each [...idErrors, ...servoErrors] as m}<li class="err">{m}</li>{/each}
         {#each checks.errors as c}<li class="err">{describe(c, chip)}</li>{/each}
         {#each checks.warnings as c}<li class="warn">{describe(c, chip)}</li>{/each}
         {#if !blocked && checks.warnings.length === 0}<li class="ok">Ready to flash.</li>{/if}
@@ -232,7 +260,9 @@
     .chan { grid-template-columns: 1fr 1fr; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
     .chan.head { display: none; }
   }
-  .opts { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
+  .opts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .mini.modes { flex: 1 1 100%; }
+  .mini.modes input { flex: 1; width: auto; }
   .opts select { padding: 8px 4px; }
   .mini { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; color: var(--muted); }
   .mini input[type="number"] { width: 70px; }

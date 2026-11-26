@@ -12,7 +12,7 @@ cJSON *ul_channel_to_cjson(const ul_channel_desc_t *ch);
 #define MAX_SEQ 9007199254740991LL
 
 static const char *const CAP_NAMES[] = {"onoff", "level", "cct", "color", "white",
-                                        "effect", "pulse", "motion", "power"};
+                                        "effect", "pulse", "motion", "power", "mode"};
 static const char *const CURVE_NAMES[] = {"cie", "linear"};
 static const char *const POWER_ON_NAMES[] = {"last", "off", "on"};
 
@@ -31,6 +31,8 @@ static bool is_hex(const char *s, size_t n)
 
 static bool is_sha256(const char *s) { return is_hex(s, 64); }
 static bool is_name(const char *s) { return s[0] != '\0'; }
+static bool is_mode(const char *s) { return ul_is_key(s) && strcmp(s, "off") != 0; }
+static bool is_at(const char *s) { return ul_is_key(s); }
 
 /* ---------- outputs and config ---------- */
 
@@ -158,7 +160,7 @@ static cJSON *output_to_cjson(const ul_output_def_t *d, bool with_caps)
     }
     if (with_caps) {
         cJSON *caps = cJSON_AddArrayToObject(o, "caps");
-        for (int i = 0; i < 9; i++) {
+        for (int i = 0; i < (int)(sizeof(CAP_NAMES) / sizeof(CAP_NAMES[0])); i++) {
             if (d->caps & (1u << i)) {
                 cJSON_AddItemToArray(caps, cJSON_CreateString(CAP_NAMES[i]));
             }
@@ -314,6 +316,14 @@ static int state_decode(const char *json, size_t len, ul_state_msg_t *m, state_m
         }
         m->fields |= UL_F_EFFECT;
     }
+    if (mode != M_LIVE) {
+        if ((r = j_str(root, "mode", m->mode, sizeof(m->mode), false, is_mode, &e)) < 0) {
+            goto out;
+        }
+        if (r == J_OK) {
+            m->fields |= UL_F_MODE;
+        }
+    }
     if ((r = j_int(root, "fade_ms", 0, 60000, &v, false, &e)) < 0) {
         goto out;
     }
@@ -345,6 +355,12 @@ static int state_decode(const char *json, size_t len, ul_state_msg_t *m, state_m
         }
         if (r == J_OK) {
             m->fields |= UL_F_MOTION;
+        }
+        if ((r = j_str(root, "at", m->at, sizeof(m->at), false, is_at, &e)) < 0) {
+            goto out;
+        }
+        if (r == J_OK) {
+            m->fields |= UL_F_AT;
         }
     }
     if (mode == M_LIVE && !(m->fields & (UL_F_ON | UL_F_LEVEL | UL_F_CCT | UL_F_COLOR | UL_F_WHITE | UL_F_FADE | UL_F_SRC))) {
@@ -405,6 +421,12 @@ char *ul_state_encode(const ul_state_msg_t *m)
     }
     if (m->fields & UL_F_MOTION) {
         cJSON_AddBoolToObject(j, "motion", m->motion);
+    }
+    if ((m->fields & UL_F_MODE) && m->mode[0]) {
+        cJSON_AddStringToObject(j, "mode", m->mode);
+    }
+    if ((m->fields & UL_F_AT) && m->at[0]) {
+        cJSON_AddStringToObject(j, "at", m->at);
     }
     if (m->src[0]) {
         cJSON_AddStringToObject(j, "src", m->src);
@@ -504,6 +526,12 @@ int ul_cmd_decode(const char *json, size_t len, ul_cmd_t *c, char *err, size_t e
         break;
     case UL_OP_CLOSE:
         if (j_str(root, "out", c->out, sizeof(c->out), true, ul_is_key, &e) < 0) {
+            goto out;
+        }
+        break;
+    case UL_OP_SYNC:
+        if (j_str(root, "out", c->out, sizeof(c->out), true, ul_is_key, &e) < 0 ||
+            j_str(root, "at", c->at, sizeof(c->at), true, is_at, &e) < 0) {
             goto out;
         }
         break;
@@ -628,7 +656,19 @@ char *ul_info_encode(const ul_info_t *in)
     }
     cJSON *outs = cJSON_AddArrayToObject(j, "outputs");
     for (int i = 0; i < in->outputs->n; i++) {
-        cJSON_AddItemToArray(outs, output_to_cjson(&in->outputs->out[i], true));
+        const ul_output_def_t *d = &in->outputs->out[i];
+        cJSON *o = output_to_cjson(d, true);
+        /* cycle: the press channel's modes, so the server and UI need no board lookup. */
+        for (int k = 0; d->kind == UL_KIND_CYCLE && k < in->board->n_channels; k++) {
+            const ul_channel_desc_t *ch = &in->board->ch[k];
+            if (strcmp(ch->id, d->ch[UL_ROLE_PRESS]) == 0) {
+                cJSON *m = cJSON_AddArrayToObject(o, "modes");
+                for (int x = 0; x < ch->n_modes; x++) {
+                    cJSON_AddItemToArray(m, cJSON_CreateString(ch->modes[x]));
+                }
+            }
+        }
+        cJSON_AddItemToArray(outs, o);
     }
     cJSON_AddNumberToObject(j, "config_rev", in->config_rev);
     if (in->config_error) {

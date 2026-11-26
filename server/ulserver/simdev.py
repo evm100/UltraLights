@@ -110,6 +110,8 @@ class SimDevice:
     fetch: Callable[[str], Awaitable[bytes]] | None = None  # OTA download; default HTTPS like the firmware
     _ota_task: asyncio.Task | None = None
     _valve_tasks: dict[str, asyncio.Task] = field(default_factory=dict)
+    _cycle_tasks: dict[str, asyncio.Task] = field(default_factory=dict)
+    press_scale: float = 1.0  # tests shrink the servo's hold + release time
 
     def __post_init__(self) -> None:
         self._apply_outputs(contracts.default_outputs(self.board))
@@ -117,14 +119,28 @@ class SimDevice:
     def t(self, kind: str, out: str | None = None) -> str:
         return f"ul/v1/d/{self.device_id}/{kind}" + (f"/{out}" if out else "")
 
+    def _press_channel(self, out: dict) -> dict:
+        return next(c for c in self.board["channels"] if c["id"] == out["channels"]["press"])
+
     def _apply_outputs(self, outs: list[dict]) -> None:
         self.outputs = [{**o, "caps": CAPS[o["kind"]]} for o in outs]
+        for o in self.outputs:
+            o.pop("modes", None)
+            if o["kind"] == "cycle":  # as ul_info_encode: the press channel's modes
+                o["modes"] = list(self._press_channel(o).get("modes", contracts.DEFAULT_MODES))
         keep = {o["key"] for o in self.outputs}
         self.state = {k: v for k, v in self.state.items() if k in keep}
         for o in self.outputs:
             self.state.setdefault(o["key"], {"on": False, **({"level": 1.0} if "level" in o["caps"] else {})})
             if o["kind"] == "solenoid":
                 self.state[o["key"]].pop("level", None)
+            if o["kind"] == "cycle":
+                st = self.state[o["key"]]
+                st.pop("level", None)
+                if st.get("mode") not in o["modes"]:
+                    st["mode"] = o["modes"][0]
+                if st.get("at") not in ["off", *o["modes"]]:
+                    st["at"] = "off"
 
     def info(self) -> dict:
         d = {"v": 1, "id": self.device_id, "chip": self.board["chip"], "fw": self.fw,
@@ -140,8 +156,11 @@ class SimDevice:
         assert self.client is not None
         await self.client.publish(topic, json.dumps(payload), qos=qos, retain=retain)
 
-    async def publish_state(self, key: str, src: str = "device", seq: int = 0) -> None:
-        await self.pub(self.t("state", key), {**self.state[key], "src": src, "seq": seq}, "state", retain=True)
+    async def publish_state(self, key: str, src: str | None = None, seq: int | None = None) -> None:
+        st = {k: v for k, v in self.state[key].items() if not k.startswith("_")}
+        src = src or self.state[key].get("_src", "device")
+        seq = self.last_seq.get(key, 0) if seq is None else seq
+        await self.pub(self.t("state", key), {**st, "src": src, "seq": seq}, "state", retain=True)
 
     def tls(self) -> ssl.SSLContext:
         ctx = _ctx(self.server_ca, check_hostname=self.connect_ip is None)
@@ -218,12 +237,18 @@ class SimDevice:
         if doc["seq"] <= self.last_seq.get(key, 0):
             return  # stale or already applied
         self.last_seq[key] = doc["seq"]
-        caps = next(o["caps"] for o in self.outputs if o["key"] == key)
-        for f in ("on", "level", "cct", "color", "white", "effect"):
+        out = next(o for o in self.outputs if o["key"] == key)
+        caps = out["caps"]
+        for f in ("on", "level", "cct", "color", "white", "effect", "mode"):
             if f in doc and (f == "on" or f in caps):
+                if f == "mode" and doc[f] not in out["modes"]:
+                    continue  # as ul_cycle_apply: a mode the appliance doesn't have is ignored
                 self.state[key][f] = doc[f]
+        self.state[key]["_src"] = doc.get("src", "device")
         log.info("%s %s -> %s", kind, key, self.state[key])
-        await self.publish_state(key, doc.get("src", "device"), doc["seq"])
+        await self.publish_state(key)
+        if out["kind"] == "cycle":
+            self._step(out)
 
     async def _on_cmd(self, doc: dict) -> None:
         contracts.validate("cmd", doc)
@@ -244,6 +269,22 @@ class SimDevice:
             else:  # accepted: like ul_ota, no result until progress, success or failure
                 self._ota_task = asyncio.create_task(self._ota(doc))
                 return
+        elif doc["op"] == "sync":
+            out = next((o for o in self.outputs if o["key"] == doc["out"]), None)
+            if out is None:
+                ok, err = False, "no_such_output"
+            elif out["kind"] != "cycle":
+                ok, err = False, "not_a_cycle"
+            elif (t := self._cycle_tasks.get(out["key"])) and not t.done():
+                ok, err = False, "busy"
+            elif doc["at"] not in ["off", *out["modes"]]:
+                ok, err = False, "no_such_mode"
+            else:  # as ul_cycle_sync: position and target, no presses
+                st = self.state[out["key"]]
+                st.update(at=doc["at"], on=doc["at"] != "off", _src=doc.get("src", "device"))
+                if doc["at"] != "off":
+                    st["mode"] = doc["at"]
+                await self.publish_state(out["key"])
         elif doc["op"] == "selftest":
             ok, err = False, "unsupported"
         res = {"type": "cmd_result", "cmd_id": doc["id"], "ok": ok}
@@ -320,6 +361,23 @@ class SimDevice:
             log.info("valve %s closed", key)
             await self.publish_state(key)
 
+    # Cycle outputs, as ul_core + ul_servo: one press at a time (hold + release), counting
+    # positions off -> modes[0] -> ... -> off, publishing state after each press.
+    def _step(self, out: dict) -> None:
+        t = self._cycle_tasks.get(out["key"])
+        if t is None or t.done():
+            self._cycle_tasks[out["key"]] = asyncio.get_running_loop().create_task(self._run_cycle(out))
+
+    async def _run_cycle(self, out: dict) -> None:
+        key, ch = out["key"], self._press_channel(out)
+        positions = ["off", *out["modes"]]
+        st = self.state[key]
+        while st["at"] != (st["mode"] if st.get("on") else "off"):
+            await asyncio.sleep((ch["hold_ms"] + ch.get("release_ms", 400)) / 1000 * self.press_scale)
+            st["at"] = positions[(positions.index(st["at"]) + 1) % len(positions)]
+            log.info("cycle %s pressed: now %s", key, st["at"])
+            await self.publish_state(key)
+
 
 def random_mac() -> str:
     return "02:" + ":".join(f"{random.randrange(256):02x}" for _ in range(5))
@@ -327,3 +385,4 @@ def random_mac() -> str:
 
 def now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
+

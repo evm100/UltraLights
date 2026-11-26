@@ -35,7 +35,7 @@
       "properties": {
         "id": { "$ref": "common.schema.json#/$defs/key" },
         "name": { "$ref": "common.schema.json#/$defs/name" },
-        "type": { "enum": ["pwm", "argb", "switch", "motion"] },
+        "type": { "enum": ["pwm", "argb", "switch", "motion", "servo"] },
         "gpio": { "$ref": "common.schema.json#/$defs/gpio" }
       },
       "oneOf": [
@@ -61,8 +61,24 @@
             "type": { "const": "motion" },
             "id": true, "name": true, "gpio": true,
             "active_low": { "type": "boolean", "default": false }
+          }, "additionalProperties": false },
+        { "required": ["press_deg", "rest_deg", "hold_ms"],
+          "description": "A hobby servo that presses an appliance's own mode button (50 Hz, 500-2500 us for 0-180 degrees). One press is: move to press_deg, hold hold_ms (travel included), go back to rest_deg, wait release_ms, then stop the signal. The appliance steps off -> modes[0] -> ... -> modes[n-1] -> off on each press.",
+          "properties": {
+            "type": { "const": "servo" },
+            "id": true, "name": true, "gpio": true,
+            "press_deg": { "type": "integer", "minimum": 0, "maximum": 180, "description": "Angle that pushes the button." },
+            "rest_deg": { "type": "integer", "minimum": 0, "maximum": 180, "description": "Angle clear of the button, where the arm waits." },
+            "hold_ms": { "type": "integer", "minimum": 20, "maximum": 5000, "description": "Time from leaving rest to starting back, travel included." },
+            "release_ms": { "type": "integer", "minimum": 50, "maximum": 5000, "default": 400, "description": "Time to get back to rest and let the appliance register the press before the next one." },
+            "modes": { "$ref": "#/$defs/modes", "default": ["on"] }
           }, "additionalProperties": false }
       ]
+    },
+    "modes": {
+      "type": "array", "minItems": 1, "maxItems": 7, "uniqueItems": true,
+      "items": { "allOf": [{ "$ref": "common.schema.json#/$defs/key" }, { "not": { "const": "off" } }] },
+      "description": "The appliance's modes in button order, starting with the one after off. Off is implicit and comes after the last. Default [\"on\"]: one press toggles."
     }
   }
 }

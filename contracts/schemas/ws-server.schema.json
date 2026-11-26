@@ -39,7 +39,7 @@
               "name": { "type": "string" },
               "caps": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/cap" } },
               "room_id": { "type": ["integer", "null"] },
-              "meta": { "type": "object", "description": "cct_range, pixels, max_level, channels from a node's info; part, source, leds, reachable from a bridge's." },
+              "meta": { "type": "object", "description": "cct_range, pixels, max_level, max_on_ms, modes, channels from a node's info; part, source, leds, reachable from a bridge's." },
               "state": { "oneOf": [ { "type": "null" }, { "$ref": "state.schema.json" } ] },
               "state_at": { "type": ["integer", "null"], "description": "Server time (unix ms) when state arrived; with pulse_ms_left it gives a valve's remaining run." },
               "desired": { "oneOf": [ { "type": "null" }, { "$ref": "set.schema.json" } ] },

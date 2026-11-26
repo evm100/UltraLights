@@ -14,6 +14,7 @@ extern "C" {
 #define UL_BOARD_FORMAT       1
 #define UL_BOARD_HEADER_SIZE  16
 #define UL_GPIO_LIMIT         31   /* gpio 0..30 per schema */
+#define UL_SERVO_HZ           50   /* servo frame rate; below the pwm minimum, so its own LEDC timer */
 
 typedef struct {
     const char *name;

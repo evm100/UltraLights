@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..access import CONTROL, AccessDenied, abilities_for
 from ..bridge import NotConnected
+from ..contracts import cycle_modes
 from ..control import Control, ControlError, OutputInfo
 from ..db import get_db
 from ..manage import MAX_PULSE_MS
@@ -86,5 +87,31 @@ async def close(dev: str, out: str, request: Request, auth: Auth = Depends(requi
     try:
         _valve(control, auth, dev, out)
         return await control.cmd(dev, "close", {"out": out}, src_for(auth), wait=5)
+    except (AccessDenied, ControlError, NotConnected) as e:
+        raise control_error(e) from None
+
+
+class SyncIn(BaseModel):
+    at: str = Field(pattern=r"^[a-z][a-z0-9_]{0,15}$")
+
+
+@router.post("/devices/{dev}/outputs/{out}/sync")
+async def sync(dev: str, out: str, body: SyncIn, request: Request, auth: Auth = Depends(require_auth)) -> dict:
+    """Tell a servo-pressed appliance's node where the appliance really is (someone used its
+    own button, or it lost power), without pressing. The device takes that as position and
+    target; then the retained set is updated to match, so a reconnect doesn't press it back."""
+    control: Control = request.app.state.control
+    try:
+        info = authorized(control, auth, dev, out, {CONTROL})
+        if info.kind != "cycle":
+            raise ControlError("not_a_cycle", f"{dev}/{out} is a {info.kind}")
+        if body.at != "off" and body.at not in cycle_modes(info.meta):
+            raise ControlError("invalid", f"{dev}/{out} has no mode {body.at!r}")
+        src = src_for(auth)
+        r = await control.cmd(dev, "sync", {"out": out, "at": body.at}, src, wait=5)
+        res = r.get("result")
+        if res and res.get("ok"):
+            await control.set(dev, out, {"on": False} if body.at == "off" else {"on": True, "mode": body.at}, src)
+        return r
     except (AccessDenied, ControlError, NotConnected) as e:
         raise control_error(e) from None

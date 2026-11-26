@@ -49,6 +49,10 @@ void ul_mapping_default(const ul_board_desc_t *b, ul_config_t *c)
             init_def(d, ch->id, UL_KIND_MOTION);
             strcpy(d->ch[UL_ROLE_IN], ch->id);
             break;
+        case UL_CH_SERVO:
+            init_def(d, ch->id, UL_KIND_CYCLE);
+            strcpy(d->ch[UL_ROLE_PRESS], ch->id);
+            break;
         }
         if (ch->name[0]) {
             snprintf(d->name, sizeof(d->name), "%s", ch->name);
@@ -73,6 +77,7 @@ static uint32_t kind_roles(ul_kind_t k)
     case UL_KIND_RELAY:
     case UL_KIND_SOLENOID: return R(COIL);
     case UL_KIND_MOTION: return R(IN);
+    case UL_KIND_CYCLE: return R(PRESS);
     default: return 0;
     }
 #undef R
@@ -84,6 +89,7 @@ static ul_ch_type_t role_type(ul_role_t r)
     case UL_ROLE_DATA: return UL_CH_ARGB;
     case UL_ROLE_COIL: return UL_CH_SWITCH;
     case UL_ROLE_IN: return UL_CH_MOTION;
+    case UL_ROLE_PRESS: return UL_CH_SERVO;
     default: return UL_CH_PWM;
     }
 }
@@ -211,6 +217,9 @@ int ul_state_apply(ul_out_state_t *s, const ul_output_def_t *d, const ul_state_m
         memcpy(c->effect, m->effect, sizeof(c->effect));
         c->fields |= UL_F_EFFECT;
     }
+    if ((m->fields & UL_F_MODE) && (caps & UL_CAP_MODE)) {
+        memcpy(c->mode, m->mode, sizeof(c->mode)); /* ul_cycle_apply checks it against the channel */
+    }
     if (m->fields & UL_F_SRC) {
         memcpy(c->src, m->src, sizeof(c->src));
     }
@@ -321,4 +330,61 @@ void ul_state_lerp(const ul_state_msg_t *a, const ul_state_msg_t *b, float t, ul
     if (t >= 1.0f) {
         *out = *b;
     }
+}
+
+/* ---------- cycle: an appliance stepped by pressing its own button ---------- */
+
+void ul_cycle_init(ul_out_state_t *s, const ul_output_def_t *d, const ul_channel_desc_t *ch)
+{
+    ul_state_init(s, d);
+    snprintf(s->cur.mode, sizeof(s->cur.mode), "%s", ul_cycle_name(ch, 1));
+    snprintf(s->cur.at, sizeof(s->cur.at), "off");
+    s->cur.fields |= UL_F_MODE | UL_F_AT;
+}
+
+int ul_cycle_apply(ul_out_state_t *s, const ul_output_def_t *d, const ul_channel_desc_t *ch,
+                   const ul_state_msg_t *m, bool live)
+{
+    char prev[UL_KEY_SZ];
+    memcpy(prev, s->cur.mode, sizeof(prev));
+    int r = ul_state_apply(s, d, m, live);
+    if (r && ul_cycle_index(ch, s->cur.mode) <= 0) {
+        /* A mode this appliance doesn't have: keep the one we had (or the first). */
+        if (ul_cycle_index(ch, prev) > 0) {
+            memcpy(s->cur.mode, prev, sizeof(prev));
+        } else {
+            snprintf(s->cur.mode, sizeof(s->cur.mode), "%s", ul_cycle_name(ch, 1));
+        }
+    }
+    return r;
+}
+
+int ul_cycle_target(const ul_channel_desc_t *ch, const ul_state_msg_t *st)
+{
+    if (!st->on) {
+        return 0;
+    }
+    int i = ul_cycle_index(ch, st->mode);
+    return i > 0 ? i : 1;
+}
+
+int ul_cycle_presses(const ul_channel_desc_t *ch, int from, int to)
+{
+    int n = ch->n_modes + 1;
+    if (from < 0 || from >= n || to < 0 || to >= n) {
+        return 0;
+    }
+    return (to - from + n) % n;
+}
+
+void ul_cycle_sync(ul_out_state_t *s, const ul_channel_desc_t *ch, int at)
+{
+    if (at <= 0 || at > ch->n_modes) {
+        s->cur.on = false;
+        at = 0;
+    } else {
+        s->cur.on = true;
+        snprintf(s->cur.mode, sizeof(s->cur.mode), "%s", ul_cycle_name(ch, at));
+    }
+    snprintf(s->cur.at, sizeof(s->cur.at), "%s", ul_cycle_name(ch, at));
 }

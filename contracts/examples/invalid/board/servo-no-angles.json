@@ -1,0 +1,1 @@
+{ "v": 1, "chip": "esp32c3", "board": "Servo without angles", "channels": [ { "id": "xmas", "type": "servo", "gpio": 4, "hold_ms": 250 } ] }

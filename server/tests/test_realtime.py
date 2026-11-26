@@ -142,3 +142,27 @@ async def test_cmd_payload():
     assert topic == "ul/v1/d/ul-0a1b2c/cmd" and qos == 1 and not retain and payload["id"] == r["id"]
     with pytest.raises(ControlError):
         await ctl.cmd("ul-0a1b2c", "factory_reset", {}, "admin:1")  # needs confirm
+
+
+async def test_cycle_mode_kept_while_off():
+    """A servo-pressed appliance: mode is part of the full desired state, kept while off,
+    so the power button's {on} alone returns to the last mode."""
+    cap = Capture()
+    ctl = make_control(cap)
+    ctl.outputs[("ul-0a1b2c", "xmas")] = OutputInfo(1, None, "cycle", ["onoff", "mode"], {"modes": ["white", "color", "alternating"]})
+    p = await ctl.set("ul-0a1b2c", "xmas", {"on": True}, "ui:1")
+    assert p["mode"] == "white" and "level" not in p  # first mode by default; no brightness
+    p = await ctl.set("ul-0a1b2c", "xmas", {"on": True, "mode": "alternating"}, "ui:1")
+    assert p["mode"] == "alternating"
+    p = await ctl.set("ul-0a1b2c", "xmas", {"on": False}, "ui:1")
+    assert p == {"on": False, "mode": "alternating", "src": "ui:1", "seq": p["seq"]}
+    p = await ctl.set("ul-0a1b2c", "xmas", {"on": True}, "ui:1")
+    assert p["mode"] == "alternating"
+    with pytest.raises(ControlError) as e:
+        await ctl.set("ul-0a1b2c", "xmas", {"mode": "disco"}, "ui:1")
+    assert e.value.code == "invalid"
+    # Other kinds drop mode; a cycle with no modes in its info toggles "on".
+    r = await ctl.set("ul-0a1b2c", "fan", {"on": True, "mode": "white"}, "ui:1")
+    assert "mode" not in r
+    ctl.outputs[("ul-0a1b2c", "plain")] = OutputInfo(1, None, "cycle", ["onoff", "mode"], {})
+    assert (await ctl.set("ul-0a1b2c", "plain", {"on": True}, "ui:1"))["mode"] == "on"

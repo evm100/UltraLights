@@ -7,7 +7,7 @@
   "required": ["id", "op"],
   "properties": {
     "id": { "type": "string", "pattern": "^[A-Za-z0-9-]{8,40}$" },
-    "op": { "enum": ["identify", "reboot", "wifi_reset", "factory_reset", "pulse", "ota", "selftest", "close"] },
+    "op": { "enum": ["identify", "reboot", "wifi_reset", "factory_reset", "pulse", "ota", "selftest", "close", "sync"] },
     "ts": { "type": "integer", "description": "Server unix time in seconds when sent." },
     "src": { "$ref": "common.schema.json#/$defs/src" }
   },
@@ -19,6 +19,7 @@
     { "required": ["out", "ms"], "properties": { "id": true, "op": { "const": "pulse" }, "ts": true, "src": true, "out": { "$ref": "common.schema.json#/$defs/key" }, "ms": { "type": "integer", "minimum": 10, "maximum": 7200000, "description": "Clamped to the output's max_on_ms (at most 2 h)." } }, "additionalProperties": false },
     { "required": ["url", "sha256", "version"], "properties": { "id": true, "op": { "const": "ota" }, "ts": true, "src": true, "url": { "type": "string", "pattern": "^https://" }, "sha256": { "$ref": "common.schema.json#/$defs/sha256" }, "version": { "$ref": "common.schema.json#/$defs/semver" } }, "additionalProperties": false },
     { "properties": { "id": true, "op": { "const": "selftest" }, "ts": true, "src": true }, "additionalProperties": false },
-    { "required": ["out"], "properties": { "id": true, "op": { "const": "close" }, "ts": true, "src": true, "out": { "$ref": "common.schema.json#/$defs/key" } }, "additionalProperties": false, "description": "Solenoid only: end the running pulse now (no-op if closed)." }
+    { "required": ["out"], "properties": { "id": true, "op": { "const": "close" }, "ts": true, "src": true, "out": { "$ref": "common.schema.json#/$defs/key" } }, "additionalProperties": false, "description": "Solenoid only: end the running pulse now (no-op if closed)." },
+    { "required": ["out", "at"], "properties": { "id": true, "op": { "const": "sync" }, "ts": true, "src": true, "out": { "$ref": "common.schema.json#/$defs/key" }, "at": { "oneOf": [{ "const": "off" }, { "$ref": "set.schema.json#/$defs/mode" }] } }, "additionalProperties": false, "description": "cycle only: the appliance is really in `at` (someone pressed its button, or it lost power). The device takes that as both its position and its target, without pressing. Fails with 'busy' while a press is running." }
   ]
 }

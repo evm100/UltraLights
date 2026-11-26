@@ -1,0 +1,1 @@
+{ "v": 1, "chip": "esp32c3", "board": "Servo with off mode", "channels": [ { "id": "xmas", "type": "servo", "gpio": 4, "press_deg": 60, "rest_deg": 90, "hold_ms": 250, "modes": ["white", "off"] } ] }

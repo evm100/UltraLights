@@ -7,6 +7,8 @@ results are listed in each file's "_expect".
 import json
 from pathlib import Path
 
+SERVO_HZ = 50  # below the pwm minimum (100 Hz), so it never shares a timer with a light
+
 CHIPS = json.loads((Path(__file__).resolve().parent.parent / "chips.json").read_text())
 
 
@@ -38,6 +40,10 @@ def check_board(board: dict) -> dict:
         if ch["type"] == "pwm":
             pwm += 1
             freqs.add(ch.get("hz", 19000))
+        elif ch["type"] == "servo":
+            # Servos share LEDC with PWM: a channel each, and one 50 Hz timer between them.
+            pwm += 1
+            freqs.add(SERVO_HZ)
         elif ch["type"] == "argb":
             argb += 1
     if "reset_button" in board:

@@ -13,11 +13,13 @@
     "color": { "$ref": "common.schema.json#/$defs/rgb" },
     "white": { "$ref": "common.schema.json#/$defs/level", "description": "rgbw only: the white channel, 0 to 1." },
     "effect": { "$ref": "#/$defs/effect" },
+    "mode": { "$ref": "#/$defs/mode", "description": "cycle only: the mode to be in while on (one of the output's modes). Kept while off, so on: true alone returns to it. The device presses until the appliance gets there; a mode it doesn't have is ignored." },
     "fade_ms": { "$ref": "common.schema.json#/$defs/fade_ms", "default": 400 },
     "src": { "$ref": "common.schema.json#/$defs/src" },
     "seq": { "$ref": "common.schema.json#/$defs/seq" }
   },
   "$defs": {
+    "mode": { "allOf": [{ "$ref": "common.schema.json#/$defs/key" }, { "not": { "const": "off" } }] },
     "effect": {
       "type": ["object", "null"],
       "description": "argb only. null or absent = solid color. Building blocks arrive in the Color and ARGB phase; phase 1 firmware may report effect unsupported by leaving the cap out of info.",

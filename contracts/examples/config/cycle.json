@@ -1,0 +1,1 @@
+{ "v": 1, "rev": 3, "outputs": [ { "key": "xmas", "kind": "cycle", "name": "Tree lights", "channels": { "press": "xmas" }, "power_on": "last" } ] }

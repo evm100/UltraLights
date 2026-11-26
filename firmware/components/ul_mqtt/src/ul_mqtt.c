@@ -239,6 +239,16 @@ static void handle_cmd(const char *payload, int len)
                            r == ESP_ERR_NOT_FOUND ? "no_such_output" : r == ESP_ERR_NOT_SUPPORTED ? "not_a_solenoid" : NULL,
                            NULL, -1);
         break;
+    case UL_OP_SYNC:
+        r = ul_core_sync(c->out, c->at, c->src);
+        ul_mqtt_cmd_result(c->id, r == ESP_OK,
+                           r == ESP_OK ? NULL
+                           : r == ESP_ERR_NOT_FOUND ? "no_such_output"
+                           : r == ESP_ERR_NOT_SUPPORTED ? "not_a_cycle"
+                           : r == ESP_ERR_INVALID_STATE ? "busy"
+                           : r == ESP_ERR_INVALID_ARG ? "no_such_mode" : "failed",
+                           NULL, -1);
+        break;
     default:
         if (s_handlers[c->op]) {
             r = s_handlers[c->op](c);

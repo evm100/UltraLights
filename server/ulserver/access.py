@@ -49,7 +49,7 @@ INPUT_KINDS = frozenset({"motion"})  # sensors are watched, never driven
 
 # Which ability each set/live field needs. Anything not listed is refused.
 FIELD_ABILITY: dict[str, str] = {
-    "on": CONTROL, "level": CONTROL, "fade_ms": CONTROL,
+    "on": CONTROL, "level": CONTROL, "fade_ms": CONTROL, "mode": CONTROL,
     "color": COLOR, "white": COLOR, "cct": COLOR, "effect": COLOR,
 }
 

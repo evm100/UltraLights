@@ -47,7 +47,7 @@ def output_settings(node: Node, o: Output) -> dict[str, Any]:
         v["max_on_ms"] = entry.get("max_on_ms")  # valves always start closed: no power-on choice
     elif node.kind == "node" and o.kind not in INPUT_KINDS:
         v["power_on"] = entry.get("power_on", DEFAULTS["power_on"])
-        if o.kind in LIGHT_KINDS:
+        if o.kind in LIGHT_KINDS and o.kind != "cycle":
             v["max_level"] = entry.get("max_level", DEFAULTS["max_level"])
     return v
 
@@ -70,7 +70,7 @@ async def update_output(db: AsyncSession, control: Control, hub: Hub, node: Node
     limits = {k: changes[k] for k in ("max_level", "power_on", "max_on_ms") if k in changes}
     if limits and node.kind != "node":
         raise ManageError(422, "invalid", "a bridged device has no limits to set")
-    if "max_level" in limits and o.kind not in LIGHT_KINDS:
+    if "max_level" in limits and (o.kind not in LIGHT_KINDS or o.kind == "cycle"):
         raise ManageError(422, "invalid", f"a {o.kind} output has no level")
     if "power_on" in limits and (o.kind in INPUT_KINDS or o.kind == "solenoid"):
         raise ManageError(422, "invalid", f"a {o.kind} has no power-on state")

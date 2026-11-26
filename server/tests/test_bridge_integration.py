@@ -363,3 +363,70 @@ async def test_ota_end_to_end(migrated_db, tmp_path):
 async def _status(get, uid, want):
     u = await get(uid)
     return u if u.status == want else None
+
+
+async def test_servo_cycle_end_to_end(migrated_db, tmp_path):
+    """A servo-pressed appliance: the node steps forward one full press at a time and reports
+    where the lights are; power off and on returns to the remembered mode; sync moves nothing."""
+    board = json.loads((CONTRACTS / "examples/board/c3-xmas-servo.json").read_text())
+    s = Settings(database_url=get_settings().database_url, mqtt_host="127.0.0.1", mqtt_port=8883,
+                 mqtt_check_hostname=False, mqtt_ca_file=str(DEV / "tls" / "tls-ca.crt"), pki_dir=DEV / "pki")
+    devpki = DevicePKI(DEV / "pki")
+    dev = f"ul-{secrets.token_hex(3)}"
+    sm = dbm.sessionmaker()
+    async with sm() as db:
+        db.add(Node(device_id=dev, name="Tree", chip="esp32c3", board=board))
+        await db.commit()
+    bridge = Bridge(s, Hub(), sm)
+    control = Control(bridge.publish, sm, live_interval=0.02)
+    control.cmd_waiters = bridge.cmd_waiters
+    bridge.control = control
+    btask = asyncio.create_task(bridge.run())
+    await asyncio.wait_for(bridge.connected.wait(), 5)
+    cert, key = write_identity(tmp_path, devpki, dev)
+    sim = SimDevice(dev, board, cert, key, host="ul-dev.lan", server_ca=(DEV / "tls" / "tls-ca.crt").read_text(),
+                    connect_ip="127.0.0.1", press_scale=0.05)  # 650 ms per press -> ~33 ms
+    stop = asyncio.Event()
+    stask = asyncio.create_task(sim.run(stop))
+    try:
+        await asyncio.wait_for(sim.connected.wait(), 5)
+        await until(lambda: (dev, "xmas") in control.outputs, what="cycle output cached")
+        info = control.outputs[(dev, "xmas")]
+        assert info.kind == "cycle" and info.caps == ["onoff", "mode"]
+        assert info.meta["modes"] == ["white", "color", "alternating"]
+
+        def sets_received():
+            return [d for t, d in sim.received if t.endswith("/set/xmas")]
+
+        async def stored_at(at):
+            async with sm() as db:
+                rows = (await db.execute(Output.__table__.select().where(Output.key == "xmas"))).all()
+                return any(r.actual and r.actual.get("at") == at for r in rows)
+
+        # Off -> white: one press.
+        await control.set(dev, "xmas", {"on": True, "mode": "white"}, "ui:1")
+        await until(lambda: sim.state["xmas"]["at"] == "white", what="one press to white")
+        await until(lambda: stored_at("white"), what="state with at stored")
+        # White -> off: three presses, through color and alternating.
+        await control.set(dev, "xmas", {"on": False}, "ui:1")
+        await until(lambda: sim.state["xmas"]["at"] == "off", what="three presses to off")
+        # The power button's {on} alone goes back to white.
+        p = await control.set(dev, "xmas", {"on": True}, "ui:1")
+        assert p["mode"] == "white"
+        await until(lambda: sim.state["xmas"]["at"] == "white", what="back to the remembered mode")
+        assert len(sets_received()) == 3  # three sets drove 1 + 3 + 1 presses
+
+        # Someone used the lights' own button: sync says color, nothing presses, the set follows.
+        r = await control.cmd(dev, "sync", {"out": "xmas", "at": "color"}, "ui:1", wait=3)
+        assert r["result"]["ok"] is True and sim.state["xmas"]["at"] == "color"
+        await asyncio.sleep(0.2)
+        assert sim.state["xmas"]["at"] == "color" and sim.state["xmas"]["mode"] == "color"
+    finally:
+        stop.set()
+        await asyncio.wait_for(stask, 5)
+        for t in ("config", "status", "info", "set/xmas", "state/xmas"):
+            await bridge.publish(f"ul/v1/d/{dev}/{t}", None, schema=None, qos=1, retain=True)
+        bridge.stop()
+        btask.cancel()
+        await asyncio.gather(btask, return_exceptions=True)
+        await dbm.dispose()

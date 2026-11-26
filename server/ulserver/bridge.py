@@ -185,7 +185,7 @@ class Bridge:
         if not is_bridge:
             await ota.on_info(db, node, doc)
         existing = {o.key: o for o in (await db.execute(select(Output).where(Output.node_id == node.id))).scalars()}
-        meta_keys = ("part", "source", "leds", "reachable") if is_bridge else ("cct_range", "pixels", "max_level", "max_on_ms", "channels")
+        meta_keys = ("part", "source", "leds", "reachable") if is_bridge else ("cct_range", "pixels", "max_level", "max_on_ms", "modes", "channels")
         seen = set()
         for od in doc["outputs"]:
             seen.add(od["key"])

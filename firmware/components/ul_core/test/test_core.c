@@ -200,8 +200,116 @@ static void test_lerp(void)
     TEST_ASSERT_FALSE(o.on);
 }
 
+/* ---------- cycle: a servo pressing an appliance's mode button ---------- */
+
+static void load_servo_board(void)
+{
+    char *j = ut_read(EX("board/c3-xmas-servo.json"), NULL);
+    cJSON *root = cJSON_Parse(j);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, ul_board_from_cjson(root, &board, errbuf, sizeof(errbuf)), errbuf);
+    cJSON_Delete(root);
+    free(j);
+}
+
+static ul_state_msg_t cycle_set(bool on, const char *mode, uint64_t seq)
+{
+    ul_state_msg_t m = {0};
+    m.fields = UL_F_ON | UL_F_SEQ;
+    m.on = on;
+    m.seq = seq;
+    if (mode) {
+        m.fields |= UL_F_MODE;
+        snprintf(m.mode, sizeof(m.mode), "%s", mode);
+    }
+    return m;
+}
+
+static void test_cycle_mapping(void)
+{
+    load_servo_board();
+    ul_mapping_default(&board, &cfg);
+    TEST_ASSERT_EQUAL_INT(1, cfg.n);
+    TEST_ASSERT_EQUAL(UL_KIND_CYCLE, cfg.out[0].kind);
+    TEST_ASSERT_EQUAL_STRING("xmas", cfg.out[0].ch[UL_ROLE_PRESS]);
+    TEST_ASSERT_EQUAL_HEX32(UL_CAP_ONOFF | UL_CAP_MODE, cfg.out[0].caps);
+    char *j = ut_read(EX("config/cycle.json"), NULL);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, load_config(j), errbuf);
+    free(j);
+    /* The press role needs a servo channel. */
+    load_board();
+    TEST_ASSERT_EQUAL_INT(-1, load_config(
+        "{\"v\":1,\"rev\":1,\"outputs\":[{\"key\":\"a\",\"kind\":\"cycle\",\"channels\":{\"press\":\"relay\"}}]}"));
+    TEST_ASSERT_NOT_NULL(strstr(errbuf, "needs servo"));
+}
+
+static void test_cycle_planning(void)
+{
+    load_servo_board();
+    ul_mapping_default(&board, &cfg);
+    const ul_channel_desc_t *ch = &board.ch[0];
+    const ul_output_def_t *d = &cfg.out[0];
+    ul_out_state_t s;
+    ul_cycle_init(&s, d, ch);
+    TEST_ASSERT_FALSE(s.cur.on);
+    TEST_ASSERT_EQUAL_STRING("white", s.cur.mode);
+    TEST_ASSERT_EQUAL_STRING("off", s.cur.at);
+    TEST_ASSERT_EQUAL_INT(0, ul_cycle_target(ch, &s.cur));
+
+    /* Off -> white: one press. White -> off: three (white, color, alternating, off). */
+    ul_state_msg_t m = cycle_set(true, "white", 1);
+    TEST_ASSERT_EQUAL_INT(1, ul_cycle_apply(&s, d, ch, &m, false));
+    TEST_ASSERT_EQUAL_INT(1, ul_cycle_target(ch, &s.cur));
+    TEST_ASSERT_EQUAL_INT(1, ul_cycle_presses(ch, 0, ul_cycle_target(ch, &s.cur)));
+    m = cycle_set(false, NULL, 2);
+    ul_cycle_apply(&s, d, ch, &m, false);
+    TEST_ASSERT_EQUAL_INT(0, ul_cycle_target(ch, &s.cur));
+    TEST_ASSERT_EQUAL_INT(3, ul_cycle_presses(ch, 1, 0));
+    /* Off keeps the selected mode; on alone goes back to it. */
+    TEST_ASSERT_EQUAL_STRING("white", s.cur.mode);
+    m = cycle_set(true, NULL, 3);
+    ul_cycle_apply(&s, d, ch, &m, false);
+    TEST_ASSERT_EQUAL_INT(1, ul_cycle_target(ch, &s.cur));
+    /* Color -> alternating: one. Alternating -> color: three (off, white, color). */
+    TEST_ASSERT_EQUAL_INT(1, ul_cycle_presses(ch, 2, 3));
+    TEST_ASSERT_EQUAL_INT(3, ul_cycle_presses(ch, 3, 2));
+    TEST_ASSERT_EQUAL_INT(0, ul_cycle_presses(ch, 2, 2));
+    TEST_ASSERT_EQUAL_INT(0, ul_cycle_presses(ch, 9, 1)); /* out of range: never press */
+
+    /* A mode the appliance doesn't have is ignored; on still applies. */
+    m = cycle_set(true, "color", 4);
+    ul_cycle_apply(&s, d, ch, &m, false);
+    m = cycle_set(false, "disco", 5);
+    TEST_ASSERT_EQUAL_INT(1, ul_cycle_apply(&s, d, ch, &m, false));
+    TEST_ASSERT_FALSE(s.cur.on);
+    TEST_ASSERT_EQUAL_STRING("color", s.cur.mode);
+    /* Stale seq: dropped. */
+    m = cycle_set(true, "alternating", 5);
+    TEST_ASSERT_EQUAL_INT(0, ul_cycle_apply(&s, d, ch, &m, false));
+
+    /* Sync: the appliance is really in alternating, so that's the target too. */
+    ul_cycle_sync(&s, ch, 3);
+    TEST_ASSERT_TRUE(s.cur.on);
+    TEST_ASSERT_EQUAL_STRING("alternating", s.cur.mode);
+    TEST_ASSERT_EQUAL_STRING("alternating", s.cur.at);
+    TEST_ASSERT_EQUAL_INT(0, ul_cycle_presses(ch, 3, ul_cycle_target(ch, &s.cur)));
+    ul_cycle_sync(&s, ch, 0);
+    TEST_ASSERT_FALSE(s.cur.on);
+    TEST_ASSERT_EQUAL_STRING("alternating", s.cur.mode); /* remembered for the next on */
+    TEST_ASSERT_EQUAL_STRING("off", s.cur.at);
+
+    /* The state a device publishes carries mode and at. */
+    char *enc = ul_state_encode(&s.cur);
+    TEST_ASSERT_NOT_NULL(strstr(enc, "\"mode\":\"alternating\""));
+    TEST_ASSERT_NOT_NULL(strstr(enc, "\"at\":\"off\""));
+    TEST_ASSERT_NULL(strstr(enc, "\"level\""));
+    ut_emit("state", "cycle-synced", enc);
+    free(enc);
+}
+
 void run_core_tests(void)
 {
+    RUN_TEST(test_cycle_mapping);
+    RUN_TEST(test_cycle_planning);
     RUN_TEST(test_default_mapping);
     RUN_TEST(test_mapping_checks);
     RUN_TEST(test_seq_ordering);

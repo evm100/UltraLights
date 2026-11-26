@@ -69,6 +69,7 @@ components/
   ul_pwm/              LEDC; per-chip fade file (C6 gamma multi-fade, C3 chained hardware fades)
   ul_argb/             RMT strips, solid color with fades; per-chip RMT layout
   ul_switch/           relay/solenoid GPIOs
+  ul_servo/            servo button presser (LEDC, 50 Hz) for cycle outputs
   ul_status/           status LED patterns
   ul_wifi/             station, backoff, DNS override, SNTP
   ul_provision/        setup access point, captive DNS, setup page, reset button
@@ -88,7 +89,7 @@ and are built with `WHOLE_ARCHIVE`, so `main` never lists them. `ul_core_boot()`
 
 1. NVS (erased if unreadable, e.g. after a v5 node is converted), netif, event loop.
 2. `ul_board_load()`: magic, format, CRC, schema, chip match, pin rules. A rejected board drives no outputs.
-3. Driver stage (`ul_pwm` 10, `ul_argb` 20, `ul_switch` 30): each registers the channels it found.
+3. Driver stage (`ul_pwm` 10, `ul_servo` 15, `ul_argb` 20, `ul_switch` 30): each registers the channels it found.
 4. Saved config (or the default mapping), saved state, `power_on`, first render.
 5. Service stage: `ul_status` 0, `ul_wifi` 10, `ul_health` 15, `ul_provision` 20, `ul_identity` 30, `ul_mqtt` 40, `ul_ota` 50.
 

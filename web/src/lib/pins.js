@@ -6,6 +6,7 @@ import CHIPS from "../../../contracts/chips.json";
 export { CHIPS };
 
 export const DEFAULT_HZ = 19000;
+export const SERVO_HZ = 50; // below the pwm minimum (100 Hz), so it never shares a timer with a light
 
 /** @returns {{errors: string[], warnings: string[]}} codes "<code>:<detail>", sorted, unique */
 export function checkBoard(board) {
@@ -35,6 +36,10 @@ export function checkBoard(board) {
     if (ch.type === "pwm") {
       pwm += 1;
       freqs.add(ch.hz ?? DEFAULT_HZ);
+    } else if (ch.type === "servo") {
+      // Servos share LEDC with PWM: a channel each, and one 50 Hz timer between them.
+      pwm += 1;
+      freqs.add(SERVO_HZ);
     } else if (ch.type === "argb") argb += 1;
   }
   if (board.reset_button) claim(board.reset_button.gpio, "reset_button", true);
@@ -60,8 +65,8 @@ export function describe(code, chipKey) {
     case "pin_conflict": return `GPIO${detail} is used twice.`;
     case "duplicate_id": return `Two channels are called "${detail}".`;
     case "no_reset_button": return `No reset button: Wi-Fi can only be reset over the network.`;
-    case "too_many_pwm": return `${detail} PWM channels; the ${chip.name} has ${chip.limits?.pwm}.`;
-    case "too_many_pwm_freqs": return `${detail} different PWM frequencies; at most ${chip.limits?.pwm_freqs}.`;
+    case "too_many_pwm": return `${detail} PWM and servo channels; the ${chip.name} has ${chip.limits?.pwm}.`;
+    case "too_many_pwm_freqs": return `${detail} different PWM frequencies (servos count as one, 50 Hz); at most ${chip.limits?.pwm_freqs}.`;
     case "too_many_argb": return `${detail} strips; at most ${chip.limits?.argb}.`;
     case "schema": return `Descriptor format: ${code.slice(7)}`;
     default: return code;

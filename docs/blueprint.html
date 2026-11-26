@@ -621,12 +621,14 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
                 <tr><td>ARGB strip</td><td>RMT data line</td><td>3 or 4 bytes per pixel</td><td><code>onoff</code> <code>level</code> <code>color</code> <code>effect</code></td><td>Last state, or off</td></tr>
                 <tr><td>Relay</td><td>GPIO + driver</td><td class="num">1</td><td><code>onoff</code></td><td>Configurable per output</td></tr>
                 <tr><td>Solenoid <span class="tag new">new</span></td><td>GPIO + driver</td><td class="num">1</td><td><code>pulse</code> (with max on-time)</td><td>Always off</td></tr>
+                <tr><td>Button cycler <span class="tag new">new</span></td><td>Servo on LEDC (50 Hz)</td><td class="num">1</td><td><code>onoff</code> <code>mode</code></td><td>Never left pressed; keeps its press count across reboots</td></tr>
                 <tr><td>Motion sensor <span class="tag new">input</span></td><td>GPIO (PIR) or I2C</td><td class="num">1</td><td><code>motion</code></td><td>Reports nothing until stable after boot</td></tr>
                 <tr><td>Power monitor <span class="tag new">input</span></td><td>INA226 on I2C</td><td class="num">1 per board</td><td><code>power</code> (bus volts, amps, per-output estimates)</td><td>Overcurrent alert turns outputs off</td></tr>
               </tbody>
             </table>
           </div>
           <div class="callout"><b>RGBW is worth it.</b> RGB strips make a poor, tinted white. Six identical low-side MOSFET channels on the PCB cover every PWM row above, and with the optional flyback diode fitted, any of them can drive a relay or solenoid coil. Which channels form which output is a setting, not a different board (see <a href="#board">Board and population</a>). Solenoids differ from relays because many can't stay energized, so they get <code>pulse</code> rather than <code>onoff</code>. The firmware enforces a maximum on-time, and a hardware timeout on the PCB would make sure a crash can't leave a valve open.</div>
+          <div class="callout"><b>Button cyclers.</b> For lights whose sealed controller steps through modes on a button press (white, color, alternating, off), a servo presses the button. The <code>servo</code> channel in the board descriptor holds the press and rest angles, the hold and release times, and the modes in button order, because the cycle is a property of the attached hardware, like a strip's pixel count. The <code>cycle</code> output shows one button per mode. The node counts presses and steps forward until the lights get there, one complete press at a time. It remembers the last mode while off, so the tile's power button returns to it. Servos share LEDC with PWM: each takes a channel, and they share one 50 Hz timer, so the pin rules count them as PWM. Because the count is open loop, a <code>sync</code> command corrects it when someone uses the lights' own button (see <code>contracts/README.md</code>).</div>
         </div>
 
         <div class="sub" id="contract">
@@ -744,7 +746,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
             <div class="layer-arrow">↓ use the device model, never a driver directly</div>
             <div class="layer"><div class="lname"><b>Core</b><span>the device model</span></div><div class="mods"><span class="mod core">ul_core</span><span class="mod core">ul_board</span></div></div>
             <div class="layer-arrow">↑ register channels and inputs with the core</div>
-            <div class="layer"><div class="lname"><b>Drivers</b><span>hardware</span></div><div class="mods"><span class="mod">ul_pwm</span><span class="mod">ul_argb</span><span class="mod">ul_switch</span><span class="mod">ul_power</span><span class="mod">ul_status</span><span class="mod later">ul_motion</span><span class="mod later">ul_stepper</span></div></div>
+            <div class="layer"><div class="lname"><b>Drivers</b><span>hardware</span></div><div class="mods"><span class="mod">ul_pwm</span><span class="mod">ul_argb</span><span class="mod">ul_switch</span><span class="mod">ul_servo</span><span class="mod">ul_power</span><span class="mod">ul_status</span><span class="mod later">ul_motion</span><span class="mod later">ul_stepper</span></div></div>
           </div>
           <p class="figcap">Dashed components come in later phases.</p>
           <details class="more"><summary>Component rules</summary>
@@ -770,6 +772,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
     ├── ul_pwm/             LEDC channels and hardware fades
     ├── ul_argb/            RMT strip driver, RGB and RGBW pixels
     ├── ul_switch/          relays, solenoid pulses with limits
+    ├── ul_servo/           servo that presses an appliance's own button
     ├── ul_power/           INA226, per-channel estimates
     ├── ul_status/          status LED patterns
     ├── ul_wifi/            Wi-Fi and time sync

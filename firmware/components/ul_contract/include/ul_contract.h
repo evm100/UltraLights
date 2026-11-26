@@ -31,6 +31,10 @@ const char *ul_ch_type_name(ul_ch_type_t t);
 const char *ul_order_name(ul_pixel_order_t o);
 const char *ul_op_name(ul_op_t op);
 uint32_t ul_kind_caps(ul_kind_t kind);   /* caps a kind can have; drivers may remove some */
+/* cycle: position of a mode name on a servo channel (0 = "off", 1.. = modes), -1 if unknown. */
+int ul_cycle_index(const ul_channel_desc_t *ch, const char *name);
+/* cycle: name for a position; anything out of range is "off". */
+const char *ul_cycle_name(const ul_channel_desc_t *ch, int index);
 
 /* ---- field checks shared with ul_board / ul_core ---- */
 bool ul_is_key(const char *s);

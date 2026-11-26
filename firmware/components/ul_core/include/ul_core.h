@@ -79,9 +79,18 @@ typedef struct {
     esp_err_t (*set_on)(void *ctx, bool on);
     /* argb: like set_duty, with linear r, g, b, w per point, on the first `pixels` pixels. */
     esp_err_t (*set_rgbw)(void *ctx, const float (*points)[4], int n, uint16_t pixels, uint32_t fade_ms);
+    /*
+     * servo: start one full button press (press, hold, back to rest, settle) and
+     * return at once. The driver calls ul_core_press_done when the arm is back at
+     * rest. ul_core never starts a press while one is running on that channel.
+     */
+    esp_err_t (*press)(void *ctx);
 } ul_channel_ops_t;
 
 esp_err_t ul_core_register_channel(const char *id, const ul_channel_ops_t *ops, void *ctx);
+
+/* A press started with ops->press has finished (ok = false: it could not be done). Any task. */
+void ul_core_press_done(const char *channel_id, bool ok);
 
 /* ---------- boot ---------- */
 
@@ -115,6 +124,13 @@ esp_err_t ul_core_pulse(const char *key, uint32_t ms);
 
 /* End a solenoid's running pulse now (no-op if it is closed). Not retained, unlike set. */
 esp_err_t ul_core_close(const char *key);
+
+/*
+ * cycle: the appliance is really at `at` ("off" or a mode). Taken as both the
+ * position and the target, without pressing. ESP_ERR_INVALID_STATE while a press
+ * runs, ESP_ERR_INVALID_ARG for a mode the output doesn't have.
+ */
+esp_err_t ul_core_sync(const char *key, const char *at, const char *src);
 
 /* Blink one output (key) or all of them (NULL) for ms, then restore. */
 esp_err_t ul_core_identify(const char *key, uint32_t ms);

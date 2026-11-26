@@ -101,11 +101,12 @@ ROLES_BY_KIND: dict[str, set[str]] = {
     "relay": {"coil"},
     "solenoid": {"coil"},
     "motion": {"in"},
+    "cycle": {"press"},
 }
 
 CHANNEL_TYPE_FOR_ROLE = {
     "w": "pwm", "warm": "pwm", "cool": "pwm", "r": "pwm", "g": "pwm", "b": "pwm",
-    "data": "argb", "coil": "switch", "in": "motion",
+    "data": "argb", "coil": "switch", "in": "motion", "press": "servo",
 }
 
 CAPS_BY_KIND: dict[str, list[str]] = {
@@ -118,10 +119,17 @@ CAPS_BY_KIND: dict[str, list[str]] = {
     "relay": ["onoff"],
     "solenoid": ["pulse"],
     "motion": ["motion"],
+    "cycle": ["onoff", "mode"],
 }
 
-DEFAULT_KIND_FOR_TYPE = {"pwm": "white", "argb": "argb", "switch": "relay", "motion": "motion"}
-DEFAULT_ROLE_FOR_TYPE = {"pwm": "w", "argb": "data", "switch": "coil", "motion": "in"}
+DEFAULT_KIND_FOR_TYPE = {"pwm": "white", "argb": "argb", "switch": "relay", "motion": "motion", "servo": "cycle"}
+DEFAULT_ROLE_FOR_TYPE = {"pwm": "w", "argb": "data", "switch": "coil", "motion": "in", "servo": "press"}
+DEFAULT_MODES = ["on"]  # board.schema.json servo channel default
+
+
+def cycle_modes(meta: dict) -> list[str]:
+    """A cycle output's modes in button order (from the device's info), without "off"."""
+    return list(meta.get("modes") or DEFAULT_MODES)
 
 
 def check_config(board: dict, config: dict) -> list[str]:

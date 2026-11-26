@@ -5,13 +5,13 @@
 
 static const char *const CHIP_NAMES[] = {"esp32c3", "esp32c6"};
 static const char *const KIND_NAMES[] = {"white", "cct", "rgb", "rgbw", "rgbcct",
-                                         "argb", "relay", "solenoid", "motion"};
-static const char *const ROLE_NAMES[] = {"w", "warm", "cool", "r", "g", "b", "data", "coil", "in"};
-static const char *const CH_TYPE_NAMES[] = {"pwm", "argb", "switch", "motion"};
+                                         "argb", "relay", "solenoid", "motion", "cycle"};
+static const char *const ROLE_NAMES[] = {"w", "warm", "cool", "r", "g", "b", "data", "coil", "in", "press"};
+static const char *const CH_TYPE_NAMES[] = {"pwm", "argb", "switch", "motion", "servo"};
 static const char *const ORDER_NAMES[] = {"GRB", "RGB", "BRG", "RBG", "GBR", "BGR", "GRBW", "RGBW"};
 static const char *const CHIPSET_NAMES[] = {"ws2812", "sk6812", "ws2811"};
 static const char *const OP_NAMES[] = {"identify", "reboot", "wifi_reset", "factory_reset",
-                                       "pulse", "ota", "selftest", "close"};
+                                       "pulse", "ota", "selftest", "close", "sync"};
 
 #define N(a) (int)(sizeof(a) / sizeof((a)[0]))
 
@@ -59,11 +59,31 @@ uint32_t ul_kind_caps(ul_kind_t k)
     case UL_KIND_RELAY: return UL_CAP_ONOFF;
     case UL_KIND_SOLENOID: return UL_CAP_PULSE;
     case UL_KIND_MOTION: return UL_CAP_MOTION;
+    case UL_KIND_CYCLE: return UL_CAP_ONOFF | UL_CAP_MODE;
     default: return 0;
     }
 }
 
 static bool is_name(const char *s) { return s[0] != '\0'; }
+static bool is_mode(const char *s) { return ul_is_key(s) && strcmp(s, "off") != 0; }
+
+int ul_cycle_index(const ul_channel_desc_t *ch, const char *name)
+{
+    if (strcmp(name, "off") == 0) {
+        return 0;
+    }
+    for (int i = 0; i < ch->n_modes; i++) {
+        if (strcmp(ch->modes[i], name) == 0) {
+            return i + 1;
+        }
+    }
+    return -1;
+}
+
+const char *ul_cycle_name(const ul_channel_desc_t *ch, int index)
+{
+    return index <= 0 || index > ch->n_modes ? "off" : ch->modes[index - 1];
+}
 
 /* ---------- board ---------- */
 
@@ -76,6 +96,9 @@ static int channel_from_cjson(const cJSON *c, ul_channel_desc_t *ch, jerr_t *e)
     ch->hz = 19000;
     ch->order = UL_ORDER_GRB;
     ch->chipset = UL_CHIPSET_WS2812;
+    ch->release_ms = 400;
+    ch->n_modes = 1;
+    strcpy(ch->modes[0], "on");
     char type[8];
     long long v;
     if (j_str(c, "id", ch->id, sizeof(ch->id), true, ul_is_key, e) < 0 ||
@@ -138,6 +161,48 @@ static int channel_from_cjson(const cJSON *c, ul_channel_desc_t *ch, jerr_t *e)
         static const char *const ok[] = {"id", "name", "type", "gpio", "active_low", NULL};
         if (j_only(c, ok, ch->id, e) < 0 || j_bool(c, "active_low", &ch->active_low, false, e) < 0) {
             return J_BAD;
+        }
+        break;
+    }
+    case UL_CH_SERVO: {
+        static const char *const ok[] = {"id", "name", "type", "gpio", "press_deg", "rest_deg",
+                                         "hold_ms", "release_ms", "modes", NULL};
+        if (j_only(c, ok, ch->id, e) < 0 || j_int(c, "press_deg", 0, 180, &v, true, e) < 0) {
+            return J_BAD;
+        }
+        ch->press_deg = (uint8_t)v;
+        if (j_int(c, "rest_deg", 0, 180, &v, true, e) < 0) {
+            return J_BAD;
+        }
+        ch->rest_deg = (uint8_t)v;
+        if (j_int(c, "hold_ms", 20, 5000, &v, true, e) < 0) {
+            return J_BAD;
+        }
+        ch->hold_ms = (uint16_t)v;
+        int r = j_int(c, "release_ms", 50, 5000, &v, false, e);
+        if (r < 0) {
+            return J_BAD;
+        }
+        if (r == J_OK) {
+            ch->release_ms = (uint16_t)v;
+        }
+        const cJSON *m = cJSON_GetObjectItemCaseSensitive(c, "modes");
+        if (m) {
+            int n = cJSON_IsArray(m) ? cJSON_GetArraySize(m) : 0;
+            if (n < 1 || n > UL_MAX_MODES) {
+                return j_fail(e, "channel %s: modes must be 1 to %d names", ch->id, UL_MAX_MODES);
+            }
+            ch->n_modes = 0;
+            const cJSON *x;
+            cJSON_ArrayForEach(x, m) {
+                if (!cJSON_IsString(x) || !is_mode(x->valuestring)) {
+                    return j_fail(e, "channel %s: bad mode name", ch->id);
+                }
+                if (ul_cycle_index(ch, x->valuestring) > 0) {
+                    return j_fail(e, "channel %s: mode %s twice", ch->id, x->valuestring);
+                }
+                strcpy(ch->modes[ch->n_modes++], x->valuestring);
+            }
         }
         break;
     }
@@ -252,6 +317,17 @@ cJSON *ul_channel_to_cjson(const ul_channel_desc_t *ch)
             cJSON_AddBoolToObject(c, "active_low", true);
         }
         break;
+    case UL_CH_SERVO: {
+        cJSON_AddNumberToObject(c, "press_deg", ch->press_deg);
+        cJSON_AddNumberToObject(c, "rest_deg", ch->rest_deg);
+        cJSON_AddNumberToObject(c, "hold_ms", ch->hold_ms);
+        cJSON_AddNumberToObject(c, "release_ms", ch->release_ms);
+        cJSON *m = cJSON_AddArrayToObject(c, "modes");
+        for (int i = 0; i < ch->n_modes; i++) {
+            cJSON_AddItemToArray(m, cJSON_CreateString(ch->modes[i]));
+        }
+        break;
+    }
     }
     return c;
 }

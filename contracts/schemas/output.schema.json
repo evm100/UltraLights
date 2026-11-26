@@ -12,8 +12,8 @@
     "name": { "$ref": "common.schema.json#/$defs/name" },
     "channels": {
       "type": "object",
-      "description": "Role to board channel id. Roles per kind: white {w}; cct {warm, cool}; rgb {r, g, b}; rgbw {r, g, b, w}; rgbcct {r, g, b, warm, cool}; argb {data}; relay {coil}; solenoid {coil}; motion {in}.",
-      "propertyNames": { "enum": ["w", "warm", "cool", "r", "g", "b", "data", "coil", "in"] },
+      "description": "Role to board channel id. Roles per kind: white {w}; cct {warm, cool}; rgb {r, g, b}; rgbw {r, g, b, w}; rgbcct {r, g, b, warm, cool}; argb {data}; relay {coil}; solenoid {coil}; motion {in}; cycle {press}.",
+      "propertyNames": { "enum": ["w", "warm", "cool", "r", "g", "b", "data", "coil", "in", "press"] },
       "additionalProperties": { "$ref": "common.schema.json#/$defs/key" },
       "minProperties": 1
     },
@@ -24,7 +24,8 @@
     "max_level": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 1, "description": "Hard cap applied on the device (thermal or power budget)." },
     "pixels": { "type": "integer", "minimum": 1, "maximum": 1500, "description": "argb only: pixels in use, at most the channel's pixel count." },
     "power_on": { "enum": ["last", "off", "on"], "default": "last", "description": "State at boot before the server is reached." },
-    "max_on_ms": { "type": "integer", "minimum": 50, "maximum": 7200000, "description": "solenoid only: firmware hard limit for a pulse (at most 2 h)." }
+    "max_on_ms": { "type": "integer", "minimum": 50, "maximum": 7200000, "description": "solenoid only: firmware hard limit for a pulse (at most 2 h)." },
+    "modes": { "$ref": "board.schema.json#/$defs/modes", "description": "cycle only: the press channel's modes, set by the device in info so the server and UI need no board lookup. Ignored in config." }
   },
   "allOf": [
     { "if": { "properties": { "kind": { "const": "solenoid" } } }, "then": { "required": ["max_on_ms"] } }
