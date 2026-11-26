@@ -1246,7 +1246,8 @@ sequenceDiagram
       <!-- BUILDS -->
       <section id="builds">
         <div class="sec-head"><span class="label">11 · Delivery</span><h2>Builds, deployment and OTA</h2></div>
-        <p>Firmware is built per chip and feature profile, never per device: a handful of images serves every node, since pins live in the board descriptor. The admin panel queues a build, the workstation builds and signs it, and a staged rollout delivers it. Until the build worker exists, images are built on the workstation with <code>idf.py</code> and uploaded through the admin panel.</p>
+        <p>Firmware is built per chip and feature profile, never per device: a handful of images serves every node, since pins live in the board descriptor. The admin panel queues a build, the workstation builds and signs it, and a staged rollout delivers it. Manual upload of a package from <code>package.py</code> stays available.</p>
+        <p><b>Build worker</b> (<code>workers/build</code>, <code>contracts/schemas/worker</code>). An admin queues a profile at a git ref under <b>Builds</b>. The worker claims it over HTTPS with its token, checks the ref out in its own clean clone (never a working tree, so a package is never <code>-dirty</code>), runs <code>build.sh</code> and <code>package.py</code>, streams the log, and uploads the package. Its reports are the heartbeat: three quiet minutes fail the job, and a cancel stops the build at the next report. The version is <code>firmware/version.txt</code> at that ref, and a different commit can't reuse a stored version unless the build was queued with <i>replace</i>, because OTA compares versions. Images are unsigned until secure boot exists (Fabrication); then the worker signs them.</p>
         <div class="figure">
 <pre class="mermaid">
 flowchart LR
@@ -1263,6 +1264,8 @@ flowchart LR
           <li>A new image marks itself good only after it reaches the broker. If it can't, the bootloader rolls back on the next reboot.</li>
           <li>The OTA command is never retained, and success is reported only after the broker acknowledges it. v5 learned both the hard way.</li>
           <li>Owners see "Update available" and can approve it. You can push to anyone.</li>
+          <li><b>Pushing an update</b> (built): an admin picks a package and nodes on its profile (Firmware, or a node's page). Each node gets an <code>ota</code> cmd whose URL is <code>/api/v1/fw/&lt;sha256&gt;.bin</code>: the device downloads with plain HTTPS (no client certificate), so the image is addressed by its own hash, which only admins and the node being updated see. Images carry no secrets (identity is in NVS, the descriptor in its own partition). The server follows each update in <code>ota_updates</code>: <i>sent</i>, <i>downloading</i> (cmd_result progress), <i>restarting</i> (final ok), then <i>done</i> when the node's info reports the new version. A node that comes back on another version rolled back, and a step that goes quiet (2 min unanswered, 5 min stalled, 3 min not back) fails. One update per node at a time; the same version only with <i>reinstall</i>.</li>
+          <li>Still to come: staged rollouts (canaries, then everyone, pause on failure) and the owners' "Update available".</li>
         </ul>
 
         <div class="sub" id="deploy">
@@ -1476,9 +1479,9 @@ docs/        this blueprint, decisions</code></pre>
             <h4>Phases</h4>
             <ol class="steps">
               <li><div><b>Foundations, in two parallel tracks.</b> Shared contracts first. Then the server track (sign-in, database, CA and enrollment, broker, install script) and the firmware track (core, board descriptor, PWM, strip, setup page with DNS, enrollment, MQTT), each building for both C3 and C6.</div></li>
-              <li><div><b>Bench, then cutover.</b> A reflashed legacy C3 node, created from a blank builder, enrolls with the server (dev server first, then the deployed one after the weekend cutover). Its white channels and strip (solid color) are controlled live from <code>lights.evm100.org</code> with the light control screen.</div></li>
+              <li><div><b>Bench, then cutover.</b> A reflashed legacy C3 node, created from a blank builder, enrolls with the server (dev server first, then the deployed one after the weekend cutover). Its white channels and strip (solid color) are controlled live from <code>lights.evm100.org</code> with the light control screen. <span class="tag keep">Done</span> Cut over, several nodes and the OpenRGB bridge live on the new server.</div></li>
               <li><div><b>Homes and people.</b> Roles, guest grants, rooms list, scenes, schedules, relays. <span class="tag keep">Built</span></div></li>
-              <li><div><b>Fleet.</b> Admin panel, health, build worker, OTA, problem reports.</div></li>
+              <li><div><b>Fleet.</b> Admin panel, health, build worker, OTA, problem reports. <span class="tag rework">In progress</span> Build worker and OTA push built (unsigned images until secure boot); staged rollouts next.</div></li>
               <li><div><b>Color and ARGB.</b> RGB, RGBW, RGB+CCT, building blocks, clips, solenoids. <span class="tag keep">Done early</span> The OpenRGB bridge: one PC, one light.</div></li>
               <li><div><b>Fabrication.</b> PCB bring-up page, self-test, power calibration profiles, secure boot on production boards.</div></li>
               <li><div><b>Sensors and larger installs.</b> Motion inputs feeding the scheduler; ESP-NOW mesh and gateway for venues.</div></li>

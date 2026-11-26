@@ -6,12 +6,16 @@ how a node is expected to behave (contracts/README.md "Connection sequence").
 """
 import asyncio
 import datetime as dt
+import hashlib
 import http.client
 import json
 import logging
 import random
 import socket
 import ssl
+import struct
+import urllib.parse
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -57,6 +61,14 @@ class _HTTPS(http.client.HTTPSConnection):
         self.sock = self._context.wrap_socket(sock, server_hostname=self._server)
 
 
+def app_version(image: bytes) -> str | None:
+    """The version in an ESP-IDF app image's esp_app_desc_t (after the 24-byte image header and
+    the first 8-byte segment header), or None if it isn't one."""
+    if len(image) < 80 or image[0] != 0xE9 or struct.unpack_from("<I", image, 32)[0] != 0xABCD5432:
+        return None
+    return image[48:80].split(b"\0", 1)[0].decode(errors="replace")
+
+
 def enroll(payload: dict, mac: str, connect_ip: str | None = None, https_port: int = 443) -> dict:
     prov, board = payload["provision"], payload["board"]
     key, csr = make_csr(prov["device_id"])
@@ -92,6 +104,11 @@ class SimDevice:
     received: list[tuple[str, dict]] = field(default_factory=list)
     client: aiomqtt.Client | None = None
     connected: asyncio.Event = field(default_factory=asyncio.Event)
+    fw: str = "0.0.1"
+    profile: str | None = None  # default <chip>-sim; give a real one (c3-lights) to take real OTA images
+    https_port: int = 443
+    fetch: Callable[[str], Awaitable[bytes]] | None = None  # OTA download; default HTTPS like the firmware
+    _ota_task: asyncio.Task | None = None
     _valve_tasks: dict[str, asyncio.Task] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -110,8 +127,8 @@ class SimDevice:
                 self.state[o["key"]].pop("level", None)
 
     def info(self) -> dict:
-        d = {"v": 1, "id": self.device_id, "chip": self.board["chip"], "fw": "0.0.1",
-             "profile": f"{self.board['chip'].removeprefix('esp32')}-sim", "idf": "sim",
+        d = {"v": 1, "id": self.device_id, "chip": self.board["chip"], "fw": self.fw,
+             "profile": self.profile or f"{self.board['chip'].removeprefix('esp32')}-sim", "idf": "sim",
              "board": self.board["board"], "board_crc": self.board_crc, "mac": self.mac,
              "channels": self.board["channels"], "outputs": self.outputs, "config_rev": self.config_rev}
         if self.config_error:
@@ -221,13 +238,62 @@ class SimDevice:
                 await self._open(out, min(doc["ms"], out["max_on_ms"]))
             else:
                 await self._close(out["key"])
-        elif doc["op"] in ("ota", "selftest"):
+        elif doc["op"] == "ota":
+            if self._ota_task and not self._ota_task.done():
+                ok, err = False, "ESP_ERR_INVALID_STATE"
+            else:  # accepted: like ul_ota, no result until progress, success or failure
+                self._ota_task = asyncio.create_task(self._ota(doc))
+                return
+        elif doc["op"] == "selftest":
             ok, err = False, "unsupported"
         res = {"type": "cmd_result", "cmd_id": doc["id"], "ok": ok}
         if err:
             res["error"] = err
         await self.pub(self.t("evt"), res, "evt")
 
+
+    # OTA, as ul_ota: download, check version and sha256, report progress, "restart" into it.
+    async def _result(self, cid: str, ok: bool, error: str | None = None, progress: int | None = None) -> None:
+        res: dict[str, Any] = {"type": "cmd_result", "cmd_id": cid, "ok": ok}
+        if error:
+            res["error"] = error
+        if progress is not None:
+            res["progress"] = progress
+        await self.pub(self.t("evt"), res, "evt")
+
+    def _https_get(self, url: str) -> bytes:
+        u = urllib.parse.urlsplit(url)
+        conn = _HTTPS(u.hostname or self.host, self.connect_ip, u.port or self.https_port, _ctx(self.server_ca))
+        conn.request("GET", u.path)
+        r = conn.getresponse()
+        data = r.read()
+        if r.status != 200:
+            raise RuntimeError(f"HTTP {r.status}")
+        return data
+
+    async def _ota(self, doc: dict) -> None:
+        cid = doc["id"]
+        try:
+            image = await (self.fetch(doc["url"]) if self.fetch else asyncio.to_thread(self._https_get, doc["url"]))
+        except Exception as e:  # noqa: BLE001
+            log.warning("ota download failed: %s", e)
+            await self._result(cid, False, "download_failed")
+            return
+        if app_version(image) != doc["version"]:
+            await self._result(cid, False, "version_mismatch")
+            return
+        for pct in range(10, 100, 10):
+            await self._result(cid, True, progress=pct)
+            await asyncio.sleep(0.01)
+        if hashlib.sha256(image).hexdigest() != doc["sha256"]:
+            await self._result(cid, False, "sha256_mismatch")
+            return
+        await self._result(cid, True)
+        log.info("ota: restarting into %s", doc["version"])
+        await asyncio.sleep(0.2)
+        self.fw = doc["version"]
+        await self.pub(self.t("status"), {"online": True}, "status", retain=True)
+        await self.pub(self.t("info"), self.info(), "info", retain=True)
 
     # Valves, as ul_core: a pulse is clamped to max_on_ms and timed here; the valve reports on
     # with pulse_ms_left, then closes itself. close ends a run early (a no-op when closed).

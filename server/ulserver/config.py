@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     data_dir: Path = Path("/var/lib/ultralights")
 
     contracts_dir: Path = REPO_ROOT / "contracts"
+    # Profiles the build worker can build (firmware/profiles/<name>.defaults in this checkout).
+    firmware_profiles_dir: Path = REPO_ROOT / "firmware" / "profiles"
 
     # Cookies are Secure unless explicitly in dev over plain http (vite dev server on localhost).
     cookie_secure: bool = True

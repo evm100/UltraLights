@@ -195,6 +195,15 @@ static void test_cmd_fields(void)
     TEST_ASSERT_EQUAL(UL_OP_IDENTIFY, c.op);
     TEST_ASSERT_TRUE(c.ts == 1763600000);
     free(j);
+    /* The server's OTA URL (content-addressed by the image's sha256) fits and survives decoding. */
+    j = ut_read(EX("cmd/ota-server-url.json"), &n);
+    TEST_ASSERT_EQUAL_INT(0, ul_cmd_decode(j, n, &c, errbuf, sizeof(errbuf)));
+    TEST_ASSERT_EQUAL(UL_OP_OTA, c.op);
+    TEST_ASSERT_EQUAL_STRING("https://lights.evm100.org/api/v1/fw/"
+                             "d6a06165d26385fdd0a039479b1f4c08e3a0d6664c59edfd060b938971d95465.bin", c.url);
+    TEST_ASSERT_EQUAL_STRING("d6a06165d26385fdd0a039479b1f4c08e3a0d6664c59edfd060b938971d95465", c.sha256);
+    TEST_ASSERT_EQUAL_STRING("0.1.0", c.version);
+    free(j);
 }
 
 /* ---------- encoders reproduce the examples ---------- */

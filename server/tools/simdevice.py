@@ -31,6 +31,9 @@ def main() -> int:
     ap.add_argument("--connect", help="IP address to connect to instead of resolving the server name")
     ap.add_argument("--https-port", type=int, default=443)
     ap.add_argument("--state", type=Path)
+    ap.add_argument("--fw", default="0.0.1", help="firmware version to report (default 0.0.1)")
+    ap.add_argument("--profile", help="profile to report, e.g. c3-lights to take that profile's OTA images "
+                                      "(default <chip>-sim); a successful OTA changes the version until restart")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 
@@ -55,7 +58,8 @@ def main() -> int:
     ident = json.loads(meta.read_text())
     sim = SimDevice(device_id=dev, board=payload["board"], cert_file=state / "device.crt", key_file=state / "device.key",
                     host=ident["mqtt"]["host"], port=ident["mqtt"]["port"], server_ca=prov.get("server_ca"),
-                    connect_ip=a.connect, board_crc=contracts.ulboard().crc_hex(payload), mac=ident["mac"])
+                    connect_ip=a.connect, board_crc=contracts.ulboard().crc_hex(payload), mac=ident["mac"],
+                    fw=a.fw, profile=a.profile, https_port=a.https_port)
     print(f"{dev} connecting to {ident['mqtt']['host']}:{ident['mqtt']['port']} (Ctrl-C to stop)")
     try:
         asyncio.run(sim.run())

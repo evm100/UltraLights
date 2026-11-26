@@ -18,7 +18,7 @@ import aiomqtt
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from . import contracts
+from . import contracts, ota
 from .config import Settings
 from .hub import Hub
 from .models import AuditLog, Node, Output
@@ -163,6 +163,8 @@ class Bridge:
                     fut = self.cmd_waiters.get(doc["cmd_id"])
                     if fut and not fut.done() and "progress" not in doc:
                         fut.set_result(doc)
+                    if await ota.on_cmd_result(db, node, doc):
+                        await db.commit()
                 if doc["type"] == "error" or (doc["type"] == "cmd_result" and not doc["ok"]):
                     db.add(AuditLog(src="device", action="device_error", target=dev, detail=doc))
                     await db.commit()
@@ -180,6 +182,8 @@ class Bridge:
             self._contract_error(node.device_id, "info", f"device reports {doc['chip']}, node is {node.chip}")
         node.info = doc
         node.last_seen = now
+        if not is_bridge:
+            await ota.on_info(db, node, doc)
         existing = {o.key: o for o in (await db.execute(select(Output).where(Output.node_id == node.id))).scalars()}
         meta_keys = ("part", "source", "leds", "reachable") if is_bridge else ("cct_range", "pixels", "max_level", "max_on_ms", "channels")
         seen = set()

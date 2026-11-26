@@ -74,3 +74,26 @@ def file_path(root: Path, manifest: dict[str, Any], name: str) -> Path | None:
         return None
     p = root / manifest["profile"] / manifest["version"] / name
     return p if p.is_file() else None
+
+
+async def save_package(db, root: Path, manifest: dict[str, Any], files: dict[str, bytes], user_id: int | None):
+    """Store the files and create or update the FirmwarePackage row (caller commits)."""
+    import datetime as dt
+
+    from sqlalchemy import select
+
+    from .models import FirmwarePackage
+
+    store(root, manifest, files)
+    app_sha = next(f["sha256"] for f in manifest["files"] if f["name"] == manifest["app"])
+    p = (await db.execute(select(FirmwarePackage).where(FirmwarePackage.profile == manifest["profile"],
+                                                        FirmwarePackage.version == manifest["version"]))).scalar_one_or_none()
+    if p is None:
+        p = FirmwarePackage(profile=manifest["profile"], chip=manifest["chip"], version=manifest["version"],
+                            manifest=manifest, app_sha256=app_sha, uploaded_by=user_id)
+        db.add(p)
+    else:
+        p.manifest, p.uploaded_by, p.uploaded_at = manifest, user_id, dt.datetime.now(dt.timezone.utc)
+        p.app_sha256 = app_sha
+    await db.flush()
+    return p

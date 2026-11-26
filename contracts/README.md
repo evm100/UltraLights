@@ -21,6 +21,7 @@ Rules:
 | `schemas/{info,status,config,set,state,live,cmd,evt,health}.schema.json` | MQTT payloads (`info` has a node and a bridge branch) |
 | `schemas/enroll-{request,response}.schema.json` | HTTPS enrollment |
 | `schemas/firmware-manifest.schema.json` | `manifest.json` inside a firmware package |
+| `schemas/worker.schema.json` | Worker API: claimed job, progress report, ack (build worker; AI worker later) |
 | `chips.json` | Per-chip pin rules and limits for the builder and `ul_board` |
 | `tools/pins.py` | Reference pin check; `examples/board-rules/` hold expected results |
 | `tools/ulboard.py` | Reference encoder/decoder for the `ul_board` blob; `examples/vectors/` hold a byte-exact test vector |

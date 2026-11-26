@@ -3,6 +3,7 @@
   import NodeDetail from "./NodeDetail.svelte";
   import Builder from "./Builder.svelte";
   import Firmware from "./Firmware.svelte";
+  import Builds from "./Builds.svelte";
   import Security from "./Security.svelte";
   import People from "./People.svelte";
   import Activity from "./Activity.svelte";
@@ -13,6 +14,7 @@
     ["nodes", "Nodes"],
     ["builder", "Node builder"],
     ["firmware", "Firmware"],
+    ["builds", "Builds"],
     ["security", "Tokens & certificates"],
     ["people", "Homes & people"],
     ["activity", "Activity"],
@@ -33,6 +35,8 @@
     {#key parts[1]}<Builder dev={parts[1]} />{/key}
   {:else if tab === "firmware"}
     <Firmware />
+  {:else if tab === "builds"}
+    <Builds />
   {:else if tab === "security"}
     <Security />
   {:else if tab === "people"}

@@ -149,6 +149,7 @@ class FirmwarePackage(Base):
     chip: Mapped[str] = mapped_column(String(16))
     version: Mapped[str] = mapped_column(String(32))
     manifest: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    app_sha256: Mapped[str | None] = mapped_column(String(64), index=True)  # OTA image; devices download it by this
     uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     uploaded_at: Mapped[datetime] = _now()
 
@@ -242,3 +243,62 @@ class Schedule(Base):
     last_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+
+class Worker(Base):
+    """A program on another machine (the workstation) that polls for jobs over HTTPS.
+    It authenticates with a bearer token; only its sha256 is stored."""
+    __tablename__ = "workers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(48), unique=True)
+    kinds: Mapped[list[Any]] = mapped_column(JSONB)  # job kinds it takes, e.g. ["build"]
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary(32), unique=True)
+    created_at: Mapped[datetime] = _now()
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_ip: Mapped[str | None] = mapped_column(String(64))
+
+
+class BuildJob(Base):
+    """One firmware build: profile at a git ref, claimed and run by a build worker."""
+    __tablename__ = "build_jobs"
+    __table_args__ = (CheckConstraint("status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')",
+                                      name="build_jobs_status"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    profile: Mapped[str] = mapped_column(String(32))
+    ref: Mapped[str] = mapped_column(String(100))
+    replace: Mapped[bool] = mapped_column(Boolean, default=False)  # may overwrite an existing profile@version
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    worker_id: Mapped[int | None] = mapped_column(ForeignKey("workers.id", ondelete="SET NULL"))
+    log: Mapped[str] = mapped_column(Text, default="")
+    error: Mapped[str | None] = mapped_column(String(500))
+    commit: Mapped[str | None] = mapped_column(String(48))
+    version: Mapped[str | None] = mapped_column(String(32))
+    package_id: Mapped[int | None] = mapped_column(ForeignKey("firmware_packages.id", ondelete="SET NULL"))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _now()
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OtaUpdate(Base):
+    """One firmware update pushed to one node, followed from the cmd to the version the node
+    comes back with: sent -> downloading -> restarting -> done, or failed."""
+    __tablename__ = "ota_updates"
+    __table_args__ = (CheckConstraint("status IN ('sent', 'downloading', 'restarting', 'done', 'failed')",
+                                      name="ota_updates_status"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    node_id: Mapped[int] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"), index=True)
+    package_id: Mapped[int | None] = mapped_column(ForeignKey("firmware_packages.id", ondelete="SET NULL"))
+    profile: Mapped[str] = mapped_column(String(32))
+    from_version: Mapped[str | None] = mapped_column(String(32))
+    to_version: Mapped[str] = mapped_column(String(32))
+    cmd_id: Mapped[str] = mapped_column(String(40), unique=True)
+    status: Mapped[str] = mapped_column(String(16), default="sent", index=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(String(200))
+    src: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = _now()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

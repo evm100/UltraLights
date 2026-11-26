@@ -1,0 +1,20 @@
+# systemd user unit for the build worker. Install with:
+#   mkdir -p ~/.config/systemd/user && cp workers/build/ulworker.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now ulworker
+#   loginctl enable-linger "$USER"     # keep it running while you're logged out
+# Edit ExecStart if the checkout isn't at %h/Documents/UltraLights/UltraLights.
+[Unit]
+Description=UltraLights build worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/Documents/UltraLights/UltraLights/workers/build/ulworker.py --server https://lights.evm100.org
+Restart=on-failure
+RestartSec=30
+# A stop mid-build reports the job as failed; give it a moment to do so.
+TimeoutStopSec=20
+Nice=5
+
+[Install]
+WantedBy=default.target

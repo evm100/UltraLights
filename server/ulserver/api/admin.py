@@ -481,15 +481,7 @@ async def upload_firmware(request: Request, file: UploadFile = File(...), auth: 
         manifest, files = fwm.read_package(data)
     except fwm.PackageError as e:
         raise HTTPException(422, {"error": "package_invalid", "detail": str(e)}) from None
-    fwm.store(request.app.state.settings.firmware_dir, manifest, files)
-    p = (await db.execute(select(FirmwarePackage).where(FirmwarePackage.profile == manifest["profile"],
-                                                        FirmwarePackage.version == manifest["version"]))).scalar_one_or_none()
-    if p is None:
-        p = FirmwarePackage(profile=manifest["profile"], chip=manifest["chip"], version=manifest["version"],
-                            manifest=manifest, uploaded_by=auth.user.id)
-        db.add(p)
-    else:
-        p.manifest, p.uploaded_by, p.uploaded_at = manifest, auth.user.id, dt.datetime.now(UTC)
+    p = await fwm.save_package(db, request.app.state.settings.firmware_dir, manifest, files, auth.user.id)
     db.add(AuditLog(src=_src(auth), action="firmware_uploaded", target=f"{manifest['profile']}@{manifest['version']}"))
     await db.commit()
     return _fw_view(p)

@@ -264,3 +264,102 @@ async def test_openrgb_agent_end_to_end(migrated_db, tmp_path):
         btask.cancel()
         await asyncio.gather(btask, return_exceptions=True)
         await dbm.dispose()
+
+
+def _image(version: str, size: int = 4000) -> bytes:
+    """A minimal ESP-IDF app image header: image header, segment header, esp_app_desc_t with the version."""
+    import struct
+    head = bytes([0xE9]) + b"\0" * 23 + b"\0" * 8
+    desc = struct.pack("<II8x", 0xABCD5432, 0) + version.encode().ljust(32, b"\0")
+    return (head + desc).ljust(size, b"\x5a")
+
+
+async def test_ota_end_to_end(migrated_db, tmp_path):
+    """Push a package to a simulated node: progress, restart, back on the new version; a tampered
+    download is refused by the node and the update fails."""
+    import hashlib
+
+    from sqlalchemy import select
+
+    from ulserver import ota
+    from ulserver.models import FirmwarePackage, OtaUpdate
+
+    s = Settings(database_url=get_settings().database_url, mqtt_host="127.0.0.1", mqtt_port=8883,
+                 mqtt_check_hostname=False, mqtt_ca_file=str(DEV / "tls" / "tls-ca.crt"), pki_dir=DEV / "pki")
+    devpki = DevicePKI(DEV / "pki")
+    dev = f"ul-{secrets.token_hex(3)}"
+    ver, ver2 = f"8.{secrets.randbelow(10**6)}.0", f"8.{secrets.randbelow(10**6)}.1"
+    images = {ver: _image(ver), ver2: _image(ver2)}
+    sm = dbm.sessionmaker()
+    async with sm() as db:
+        db.add(Node(device_id=dev, name="OTA", chip="esp32c3", board=BOARD))
+        pkgs = []
+        for v, img in images.items():
+            m = json.loads((CONTRACTS / "examples/firmware-manifest/c3-lights.json").read_text())
+            p = FirmwarePackage(profile="c3-lights", chip="esp32c3", version=v, manifest={**m, "version": v},
+                                app_sha256=hashlib.sha256(img).hexdigest())
+            db.add(p)
+            pkgs.append(p)
+        await db.commit()
+        pids = [p.id for p in pkgs]
+
+    bridge = Bridge(s, Hub(), sm)
+    control = Control(bridge.publish, sm)
+    control.cmd_waiters = bridge.cmd_waiters
+    bridge.control = control
+    btask = asyncio.create_task(bridge.run())
+    await asyncio.wait_for(bridge.connected.wait(), 5)
+
+    served = {hashlib.sha256(i).hexdigest(): i for i in images.values()}
+    tamper = {"on": False}
+
+    async def fetch(url: str) -> bytes:
+        img = served[url.rsplit("/", 1)[1].removesuffix(".bin")]
+        return img[:-1] + b"X" if tamper["on"] else img
+
+    cert, key = write_identity(tmp_path, devpki, dev)
+    sim = SimDevice(dev, BOARD, cert, key, host="ul-dev.lan", server_ca=(DEV / "tls" / "tls-ca.crt").read_text(),
+                    connect_ip="127.0.0.1", fw="0.1.0", profile="c3-lights", fetch=fetch)
+    stop = asyncio.Event()
+    stask = asyncio.create_task(sim.run(stop))
+
+    async def update(uid):
+        async with sm() as db:
+            return await db.get(OtaUpdate, uid)
+
+    async def push(pid):
+        async with sm() as db:
+            n = (await db.execute(select(Node).where(Node.device_id == dev))).scalar_one()
+            return (await ota.start(db, control, s, n, await db.get(FirmwarePackage, pid), "admin:1")).id
+
+    async def online_on(v):
+        async with sm() as db:
+            n = (await db.execute(select(Node).where(Node.device_id == dev))).scalar_one()
+            return n.online and (n.info or {}).get("fw") == v
+
+    try:
+        await asyncio.wait_for(sim.connected.wait(), 5)
+        await until(lambda: online_on("0.1.0"), what="node online on 0.1.0")
+        uid = await push(pids[0])
+        u = await until(lambda: _status(update, uid, "done"), timeout=8, what="update done")
+        assert u.progress == 100 and u.from_version == "0.1.0" and sim.fw == ver
+        assert await online_on(ver)
+
+        tamper["on"] = True
+        uid = await push(pids[1])
+        u = await until(lambda: _status(update, uid, "failed"), timeout=8, what="tampered update failed")
+        assert u.error == "sha256_mismatch" and sim.fw == ver
+    finally:
+        stop.set()
+        await asyncio.wait_for(stask, 5)
+        for t in ["status", "info"] + [f"state/{k}" for k in ("warm", "cool", "strip", "relay")]:
+            await bridge.publish(f"ul/v1/d/{dev}/{t}", None, schema=None, qos=1, retain=True)
+        bridge.stop()
+        btask.cancel()
+        await asyncio.gather(btask, return_exceptions=True)
+        await dbm.dispose()
+
+
+async def _status(get, uid, want):
+    u = await get(uid)
+    return u if u.status == want else None

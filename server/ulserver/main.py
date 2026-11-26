@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI
 
 from . import db as dbm
-from .api import admin, auth, devices, enroll_api, homes, scenes, schedules, ws
+from .api import admin, auth, builds, devices, enroll_api, homes, ota, scenes, schedules, worker, ws
 from .bridge import Bridge
 from .config import get_settings
 from .control import Control
@@ -73,6 +73,10 @@ def create_app() -> FastAPI:
     app.include_router(scenes.router)
     app.include_router(schedules.router)
     app.include_router(admin.router)
+    app.include_router(builds.router)
+    app.include_router(worker.router)
+    app.include_router(ota.router)
+    app.include_router(ota.device_router)
     app.include_router(ws.router)
 
     @app.get("/api/health")

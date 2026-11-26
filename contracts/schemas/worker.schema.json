@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/worker.schema.json",
+  "title": "Worker API messages (HTTPS, /api/worker/*, bearer worker token)",
+  "description": "Workers dial out to the server and poll for jobs. POST /api/worker/claim answers 204 (nothing to do) or a job. While working, the worker POSTs reports to /api/worker/jobs/{id}/report (log chunks, at least every 60 s as a heartbeat) and gets an ack telling it whether to stop. A build ends with the firmware package (multipart field 'file', a zip per firmware-manifest) POSTed to /api/worker/jobs/{id}/package, or with a report carrying 'failed'.",
+  "type": "object",
+  "required": ["v", "type"],
+  "properties": {
+    "v": { "const": 1 },
+    "type": { "enum": ["job", "report", "ack"] }
+  },
+  "oneOf": [
+    {
+      "description": "Server to worker: a claimed build job. Build ref (a branch, tag or commit of the repository) with profile, clean, and upload the package.",
+      "required": ["id", "kind", "profile", "ref"],
+      "properties": {
+        "v": true, "type": { "const": "job" },
+        "id": { "type": "integer", "minimum": 1 },
+        "kind": { "const": "build" },
+        "profile": { "$ref": "common.schema.json#/$defs/profile" },
+        "ref": { "$ref": "#/$defs/ref" }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Worker to server: progress. 'log' is appended to the job's log. 'failed' ends the job as failed with that reason.",
+      "properties": {
+        "v": true, "type": { "const": "report" },
+        "log": { "type": "string", "maxLength": 65536 },
+        "failed": { "type": "string", "minLength": 1, "maxLength": 500 }
+      },
+      "additionalProperties": false
+    },
+    {
+      "description": "Server to worker: answer to a report. cancel true means an admin cancelled the job (or it's no longer this worker's): stop and don't upload.",
+      "required": ["cancel"],
+      "properties": { "v": true, "type": { "const": "ack" }, "cancel": { "type": "boolean" } },
+      "additionalProperties": false
+    }
+  ],
+  "$defs": {
+    "ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9._/-]{0,99}$",
+      "not": { "pattern": "\\.\\.|//|\\.lock$|/$" },
+      "description": "Git branch, tag or commit. Never starts with '-', so it can't be read as a git option."
+    }
+  }
+}

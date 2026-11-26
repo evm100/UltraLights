@@ -189,8 +189,10 @@ class Control:
             del self.outputs[k]
 
     # ---------- commands ----------
-    async def cmd(self, dev: str, op: str, args: dict[str, Any], src: str, wait: float = 0) -> dict[str, Any]:
-        cid = str(uuid.uuid4())
+    async def cmd(self, dev: str, op: str, args: dict[str, Any], src: str, wait: float = 0,
+                  cid: str | None = None) -> dict[str, Any]:
+        """cid: a caller-chosen command id, when the caller must record it before the device can answer."""
+        cid = cid or str(uuid.uuid4())
         payload = {"id": cid, "op": op, "ts": int(time.time()), "src": src, **args}
         try:
             contracts.validate("cmd", payload)

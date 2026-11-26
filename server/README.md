@@ -13,7 +13,7 @@ Every payload going to or coming from a device is validated against `../contract
 | Path | What |
 |---|---|
 | `ulserver/main.py` | App, startup (bridge task, CRL refresh, guest window sweeps) |
-| `ulserver/api/` | REST: `auth`, `devices` (control), `homes` (rooms, room on/off, device and output settings, members, guest grants, invites; owner tools), `scenes`, `schedules` (also the home's time zone and location), `admin` (builder, provisioning, config, commands, tokens, certs, firmware, users, homes, audit), `enroll_api` (`POST /api/v1/enroll`), `ws` (`/api/ws`) |
+| `ulserver/api/` | REST: `auth`, `devices` (control), `homes` (rooms, room on/off, device and output settings, members, guest grants, invites; owner tools), `scenes`, `schedules` (also the home's time zone and location), `admin` (builder, provisioning, config, commands, tokens, certs, firmware, users, homes, audit), `builds` (admin: build queue, worker tokens), `worker` (`/api/worker/*`: build workers claim jobs, report, upload packages; bearer token), `enroll_api` (`POST /api/v1/enroll`), `ws` (`/api/ws`) |
 | `ulserver/access.py` | Who may do what: the blueprint's roles table, per home membership (pure, tested in `tests/test_access.py`) |
 | `ulserver/grants.py` | Guest grants as rules: scope, kinds, abilities, weekly window and last day in the home's time zone (pure, tested in `tests/test_grants_pure.py`); the hub re-checks open guest sockets every 20 s |
 | `ulserver/manage.py` | Home setup shared by owners and admins: output names and limits written into the node's config, members with the last-owner rule, guest grant checks |
@@ -23,8 +23,10 @@ Every payload going to or coming from a device is validated against `../contract
 | `ulserver/enroll.py` | Token issue and contract-exact enrollment (idempotent retry, supersedes old certs) |
 | `ulserver/bridge.py` | MQTT bridge: validates inbound messages, stores them, fans them out to browsers |
 | `ulserver/control.py`, `realtime.py` | set / live / config / cmd; seq allocator; per-(device, output) coalescer at 20 Hz |
-| `ulserver/simdev.py`, `tools/simdevice.py` | Simulated node that speaks the device contract |
+| `ulserver/simdev.py`, `tools/simdevice.py` | Simulated node that speaks the device contract, including OTA (downloads, checks version and sha256, "restarts" into it); `--profile c3-lights --fw 0.0.1` lets it take real packages |
 | `../bridges/openrgb` | OpenRGB bridge agent (one PC = one combined device); created from **Nodes → Add PC** (`POST /api/admin/bridges`, `POST /api/admin/nodes/{id}/pairing`) |
+| `ulserver/builds.py` | Build queue: claim (row lock, SKIP LOCKED), heartbeat and stale sweep (3 min), log tail (1 MB), worker tokens (sha256 stored); worker program in `../workers/build` |
+| `ulserver/ota.py`, `api/ota.py` | OTA push and tracking (sent → downloading → restarting → done / failed, from cmd_result and info), the devices' image download `GET /api/v1/fw/{sha256}.bin` |
 | `ulserver/cli.py` | `ulctl` |
 | `tools/dev.sh` | Dev stack |
 | `tools/smoke.py` | End-to-end check against a running server |

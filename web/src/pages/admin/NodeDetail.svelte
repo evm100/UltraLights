@@ -8,6 +8,7 @@
   import { flash, download, b64ToBytes, webSerialAvailable } from "../../lib/flash.js";
   import OutputMap from "./OutputMap.svelte";
   import BridgeDetail from "./BridgeDetail.svelte";
+  import OtaUpdates from "./OtaUpdates.svelte";
 
   let { dev } = $props();
 
@@ -47,6 +48,23 @@
   let health = $derived(lv?.admin?.health ?? n?.admin?.health);
   let events = $derived(live.events.filter((e) => e.dev === dev).slice(0, 12));
   let pkg = $derived(packages.find((p) => String(p.id) === pkgId) ?? null);
+
+  // OTA: packages for the profile the node reports, newest first (the list comes sorted by upload).
+  let otaPkgs = $derived(packages.filter((p) => p.profile === n?.admin?.profile));
+  let otaId = $state("");
+  let otaPkg = $derived(otaPkgs.find((p) => String(p.id) === otaId) ?? otaPkgs[0] ?? null);
+  let otaBump = $state(0);
+  let otaForce = $state(false);
+  async function pushOta() {
+    if (!otaPkg || !confirm(`Update ${n.name} to ${otaPkg.profile} ${otaPkg.version}? It restarts when the image is written.`)) return;
+    error = ""; note = "";
+    try {
+      const [r] = (await post("/api/admin/ota", { package_id: otaPkg.id, devices: [dev], force: otaForce })).results;
+      if (r.ok) note = `Update to ${otaPkg.version} sent.`;
+      else error = r.detail;
+      otaBump++;
+    } catch (e) { error = errText(e); }
+  }
   // Firmware reports a refused descriptor as info.config_error "board rejected: <pins.py codes>"
   // (or "descriptor is for <chip>, this is <chip>"); the node still enrolls but drives nothing.
   let configError = $derived(lv?.admin?.config_error ?? n?.admin?.config_error ?? null);
@@ -178,6 +196,27 @@
   </div>
 
   <OutputMap node={n} {homes} onsaved={load} />
+
+  <section class="glass panel stack">
+    <span class="label">Update over the air</span>
+    {#if !n.admin.profile}
+      <span class="small muted">The node hasn't reported its firmware yet.</span>
+    {:else if !otaPkgs.length}
+      <span class="small muted">No package for {n.admin.profile} yet. Queue one under <a href="#/admin/builds">Builds</a>.</span>
+    {:else}
+      <div class="row">
+        <label class="field">Package
+          <select value={String(otaPkg?.id ?? "")} onchange={(e) => (otaId = e.target.value)}>
+            {#each otaPkgs as p}<option value={String(p.id)}>{p.version} · {p.manifest.commit}{p.version === n.admin.fw ? " (running)" : ""}</option>{/each}
+          </select>
+        </label>
+        <label class="mini"><input type="checkbox" bind:checked={otaForce} /> Reinstall same version</label>
+        <button class="btn solid sm" disabled={!online || (otaPkg?.version === n.admin.fw && !otaForce)} onclick={pushOta}>Update</button>
+        {#if !online}<span class="small muted">Node is offline.</span>{/if}
+      </div>
+    {/if}
+    <OtaUpdates {dev} bump={otaBump} />
+  </section>
 
   <section class="glass panel stack">
     <span class="label">Provision and flash</span>
