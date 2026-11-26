@@ -1,0 +1,4 @@
+{ "v": 1, "name": "Evening", "room_id": 3, "fade_ms": 2000, "items": [
+  { "dev": "ul-0a1b2c", "out": "main", "state": { "on": true, "level": 0.35, "cct": 2700 } },
+  { "dev": "ul-0a1b2c", "out": "strip", "state": { "on": true, "level": 0.3, "color": [255, 120, 40] } },
+  { "dev": "ul-0a1b2c", "out": "fan", "state": { "on": false } } ] }

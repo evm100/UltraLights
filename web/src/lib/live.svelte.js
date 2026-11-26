@@ -27,7 +27,7 @@ function apply(msg) {
       break;
     case "state": {
       const o = live.devices[msg.dev]?.outputs.find((x) => x.key === msg.out);
-      if (o) o.state = msg.state;
+      if (o) { o.state = msg.state; o.state_at = msg.at ?? Date.now(); }
       break;
     }
     case "health":

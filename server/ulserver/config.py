@@ -49,6 +49,9 @@ class Settings(BaseSettings):
 
     bridge_enabled: bool = True
 
+    # Where the scheduler service reaches the API (loopback; same port as the systemd unit and dev.sh).
+    api_url: str = "http://127.0.0.1:8100"
+
     @property
     def firmware_dir(self) -> Path:
         return self.data_dir / "firmware"

@@ -1,0 +1,3 @@
+{ "v": 1, "name": "Space vibes", "room_id": null, "items": [
+  { "dev": "ul-3fa2c1", "out": "strip", "state": { "on": true, "level": 0.3,
+    "effect": { "name": "flow", "palette": [[18, 6, 52], [58, 26, 138], [138, 63, 240], [47, 140, 255]], "speed": 0.2 } } } ] }

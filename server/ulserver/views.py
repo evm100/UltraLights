@@ -17,6 +17,7 @@ def output_view(o: Output, can: frozenset[str] = frozenset(OUTPUT_ABILITIES)) ->
         "room_id": o.room_id,
         "meta": o.meta or {},
         "state": o.actual,
+        "state_at": int(o.actual_at.timestamp() * 1000) if o.actual_at else None,
         "desired": o.desired,
         "can": [a for a in OUTPUT_ABILITIES if a in can],
     }

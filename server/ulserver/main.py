@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI
 
 from . import db as dbm
-from .api import admin, auth, devices, enroll_api, homes, ws
+from .api import admin, auth, devices, enroll_api, homes, scenes, schedules, ws
 from .bridge import Bridge
 from .config import get_settings
 from .control import Control
@@ -34,6 +34,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.bridge = bridge
     app.state.control = control
     app.state.enroll_limiter = RateLimiter(s.enroll_rate_per_min)
+    app.state.internal_token = schedules.write_internal_token(s.data_dir)  # the scheduler reads it
+    app.state.internal_hosts = {"127.0.0.1", "::1"}
     async with sm() as db:
         await control.load_all(db)
         if pki.initialized:
@@ -64,6 +66,8 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(devices.router)
     app.include_router(homes.router)
+    app.include_router(scenes.router)
+    app.include_router(schedules.router)
     app.include_router(admin.router)
     app.include_router(ws.router)
 

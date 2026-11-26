@@ -128,7 +128,7 @@ static int output_from_cjson(const cJSON *o, ul_output_def_t *d, jerr_t *e)
         }
         d->power_on = (ul_power_on_t)i;
     }
-    if ((r = j_int(o, "max_on_ms", 50, 600000, &v, d->kind == UL_KIND_SOLENOID, e)) < 0) {
+    if ((r = j_int(o, "max_on_ms", 50, UL_MAX_PULSE_MS, &v, d->kind == UL_KIND_SOLENOID, e)) < 0) {
         return J_BAD;
     }
     if (r == J_OK) {
@@ -497,10 +497,15 @@ int ul_cmd_decode(const char *json, size_t len, ul_cmd_t *c, char *err, size_t e
     }
     case UL_OP_PULSE:
         if (j_str(root, "out", c->out, sizeof(c->out), true, ul_is_key, &e) < 0 ||
-            j_int(root, "ms", 10, 600000, &v, true, &e) < 0) {
+            j_int(root, "ms", 10, UL_MAX_PULSE_MS, &v, true, &e) < 0) {
             goto out;
         }
         c->ms = (uint32_t)v;
+        break;
+    case UL_OP_CLOSE:
+        if (j_str(root, "out", c->out, sizeof(c->out), true, ul_is_key, &e) < 0) {
+            goto out;
+        }
         break;
     case UL_OP_OTA:
         if (j_str(root, "url", c->url, sizeof(c->url), true, is_https, &e) < 0 ||

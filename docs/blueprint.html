@@ -538,7 +538,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
             <details class="more"><summary>Server host <span class="muted small">lights.evm100.org, always on</span></summary>
               <div class="body">
                 <p>Runs nginx, the web app and API, scheduler, MQTT broker, database, device CA (intermediate key only) and the artifact store for firmware. Everything persistent lives here and gets backed up together. It's set up from a clone of this repo with one install script (see <a href="#deploy">Deployment</a>).</p>
-                <p>If the server is down, lights keep their last state. Remote control, schedules and the UI stop until it returns. The scheduler runs here rather than on nodes so that schedules have one source of truth.</p>
+                <p>If the server is down, lights keep their last state. Remote control, schedules and the UI stop until it returns. The scheduler runs here rather than on nodes so that schedules have one source of truth. It is its own service but only decides <em>when</em>: for each due event it calls the API over loopback (a token the API writes at start-up, refused through the proxy), and the API does the work, so every device write goes through one process. Each event is marked fired before it runs, so a restart never repeats one, and an event missed while the server was down by more than a few minutes is skipped rather than run late.</p>
               </div>
             </details>
             <details class="more"><summary>This workstation (RTX 4080) <span class="muted small">workers, can be off</span></summary>
@@ -592,7 +592,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
                 <tr><td><code>ul/v1/d/{id}/state/{out}</code></td><td>device → server</td><td class="yes">yes</td><td>1</td><td>What an output is actually doing.</td></tr>
                 <tr><td><code>ul/v1/d/{id}/set/{out}</code></td><td>server → device</td><td class="yes">yes</td><td>1</td><td>Desired state. Retained so a reconnecting device catches up.</td></tr>
                 <tr><td><code>ul/v1/d/{id}/live/{out}</code></td><td>server → device</td><td class="no">no</td><td>0</td><td>Slider streams while a finger is down. Losing one doesn't matter.</td></tr>
-                <tr><td><code>ul/v1/d/{id}/cmd</code></td><td>server → device</td><td class="no">never</td><td>1</td><td>One-shot actions: OTA, reboot, identify, pulse.</td></tr>
+                <tr><td><code>ul/v1/d/{id}/cmd</code></td><td>server → device</td><td class="no">never</td><td>1</td><td>One-shot actions: OTA, reboot, identify, pulse, close.</td></tr>
                 <tr><td><code>ul/v1/d/{id}/config</code></td><td>server → device</td><td class="yes">yes</td><td>1</td><td>Output mapping: which channels form which output, names, limits. Without one, each channel is its own output.</td></tr>
                 <tr><td><code>ul/v1/d/{id}/evt</code></td><td>device → server</td><td class="no">no</td><td>1</td><td>Command results, button presses, errors, motion.</td></tr>
                 <tr><td><code>ul/v1/d/{id}/health</code></td><td>device → server</td><td class="no">no</td><td>0</td><td>Periodic metrics for the admin panel.</td></tr>
@@ -959,7 +959,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
                 <div class="ph-note">Schedule: sunset to 23:00</div>
               </div>
             </div></div>
-            <p class="figcap">Switches: relays get ON/OFF. Solenoids only open for a fixed time.</p>
+            <p class="figcap">Switches: relays get ON/OFF. Solenoids only open for a fixed time: run lengths within the owner's limit, a countdown while open, and Close now. The device times every run itself and closes the valve when it ends, so a dropped server or Wi-Fi can't leave water running. Closing early is a one-shot <code>close</code> command, never a retained set, so a reconnecting device can't replay it into a later run.</p>
           </div>
 
           <div class="phone-wrap">
@@ -1073,7 +1073,9 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
             <h4>How grants work</h4>
             <ul class="clean small">
               <li><b>Scope</b>: whole home, rooms or single devices.</li>
-              <li><b>Owners' setup</b>: rooms (add, rename, reorder, delete), device and output names, the room of each output, and two limits that are pushed to the node in its config: max level (a hard cap on the device) and the power-on state. Channel grouping, curves, warmth range and pixel counts describe the wiring and stay with the admin's output mapping. Solenoid run limits arrive with switches.</li>
+              <li><b>Owners' setup</b>: rooms (add, rename, reorder, delete), device and output names, the room of each output, and limits that are pushed to the node in its config and enforced there: a light's max level, a valve's longest run (<code>max_on_ms</code>, 1 minute to 2 hours), and the power-on state (valves always start closed). Channel grouping, curves, warmth range and pixel counts describe the wiring and stay with the admin's output mapping.</li>
+              <li><b>Scenes</b> (<code>contracts/schemas/scene</code>): a saved look for some outputs of one home, saved from the current look of a room or the whole home, or written as a document (which is what the AI worker will propose). Applying one sends each output a set with <code>src: scene:&lt;id&gt;</code>, skips what the person can't control, and records the previous states so <b>Undo</b> restores them once. Valves and sensors can't be in a scene.</li>
+              <li><b>Schedules</b> (<code>contracts/schemas/schedule</code>): on chosen weekdays, at a clock time or sunrise / sunset with an offset, apply a scene, switch a room's lights, switch one output, or run a valve; an optional <i>until</i> switches the targets off again (sunset to 23:00). They run in the home's time zone, set by an owner with the home's location (only needed for the sun). A schedule acts as the home itself, with <code>src: sched:&lt;id&gt;</code>.</li>
               <li><b>Invites</b>: owners invite members and co-owners with a single-use link that expires after 7 days. The person creates an account on the link's page, or signs in and joins. An invite never demotes an owner, and a home always keeps at least one owner. Guest invites arrive with grants.</li>
               <li><b>Abilities</b>: view, control (on/off, level, fades and solenoid pulses), and color (color, white channel, warmth and effects). Motion sensors are view only for everyone. Each output the UI receives lists the viewer's abilities in <code>can</code>, and controls without the ability are not drawn.</li>
               <li><b>Device kinds</b>: lights only, or lights and switches. Solenoids are excluded unless granted explicitly.</li>
@@ -1500,7 +1502,7 @@ docs/        this blueprint, decisions</code></pre>
               <tr><td>Web UI framework?</td><td>Everything in <code>web/</code></td><td>Svelte 5 + Vite, built to static files that nginx serves</td><td><span class="tag keep">Decided</span></td></tr>
               <tr><td>Is the VM reachable from the internet?</td><td>Remote access, certificates, attack surface</td><td>Yes, behind the proxy with strict sign-in</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Secure boot and flash encryption on production boards?</td><td>Irreversible eFuse burns at bring-up</td><td>Yes for production, never on dev boards</td><td><span class="tag rework">Open</span></td></tr>
-              <tr><td>Solenoid owner limit vs firmware cap</td><td>The switches mockup shows an owner limit of 45 min, but the contract caps a pulse at 10 min (<code>max_on_ms</code> ≤ 600000)</td><td>Decide in the switches slice: raise the firmware cap, or keep long runs as repeated pulses</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>Solenoid owner limit vs firmware cap</td><td>The switches mockup shows an owner limit of 45 min; the contract capped a pulse at 10 min</td><td>Raise the cap to 2 h (<code>max_on_ms</code> and the pulse command's <code>ms</code> ≤ 7200000). One pulse per run, timed on the device, so the valve still closes on its own if the server or Wi-Fi drops. Owner limits sit below it</td><td><span class="tag keep">Decided</span></td></tr>
               <tr><td>Is the Member role needed?</td><td>One less role if not</td><td>Keep, it's cheap</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Support legacy C3 and hand-built nodes?</td><td>Chip support, builder, firmware images</td><td>Yes: pins as data, node builder with per-chip checks</td><td><span class="tag keep">Decided</span></td></tr>
               <tr><td>How does v5 hand over to the new server?</td><td>Same host, same ports 443 and 8883</td><td>Full cutover in one weekend on the same host (see <a href="#cutover">Cutover</a>). No v5 node configs are migrated: every node is inspected, rewired where needed and recreated in the builder</td><td><span class="tag keep">Decided</span></td></tr>

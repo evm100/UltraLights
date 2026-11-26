@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/scene.schema.json",
+  "title": "Scene document (REST /api/homes/{id}/scenes, stored by the server)",
+  "description": "A saved look: the state of some outputs in one home. Applying it sends each output a set with src scene:<id>; outputs the person can't control are skipped. Items name an output once. Valves and sensors can't be in a scene (valves only open for a fixed time). The same document is what the AI worker proposes.",
+  "type": "object",
+  "required": ["v", "name", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 48 },
+    "room_id": { "type": ["integer", "null"], "description": "Shown with this room; null = the whole home." },
+    "fade_ms": { "$ref": "common.schema.json#/$defs/fade_ms", "description": "Fade for every item; absent = the device default." },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "required": ["dev", "out", "state"],
+        "additionalProperties": false,
+        "properties": {
+          "dev": { "$ref": "common.schema.json#/$defs/device_id" },
+          "out": { "$ref": "common.schema.json#/$defs/key" },
+          "state": { "$ref": "#/$defs/state" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "state": {
+      "type": "object",
+      "description": "The set fields a scene may hold. Fields the output's kind doesn't support are ignored when applied.",
+      "required": ["on"],
+      "additionalProperties": false,
+      "properties": {
+        "on": { "type": "boolean" },
+        "level": { "$ref": "common.schema.json#/$defs/level" },
+        "cct": { "$ref": "common.schema.json#/$defs/kelvin" },
+        "color": { "$ref": "common.schema.json#/$defs/rgb" },
+        "white": { "$ref": "common.schema.json#/$defs/level" },
+        "effect": { "$ref": "set.schema.json#/$defs/effect" }
+      }
+    }
+  }
+}

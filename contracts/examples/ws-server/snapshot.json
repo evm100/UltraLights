@@ -3,9 +3,9 @@
     "outputs": [
       { "key": "main", "kind": "cct", "name": "Desk lamp", "caps": ["onoff", "level", "cct"], "room_id": 2,
         "meta": { "cct_range": [2700, 6500] },
-        "state": { "on": true, "level": 0.42, "cct": 3000, "src": "ui:1", "seq": 1763600000000001 },
+        "state": { "on": true, "level": 0.42, "cct": 3000, "src": "ui:1", "seq": 1763600000000001 }, "state_at": 1763600000123,
         "desired": { "on": true, "level": 0.42, "cct": 3000, "src": "ui:1", "seq": 1763600000000001 }, "can": ["view", "control", "color"] },
-      { "key": "fan", "kind": "relay", "name": "Fan", "caps": ["onoff"], "room_id": null, "meta": {}, "state": null, "desired": null, "can": ["view", "control", "color"] } ],
+      { "key": "fan", "kind": "relay", "name": "Fan", "caps": ["onoff"], "room_id": null, "meta": {}, "state": null, "state_at": null, "desired": null, "can": ["view", "control", "color"] } ],
     "admin": { "board": "C3 bench node", "fw": "0.1.0", "profile": "c3-lights", "board_crc": "f7f67a5a", "running_crc": "f7f67a5a",
       "config_rev": 3, "running_config_rev": 3, "config_error": null, "enrolled": true,
       "last_seen": "2026-11-20T12:00:00+00:00", "health": null } } ] }

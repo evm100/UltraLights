@@ -1,0 +1,1 @@
+{ "v": 1, "name": "Short", "at": { "time": "07:00" }, "do": { "dev": "ul-3fa2c1", "out": "valve", "run_ms": 1000 } }

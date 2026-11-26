@@ -113,6 +113,9 @@ esp_err_t ul_core_apply_config(const char *json, size_t len);
 /* Solenoid pulse, clamped to the output's max_on_ms. */
 esp_err_t ul_core_pulse(const char *key, uint32_t ms);
 
+/* End a solenoid's running pulse now (no-op if it is closed). Not retained, unlike set. */
+esp_err_t ul_core_close(const char *key);
+
 /* Blink one output (key) or all of them (NULL) for ms, then restore. */
 esp_err_t ul_core_identify(const char *key, uint32_t ms);
 

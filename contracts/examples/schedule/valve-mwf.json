@@ -1,0 +1,1 @@
+{ "v": 1, "name": "Water the beds", "days": [0, 2, 4], "at": { "sun": "sunrise", "offset_min": -30 }, "do": { "dev": "ul-3fa2c1", "out": "valve", "run_ms": 900000 } }

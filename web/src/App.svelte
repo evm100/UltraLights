@@ -10,6 +10,7 @@
   import Rooms from "./pages/Rooms.svelte";
   import Room from "./pages/Room.svelte";
   import Settings from "./pages/Settings.svelte";
+  import Scenes from "./pages/Scenes.svelte";
   import Invite from "./pages/Invite.svelte";
   import { homesState, loadHomes, managed } from "./lib/homes.svelte.js";
 
@@ -39,6 +40,7 @@
     <nav>
       <a href="#/" class:active={section === "home"}>Home</a>
       <a href="#/rooms" class:active={section === "rooms"}>Rooms</a>
+      <a href="#/scenes" class:active={section === "scenes"}>Scenes</a>
       {#if isAdmin}<a href="#/admin" class:active={section === "admin"}>Admin</a>{/if}
     </nav>
     <span class="spacer"></span>
@@ -58,6 +60,8 @@
     {#key route.parts[1]}<Room id={route.parts[1]} />{/key}
   {:else if section === "rooms"}
     <Rooms />
+  {:else if section === "scenes"}
+    <Scenes />
   {:else if section === "settings" && route.parts[1]}
     {#key route.parts[1]}<Settings id={route.parts[1]} />{/key}
   {:else}

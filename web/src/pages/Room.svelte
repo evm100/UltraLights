@@ -6,12 +6,16 @@
   import { homesState, loadHomes } from "../lib/homes.svelte.js";
   import { roomCards, tileItems } from "../lib/tiles.js";
   import Tiles from "../components/Tiles.svelte";
+  import Switches from "../components/Switches.svelte";
+  import { SWITCH_KINDS } from "../lib/switches.js";
 
   let { id } = $props();
   onMount(loadHomes);
   let items = $derived(tileItems(Object.values(live.devices)));
   let room = $derived(roomCards(homesState.list, items).flatMap((c) => c.rooms).find((r) => r.id === Number(id)));
   let inRoom = $derived(items.filter((x) => x.room_id === Number(id)));
+  let switches = $derived(inRoom.filter((x) => !x.combined && SWITCH_KINDS.includes(x.o.kind)));
+  let others = $derived(inRoom.filter((x) => !switches.includes(x)));
   let error = $state("");
   let busy = $state(false);
 
@@ -38,6 +42,10 @@
       {/if}
     </section>
     {#if error}<div class="msg err" role="alert">{error}</div>{/if}
-    {#if inRoom.length}<Tiles items={inRoom} />{:else}<div class="glass panel muted small">Nothing in this room yet.</div>{/if}
+    {#if others.length}<Tiles items={others} />{/if}
+    {#if switches.length}
+      <section class="stack"><span class="label">Switches</span><Switches items={switches} /></section>
+    {/if}
+    {#if !inRoom.length}<div class="glass panel muted small">Nothing in this room yet.</div>{/if}
   {/if}
 </main>

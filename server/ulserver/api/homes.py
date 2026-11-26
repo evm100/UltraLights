@@ -10,9 +10,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..access import CONTROL, LIGHT_KINDS, MANAGE, PEOPLE, AccessDenied, load_access
+from ..access import MANAGE, PEOPLE, AccessDenied, load_access
+from ..actions import room_power as switch_room
 from ..bridge import NotConnected
-from ..control import Control, ControlError
 from ..db import get_db
 from ..manage import ManageError, output_settings, push_device, rename_device, set_member, update_output
 from ..models import AuditLog, Home, HomeMember, Invite, Node, Output, Room, User
@@ -27,7 +27,6 @@ from ..security import (
     sha256,
     src_for,
 )
-from ..views import target
 
 router = APIRouter(prefix="/api")
 UTC = dt.timezone.utc
@@ -83,6 +82,7 @@ async def list_homes(auth: Auth = Depends(require_auth), db: AsyncSession = Depe
     rooms = (await db.execute(select(Room).where(Room.home_id.in_([h.id for h in homes]))
                               .order_by(Room.sort, Room.name))).scalars().all()
     return [{"id": h.id, "name": h.name, "role": auth.access.role(h.id), "can": sorted(auth.access.home_can(h.id)),
+             "timezone": h.timezone, "has_location": h.latitude is not None,
              "rooms": [{"id": r.id, "name": r.name} for r in rooms if r.home_id == h.id]} for h in homes]
 
 
@@ -156,21 +156,11 @@ async def room_power(hid: int, rid: int, body: PowerIn, request: Request, auth: 
     if not auth.access.sees_home(hid):
         raise HTTPException(404, {"error": "no_such_home"})
     await _room(db, hid, rid)
-    rows = (await db.execute(select(Node, Output).join(Output, Output.node_id == Node.id)
-                             .where(Output.room_id == rid, Node.home_id == hid))).all()
-    control: Control = request.app.state.control
-    done, skipped = [], []
-    for n, o in rows:
-        if o.kind not in LIGHT_KINDS or CONTROL not in auth.access.output_can(target(n, o)):
-            continue
-        try:
-            await control.set(n.device_id, o.key, {"on": body.on}, src_for(auth))
-            done.append(f"{n.device_id}/{o.key}")
-        except ControlError as e:
-            skipped.append({"out": f"{n.device_id}/{o.key}", "error": e.code})
-        except NotConnected:
-            raise HTTPException(503, {"error": "broker_offline"}) from None
-    return {"on": body.on, "set": done, "skipped": skipped}
+    try:
+        r = await switch_room(db, request.app.state.control, hid, rid, body.on, auth.access, src_for(auth))
+    except NotConnected:
+        raise HTTPException(503, {"error": "broker_offline"}) from None
+    return {"on": body.on, **r}
 
 
 # ---------------------------------------------------------------- devices and outputs
@@ -201,6 +191,7 @@ class OutputSettingsIn(BaseModel):
     room_id: int | None = None
     max_level: float | None = Field(default=None, ge=0.05, le=1)
     power_on: str | None = Field(default=None, pattern="^(last|off|on)$")
+    max_on_ms: int | None = None  # valves: 1 min to 2 h, enforced on the device
 
 
 @router.put("/devices/{dev}/outputs/{out}/settings")

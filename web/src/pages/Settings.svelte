@@ -13,6 +13,9 @@
   let canPeople = $derived(!!home?.can.includes("people"));
 
   let devices = $state([]);
+  let place = $state({ timezone: "", latitude: "", longitude: "" });
+  const ZONES = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+  const BROWSER_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
   let members = $state([]);
   let invites = $state([]);
   let fresh = $state(null); // the link just created, shown once
@@ -25,6 +28,10 @@
     await loadHomes();
     if (!home) return;
     try {
+      if (canManage) {
+        const p = await get(`/api/homes/${hid}/place`);
+        place = { timezone: p.timezone ?? BROWSER_ZONE, latitude: p.latitude ?? "", longitude: p.longitude ?? "", saved: !!p.timezone };
+      }
       [devices, members, invites] = await Promise.all([
         canManage ? get(`/api/homes/${hid}/devices`) : [],
         canPeople ? get(`/api/homes/${hid}/members`) : [],
@@ -52,10 +59,26 @@
     if (confirm(`Delete the room "${r.name}"? Its lights stay, without a room.`)) run(() => del(`/api/homes/${hid}/rooms/${r.id}`), "Room deleted.");
   }
 
+  // ---- place
+  function savePlace() {
+    const body = { timezone: place.timezone };
+    if (place.latitude !== "" && place.longitude !== "") { body.latitude = Number(place.latitude); body.longitude = Number(place.longitude); }
+    run(() => put(`/api/homes/${hid}/place`, body), "Place saved.");
+  }
+  function locate() {
+    navigator.geolocation?.getCurrentPosition(
+      (p) => { place.latitude = Math.round(p.coords.latitude * 1000) / 1000; place.longitude = Math.round(p.coords.longitude * 1000) / 1000; },
+      () => (error = "The browser didn't give a location; type it in instead."));
+  }
+
   // ---- devices and outputs
   const renameDevice = (d, name) => name.trim() && name.trim() !== d.name && run(() => put(`/api/devices/${d.id}`, { name: name.trim() }), "Device renamed.");
   const saved = (r) => (r?.published === false ? "Saved. The broker is offline; the device gets it when it's back." : "Saved.");
   const setOutput = (d, o, body) => run(() => put(`/api/devices/${d.id}/outputs/${o.key}/settings`, body), saved);
+  function setRun(d, o, min) {
+    const v = Math.min(120, Math.max(1, Math.round(Number(min)))) * 60000;
+    if (v !== o.max_on_ms) setOutput(d, o, { max_on_ms: v });
+  }
   function setLimit(d, o, pct) {
     const v = Math.min(100, Math.max(5, Math.round(Number(pct))));
     if (v / 100 !== o.max_level) setOutput(d, o, { max_level: v / 100 });
@@ -116,8 +139,27 @@
     </section>
 
     <section class="glass panel stack">
+      <h2>Place</h2>
+      <p class="small muted">Schedules run in the home's time zone. The location is only used to work out sunrise and sunset; three decimals (about 100 m) is plenty.</p>
+      {#if !place.saved}<div class="msg warn small">Not saved yet{place.timezone ? `: ${place.timezone} is this browser's time zone` : ""}.</div>{/if}
+      <div class="row">
+        <label class="mini">Time zone
+          {#if ZONES.length}
+            <select bind:value={place.timezone}>{#each ZONES as z}<option value={z}>{z}</option>{/each}</select>
+          {:else}<input bind:value={place.timezone} placeholder="Europe/London" />{/if}
+        </label>
+      </div>
+      <div class="row">
+        <label class="mini">Latitude<input type="number" step="0.001" min="-90" max="90" bind:value={place.latitude} /></label>
+        <label class="mini">Longitude<input type="number" step="0.001" min="-180" max="180" bind:value={place.longitude} /></label>
+        {#if navigator.geolocation}<button class="btn sm ghost" type="button" onclick={locate}>Use this device's location</button>{/if}
+      </div>
+      <div><button class="btn sm solid" onclick={savePlace} disabled={!place.timezone}>Save place</button></div>
+    </section>
+
+    <section class="glass panel stack">
       <h2>Devices</h2>
-      <p class="small muted">Names, rooms and limits are sent to the device. Max level is a hard cap applied on the device; power-on is what a light does when it starts before it reaches the server.</p>
+      <p class="small muted">Names, rooms and limits are sent to the device. Limits are enforced on the device itself: a light's max level, and a valve's longest run (1 minute to 2 hours). Power-on is what an output does when it starts, before it reaches the server; valves always start closed.</p>
       {#each devices as d (d.id)}
         <div class="stack dev">
           <div class="row">
@@ -125,7 +167,7 @@
             <span class="tag" class:ok={d.online}>{d.online ? "online" : "offline"}</span>
           </div>
           <div class="tbl"><table>
-            <thead><tr><th>Output</th><th>Name</th><th>Room</th><th>Max level</th><th>Power on</th></tr></thead>
+            <thead><tr><th>Output</th><th>Name</th><th>Room</th><th>Limit</th><th>Power on</th></tr></thead>
             <tbody>
               {#each d.outputs as o (o.key)}
                 <tr>
@@ -138,7 +180,10 @@
                     </select>
                   </td>
                   <td>
-                    {#if o.max_level != null}
+                    {#if o.max_on_ms != null}
+                      <label class="row pct"><input type="number" min="1" max="120" step="1" value={Math.round(o.max_on_ms / 60000)}
+                        aria-label={`Longest run of ${o.key}, minutes`} onchange={(e) => setRun(d, o, e.currentTarget.value)} />min</label>
+                    {:else if o.max_level != null}
                       <label class="row pct"><input type="number" min="5" max="100" step="5" value={Math.round(o.max_level * 100)}
                         aria-label={`Max level of ${o.key}, percent`} onchange={(e) => setLimit(d, o, e.currentTarget.value)} />%</label>
                     {:else}<span class="faint">–</span>{/if}
@@ -206,6 +251,8 @@
   .pct { gap: 4px; flex-wrap: nowrap; }
   .pct input { width: 5.5em; }
   .who { flex: 1; min-width: 0; }
+  .mini { display: inline-flex; gap: 6px; align-items: center; font-size: 0.85rem; color: var(--muted); }
+  .mini input { width: 8em; }
   .link { flex: 1; min-width: 0; font-family: var(--mono); font-size: 0.85rem; }
   .fresh { border: 1px solid var(--accent); }
 </style>

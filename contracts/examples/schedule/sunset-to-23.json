@@ -1,0 +1,1 @@
+{ "v": 1, "name": "Path lights", "at": { "sun": "sunset" }, "until": { "time": "23:00" }, "do": { "dev": "ul-3fa2c1", "out": "path", "on": true } }

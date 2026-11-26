@@ -5,6 +5,7 @@
 #                               migrate, create CAs and dev TLS certs, seed templates
 #   server/tools/dev.sh admin   create or reset the dev admin account (prompts)
 #   server/tools/dev.sh api     run the API on 127.0.0.1:8100 with auto-reload (foreground)
+#   server/tools/dev.sh scheduler  run the scheduler against the dev API (foreground; start api first)
 #   server/tools/dev.sh web     run the Vite dev server on http://localhost:5173 (foreground)
 #   server/tools/dev.sh build   build web/ into web/dist (served by the dev nginx)
 #   server/tools/dev.sh test    run the server test suite
@@ -173,6 +174,11 @@ EOF
     cd "$SERVER"
     exec env UL_ENV_FILE="$DEV/dev.env" "$VENV/bin/uvicorn" ulserver.main:app --host 127.0.0.1 --port $API_PORT \
       --reload --reload-dir "$SERVER/ulserver" --proxy-headers
+    ;;
+  scheduler)
+    ensure_venv; write_env
+    cd "$SERVER"
+    exec env UL_ENV_FILE="$DEV/dev.env" UL_API_URL="http://127.0.0.1:$API_PORT" "$VENV/bin/python" -m ulserver.scheduler
     ;;
   web)
     cd "$REPO/web"

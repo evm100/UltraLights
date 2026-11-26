@@ -6,12 +6,14 @@ Every route checks the caller's access: an output they can't see is reported as 
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..access import CONTROL, AccessDenied, abilities_for
 from ..bridge import NotConnected
 from ..control import Control, ControlError, OutputInfo
 from ..db import get_db
+from ..manage import MAX_PULSE_MS
 from ..security import Auth, require_auth, src_for
 from ..views import devices_for
 
@@ -50,12 +52,39 @@ async def set_output(dev: str, out: str, body: dict[str, Any], request: Request,
         raise control_error(e) from None
 
 
+class PulseIn(BaseModel):
+    ms: int = Field(ge=10, le=MAX_PULSE_MS)
+
+
+def _valve(control: Control, auth: Auth, dev: str, out: str) -> OutputInfo:
+    info = authorized(control, auth, dev, out, {CONTROL})
+    if info.kind != "solenoid":
+        raise ControlError("not_a_solenoid", f"{dev}/{out} is a {info.kind}")
+    return info
+
+
 @router.post("/devices/{dev}/outputs/{out}/pulse")
-async def pulse(dev: str, out: str, body: dict[str, Any], request: Request,
-                auth: Auth = Depends(require_auth)) -> dict:
+async def pulse(dev: str, out: str, body: PulseIn, request: Request, auth: Auth = Depends(require_auth)) -> dict:
+    """Open a valve for ms, capped by its run limit (max_on_ms, also enforced on the device).
+    The answer says how long it was actually opened for."""
     control: Control = request.app.state.control
     try:
-        authorized(control, auth, dev, out, {CONTROL})
-        return await control.cmd(dev, "pulse", {"out": out, "ms": int(body.get("ms", 1000))}, src_for(auth), wait=5)
+        info = _valve(control, auth, dev, out)
+        limit = info.meta.get("max_on_ms")
+        ms = min(body.ms, limit) if isinstance(limit, int) else body.ms
+        r = await control.cmd(dev, "pulse", {"out": out, "ms": ms}, src_for(auth), wait=5)
+        return {**r, "ms": ms, "limited": ms < body.ms}
+    except (AccessDenied, ControlError, NotConnected) as e:
+        raise control_error(e) from None
+
+
+@router.post("/devices/{dev}/outputs/{out}/close")
+async def close(dev: str, out: str, request: Request, auth: Auth = Depends(require_auth)) -> dict:
+    """End a valve's run now. A command, not a retained set, so a reconnecting device never
+    replays it into a later run."""
+    control: Control = request.app.state.control
+    try:
+        _valve(control, auth, dev, out)
+        return await control.cmd(dev, "close", {"out": out}, src_for(auth), wait=5)
     except (AccessDenied, ControlError, NotConnected) as e:
         raise control_error(e) from None

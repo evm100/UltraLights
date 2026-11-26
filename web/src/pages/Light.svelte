@@ -10,8 +10,8 @@
   import { liveSender } from "../lib/throttle.js";
   import { kelvinToRgb, hsvToRgb, rgbToHsv, css } from "../lib/color.js";
   import { partsOf, summary, stateOf, reachable, partIcon, PART_ICONS } from "../lib/parts.js";
-  import { post, errText } from "../lib/api.js";
   import { usableCaps } from "../lib/access.js";
+  import Valve from "../components/Valve.svelte";
 
   let { dev, out } = $props();
 
@@ -41,8 +41,6 @@
   let resync = $state(0); // bumped when a hold ends, so the device's latest report is shown
   let resyncTimer;
   let tab = $state(null);
-  let pulseMs = $state(1000);
-  let note = $state("");
 
   $effect(() => {
     const s = shownState;
@@ -87,13 +85,7 @@
   function endWhite(v) { hold(); white = v; sender.release({ white: v, on: true }); }
   function toggle() { hold(); on = !on; sendAll(sendSet)({ on }); }
 
-  async function pulse() {
-    note = "";
-    try {
-      const r = await post(`/api/devices/${dev}/outputs/${out}/pulse`, { ms: pulseMs });
-      note = r.result ? (r.result.ok ? "Pulsed" : `Device said: ${r.result.error}`) : "Sent, no answer yet";
-    } catch (e) { note = errText(e); }
-  }
+
 
   let shown = $derived(
     caps.includes("color") && (tab === "color" || !caps.includes("cct")) ? hsvToRgb(hue, sat, 1)
@@ -135,12 +127,8 @@
       {#if caps.includes("level")}
         <div class="pct">{on ? Math.round(level * 100) : 0}%</div>
         <VSlider value={on ? level : 0} oninput={onLevel} onchange={endLevel} fill={css(shown.map((c) => Math.round(c * 0.25 + 244 * 0.75)), 0.95)} disabled={!device.online} />
-      {:else if caps.includes("pulse")}
-        <div class="stack" style="align-items:center">
-          <label class="field">Pulse length (ms)<input type="number" min="10" max={o.meta?.max_on_ms ?? 600000} bind:value={pulseMs} /></label>
-          <button class="pill on" onclick={pulse} disabled={!device.online}>PULSE</button>
-          {#if note}<span class="small muted">{note}</span>{/if}
-        </div>
+      {:else if o.kind === "solenoid"}
+        <Valve {dev} {o} online={device.online} large />
       {:else if caps.includes("onoff")}
         <div class="big-switch" class:on>{on ? "On" : "Off"}</div>
       {/if}

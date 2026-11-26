@@ -586,6 +586,26 @@ esp_err_t ul_core_pulse(const char *key, uint32_t ms)
     return ESP_OK;
 }
 
+esp_err_t ul_core_close(const char *key)
+{
+    LOCK();
+    int idx = ul_core_find_output(key);
+    if (idx < 0 || s_cfg.out[idx].kind != UL_KIND_SOLENOID) {
+        UNLOCK();
+        return idx < 0 ? ESP_ERR_NOT_FOUND : ESP_ERR_NOT_SUPPORTED;
+    }
+    bool running = s_rt[idx].pulse_end_us != 0;
+    if (running) {
+        s_rt[idx].pulse_end_us = esp_timer_get_time(); /* ends now: pulse_tick drives it off */
+        esp_timer_stop(s_pulse_timer);
+    }
+    UNLOCK();
+    if (running) {
+        pulse_tick(NULL); /* closes it, posts state, reschedules for the other valves */
+    }
+    return ESP_OK;
+}
+
 esp_err_t ul_core_identify(const char *key, uint32_t ms)
 {
     LOCK();

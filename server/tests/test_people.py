@@ -99,7 +99,7 @@ def test_one_person_many_roles(pki, world):
         for k in ("gst", "far"):
             r = c.put(f"/api/devices/{devs[k]}/outputs/lamp", json={"on": True})
             assert r.status_code == 404 and r.json()["detail"]["error"] == "no_such_output"
-            assert c.post(f"/api/devices/{devs[k]}/outputs/lamp/pulse", json={}).status_code == 404
+            assert c.post(f"/api/devices/{devs[k]}/outputs/lamp/pulse", json={"ms": 1000}).status_code == 404
         assert c.get("/api/admin/users").status_code == 403
 
         with c.websocket_connect("/api/ws") as ws:

@@ -35,7 +35,7 @@ static int64_t s_last_pub[UL_MAX_OUTPUTS];
 static bool s_pending[UL_MAX_OUTPUTS];
 static int s_seen_rev = -1;
 static esp_timer_handle_t s_flush_timer, s_health_timer, s_restart_timer;
-static ul_mqtt_cmd_handler_t s_handlers[UL_OP_SELFTEST + 1];
+static ul_mqtt_cmd_handler_t s_handlers[UL_OP_COUNT];
 
 /* incoming message being reassembled */
 static char *s_rx;
@@ -145,7 +145,7 @@ bool ul_mqtt_connected(void)
 
 void ul_mqtt_register_cmd(ul_op_t op, ul_mqtt_cmd_handler_t handler)
 {
-    if ((unsigned)op <= UL_OP_SELFTEST) {
+    if ((unsigned)op < UL_OP_COUNT) {
         s_handlers[op] = handler;
     }
 }
@@ -229,6 +229,12 @@ static void handle_cmd(const char *payload, int len)
         break;
     case UL_OP_PULSE:
         r = ul_core_pulse(c->out, c->ms);
+        ul_mqtt_cmd_result(c->id, r == ESP_OK,
+                           r == ESP_ERR_NOT_FOUND ? "no_such_output" : r == ESP_ERR_NOT_SUPPORTED ? "not_a_solenoid" : NULL,
+                           NULL, -1);
+        break;
+    case UL_OP_CLOSE:
+        r = ul_core_close(c->out);
         ul_mqtt_cmd_result(c->id, r == ESP_OK,
                            r == ESP_ERR_NOT_FOUND ? "no_such_output" : r == ESP_ERR_NOT_SUPPORTED ? "not_a_solenoid" : NULL,
                            NULL, -1);

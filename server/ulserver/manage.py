@@ -22,7 +22,8 @@ log = logging.getLogger("ul.manage")
 
 # Output settings an owner may change. Channel grouping, curves, cct range and pixel counts
 # describe the wiring and stay with the admin's output mapping.
-OWNER_OUTPUT_FIELDS = ("name", "room_id", "max_level", "power_on")
+OWNER_OUTPUT_FIELDS = ("name", "room_id", "max_level", "power_on", "max_on_ms")
+MAX_PULSE_MS = 7_200_000  # contracts output.max_on_ms / cmd pulse ms ceiling (2 h)
 DEFAULTS = {"max_level": 1.0, "power_on": "last"}
 
 
@@ -42,7 +43,9 @@ def mapping(node: Node) -> list[dict[str, Any]]:
 def output_settings(node: Node, o: Output) -> dict[str, Any]:
     entry = next((e for e in mapping(node) if e["key"] == o.key), {}) if node.kind == "node" else {}
     v: dict[str, Any] = {"key": o.key, "kind": o.kind, "name": o.name or o.key, "room_id": o.room_id}
-    if node.kind == "node" and o.kind not in INPUT_KINDS:
+    if node.kind == "node" and o.kind == "solenoid":
+        v["max_on_ms"] = entry.get("max_on_ms")  # valves always start closed: no power-on choice
+    elif node.kind == "node" and o.kind not in INPUT_KINDS:
         v["power_on"] = entry.get("power_on", DEFAULTS["power_on"])
         if o.kind in LIGHT_KINDS:
             v["max_level"] = entry.get("max_level", DEFAULTS["max_level"])
@@ -64,13 +67,19 @@ async def update_output(db: AsyncSession, control: Control, hub: Hub, node: Node
         r = await db.get(Room, changes["room_id"])
         if r is None or r.home_id != node.home_id:
             raise ManageError(422, "invalid", "room must belong to the device's home")
-    limits = {k: changes[k] for k in ("max_level", "power_on") if k in changes}
+    limits = {k: changes[k] for k in ("max_level", "power_on", "max_on_ms") if k in changes}
     if limits and node.kind != "node":
         raise ManageError(422, "invalid", "a bridged device has no limits to set")
     if "max_level" in limits and o.kind not in LIGHT_KINDS:
         raise ManageError(422, "invalid", f"a {o.kind} output has no level")
-    if "power_on" in limits and o.kind in INPUT_KINDS:
-        raise ManageError(422, "invalid", "a sensor has no power-on state")
+    if "power_on" in limits and (o.kind in INPUT_KINDS or o.kind == "solenoid"):
+        raise ManageError(422, "invalid", f"a {o.kind} has no power-on state")
+    if "max_on_ms" in limits:
+        if o.kind != "solenoid":
+            raise ManageError(422, "invalid", "only a valve has a run limit")
+        v = limits["max_on_ms"]
+        if not isinstance(v, int) or not 60_000 <= v <= MAX_PULSE_MS:
+            raise ManageError(422, "invalid", "a valve's run limit is 1 minute to 2 hours")
 
     if "name" in changes:
         o.name = (changes["name"] or "").strip()
@@ -90,7 +99,9 @@ async def update_output(db: AsyncSession, control: Control, hub: Hub, node: Node
             else:
                 entry.pop("name", None)
         for k, v in limits.items():
-            if v is None or v == DEFAULTS[k]:
+            if k == "max_on_ms":
+                entry[k] = v  # required for a solenoid, so never dropped
+            elif v is None or v == DEFAULTS[k]:
                 entry.pop(k, None)
             else:
                 entry[k] = v

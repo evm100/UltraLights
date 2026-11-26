@@ -11,7 +11,7 @@ static const char *const CH_TYPE_NAMES[] = {"pwm", "argb", "switch", "motion"};
 static const char *const ORDER_NAMES[] = {"GRB", "RGB", "BRG", "RBG", "GBR", "BGR", "GRBW", "RGBW"};
 static const char *const CHIPSET_NAMES[] = {"ws2812", "sk6812", "ws2811"};
 static const char *const OP_NAMES[] = {"identify", "reboot", "wifi_reset", "factory_reset",
-                                       "pulse", "ota", "selftest"};
+                                       "pulse", "ota", "selftest", "close"};
 
 #define N(a) (int)(sizeof(a) / sizeof((a)[0]))
 

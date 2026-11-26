@@ -6,6 +6,7 @@ from sqlalchemy import (
     CheckConstraint,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     LargeBinary,
@@ -52,6 +53,9 @@ class Home(Base):
     __tablename__ = "homes"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(64))
+    timezone: Mapped[str | None] = mapped_column(String(64))  # IANA name; schedules need it
+    latitude: Mapped[float | None] = mapped_column(Float)  # only for sunrise / sunset schedules
+    longitude: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = _now()
 
 
@@ -104,6 +108,7 @@ class Output(Base):
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id", ondelete="SET NULL"))
     desired: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # last retained set payload
     actual: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # last state payload
+    actual_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # when it arrived
     meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # cct_range, pixels, ... from info
 
 
@@ -181,3 +186,45 @@ class Invite(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     used_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class Scene(Base):
+    """A saved look (contracts/schemas/scene). doc holds the contract document."""
+    __tablename__ = "scenes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    home_id: Mapped[int] = mapped_column(ForeignKey("homes.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id", ondelete="SET NULL"))
+    name: Mapped[str] = mapped_column(String(48))
+    doc: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = _now()
+
+
+class SceneRun(Base):
+    """One application of a scene, with what the outputs were set to before, for undo."""
+    __tablename__ = "scene_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scene_id: Mapped[int | None] = mapped_column(ForeignKey("scenes.id", ondelete="SET NULL"), index=True)
+    home_id: Mapped[int] = mapped_column(ForeignKey("homes.id", ondelete="CASCADE"), index=True)
+    src: Mapped[str] = mapped_column(String(64))  # who applied it (ui:<user>, sched:<id>, ai:<job>)
+    at: Mapped[datetime] = _now()
+    previous: Mapped[list[Any]] = mapped_column(JSONB)  # [{dev, out, state}] desired before the run
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Schedule(Base):
+    """When something happens (contracts/schemas/schedule). doc holds the contract document;
+    last_start / last_until are the event times already fired, so a restart never repeats one."""
+    __tablename__ = "schedules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    home_id: Mapped[int] = mapped_column(ForeignKey("homes.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(48))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    doc: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = _now()
+    last_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_result: Mapped[dict[str, Any] | None] = mapped_column(JSONB)

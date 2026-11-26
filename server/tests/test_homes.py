@@ -1,4 +1,5 @@
 """Owner tools: rooms, the room toggle, device and output settings, members and invites."""
+import contextlib
 import json
 import secrets
 
@@ -56,9 +57,10 @@ def home(admin):
     return {"hid": hid, "other": other, "dev": dev, "users": users, "far_room": far_room}
 
 
-@pytest.fixture()
-def app_client(pki, home):
-    """A fresh app (its control cache sees the seeded outputs) with publishes captured."""
+@contextlib.contextmanager
+def _captured_app():
+    """A fresh app (its control cache sees the seeded outputs) with publishes captured and
+    commands answered at once."""
     from ulserver.main import create_app
 
     with TestClient(create_app(), base_url="http://testserver") as c:
@@ -66,9 +68,18 @@ def app_client(pki, home):
 
         async def publish(topic, payload, schema=None, qos=0, retain=False):
             sent.append((topic, payload))
+            waiters = c.app.state.control.cmd_waiters
+            if topic.endswith("/cmd") and waiters is not None and payload["id"] in waiters:
+                waiters[payload["id"]].set_result({"type": "cmd_result", "cmd_id": payload["id"], "ok": True})
 
         c.app.state.control.publish = publish
         c.sent = sent
+        yield c
+
+
+@pytest.fixture()
+def app_client(pki, home):
+    with _captured_app() as c:
         yield c
 
 
@@ -207,3 +218,70 @@ def test_invites(app_client, home):
     # A member invite never demotes an owner.
     again = c.post(f"/api/homes/{hid}/invites", json={"role": "member"}).json()
     assert c.post(f"/api/invites/{again['token']}/accept", json={}).json()["role"] == "owner"
+
+
+VALVE_CONFIG = [
+    {"key": "warm", "kind": "white", "channels": {"w": "warm"}},
+    {"key": "valve", "kind": "solenoid", "name": "Bed valve", "channels": {"coil": "relay"}, "max_on_ms": 600000},
+]
+
+
+@pytest.fixture()
+def garden(admin, home):
+    """The bench node remapped with a valve on the relay channel, as the device would report it."""
+    dev = home["dev"]
+    assert admin.put(f"/api/admin/nodes/{dev}/config", json={"outputs": VALVE_CONFIG}).status_code == 200
+    nid = _sql("SELECT id FROM nodes WHERE device_id = :d", d=dev)[0][0]
+    _sql("INSERT INTO outputs (node_id, key, kind, name, caps, meta) VALUES "
+         "(:n, 'valve', 'solenoid', 'Bed valve', '[\"pulse\"]', '{\"max_on_ms\": 600000}')", n=nid)
+    return home
+
+
+@pytest.fixture()
+def garden_client(pki, garden):
+    with _captured_app() as c:
+        yield c
+
+
+def test_valves_pulse_within_their_limit_and_close(garden_client, garden):
+    from ulserver import contracts
+
+    c, dev = garden_client, garden["dev"]
+    _login(c, garden["users"]["mem"][0])  # members may run valves
+    r = c.post(f"/api/devices/{dev}/outputs/valve/pulse", json={"ms": 15 * 60_000})
+    assert r.status_code == 200, r.text
+    assert r.json()["ms"] == 600000 and r.json()["limited"] is True and r.json()["result"]["ok"] is True
+    topic, cmd = c.sent[-1]
+    assert topic == f"ul/v1/d/{dev}/cmd" and cmd["op"] == "pulse" and cmd["ms"] == 600000
+    r = c.post(f"/api/devices/{dev}/outputs/valve/pulse", json={"ms": 5 * 60_000})
+    assert r.json()["ms"] == 300000 and r.json()["limited"] is False
+
+    assert c.post(f"/api/devices/{dev}/outputs/valve/close").status_code == 200
+    topic, cmd = c.sent[-1]
+    assert cmd["op"] == "close" and cmd["out"] == "valve"
+    contracts.validate("cmd", cmd)
+    assert not any(t.endswith("/set/valve") for t, _ in c.sent)  # never a retained set
+
+    assert c.post(f"/api/devices/{dev}/outputs/valve/pulse", json={"ms": 7_200_001}).status_code == 422
+    r = c.post(f"/api/devices/{dev}/outputs/warm/pulse", json={"ms": 1000})
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "not_a_solenoid"
+    assert c.post(f"/api/devices/{dev}/outputs/warm/close").status_code == 422
+    _login(c, garden["users"]["far"][0])
+    assert c.post(f"/api/devices/{dev}/outputs/valve/pulse", json={"ms": 1000}).status_code == 404
+    assert c.post(f"/api/devices/{dev}/outputs/valve/close").status_code == 404
+
+
+def test_owner_sets_valve_run_limit(garden_client, garden):
+    c, hid, dev = garden_client, garden["hid"], garden["dev"]
+    _login(c, garden["users"]["own"][0])
+    valve = next(o for o in c.get(f"/api/homes/{hid}/devices").json()[0]["outputs"] if o["key"] == "valve")
+    assert valve["max_on_ms"] == 600000 and "power_on" not in valve
+    r = c.put(f"/api/devices/{dev}/outputs/valve/settings", json={"max_on_ms": 45 * 60_000})
+    assert r.status_code == 200, r.text
+    entry = next(o for o in c.sent[-1][1]["outputs"] if o["key"] == "valve")
+    assert entry["max_on_ms"] == 2_700_000
+    for body in ({"max_on_ms": 30_000}, {"max_on_ms": 7_200_001}, {"max_on_ms": None}, {"power_on": "on"}):
+        assert c.put(f"/api/devices/{dev}/outputs/valve/settings", json=body).status_code == 422, body
+    assert c.put(f"/api/devices/{dev}/outputs/warm/settings", json={"max_on_ms": 60_000}).status_code == 422
+    _login(c, garden["users"]["mem"][0])
+    assert c.put(f"/api/devices/{dev}/outputs/valve/settings", json={"max_on_ms": 60_000}).status_code == 403

@@ -148,10 +148,11 @@ class Bridge:
                 o = (await db.execute(select(Output).where(Output.node_id == node.id, Output.key == out))).scalar_one_or_none()
                 if o is None:
                     return
-                o.actual = doc
+                o.actual, o.actual_at = doc, now
                 node.last_seen = now
                 await db.commit()
-                self.hub.broadcast_output({"t": "state", "dev": dev, "out": out, "state": doc}, target(node, o))
+                self.hub.broadcast_output({"t": "state", "dev": dev, "out": out, "state": doc,
+                                           "at": int(now.timestamp() * 1000)}, target(node, o))
             elif schema == "health":
                 node.health = doc
                 node.last_seen = now
@@ -180,7 +181,7 @@ class Bridge:
         node.info = doc
         node.last_seen = now
         existing = {o.key: o for o in (await db.execute(select(Output).where(Output.node_id == node.id))).scalars()}
-        meta_keys = ("part", "source", "leds", "reachable") if is_bridge else ("cct_range", "pixels", "max_level", "channels")
+        meta_keys = ("part", "source", "leds", "reachable") if is_bridge else ("cct_range", "pixels", "max_level", "max_on_ms", "channels")
         seen = set()
         for od in doc["outputs"]:
             seen.add(od["key"])

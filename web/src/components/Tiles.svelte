@@ -34,7 +34,7 @@
       <div class="row" style="justify-content:space-between;align-items:flex-start">
         <div class="stack" style="gap:2px">
           <strong>{x.name}</strong>
-          <span class="small muted">{x.dev.online ? (s.on ? `On ${pct(x)}` : "Off") : "Offline"}</span>
+          <span class="small muted">{!x.dev.online ? "Offline" : x.o?.kind === "solenoid" ? (s.on ? "Open" : "Closed") : s.on ? `On ${pct(x)}` : "Off"}</span>
         </div>
         {#if x.caps.includes("onoff") && x.control}
           <button class="pw" class:on={s.on} aria-label={s.on ? "Turn off" : "Turn on"} onclick={(e) => toggle(e, x)} disabled={!x.dev.online}>

@@ -22,6 +22,7 @@ extern "C" {
 #define UL_HOST_SZ        254
 #define UL_SERVER_CA_SZ   4096
 #define UL_MAX_PIXELS     1500
+#define UL_MAX_PULSE_MS   7200000  /* solenoid pulse and max_on_ms ceiling: 2 h (contracts output/cmd) */
 
 typedef enum { UL_CHIP_ESP32C3 = 0, UL_CHIP_ESP32C6 = 1, UL_CHIP_COUNT } ul_chip_t;
 
@@ -151,7 +152,8 @@ typedef struct {
 
 typedef enum {
     UL_OP_IDENTIFY = 0, UL_OP_REBOOT, UL_OP_WIFI_RESET, UL_OP_FACTORY_RESET,
-    UL_OP_PULSE, UL_OP_OTA, UL_OP_SELFTEST
+    UL_OP_PULSE, UL_OP_OTA, UL_OP_SELFTEST, UL_OP_CLOSE,
+    UL_OP_COUNT
 } ul_op_t;
 
 typedef struct {
@@ -160,7 +162,7 @@ typedef struct {
     int64_t ts;         /* 0 = absent */
     char src[UL_SRC_SZ];
     uint32_t ms;        /* identify (default 5000), pulse */
-    char out[UL_KEY_SZ];
+    char out[UL_KEY_SZ]; /* identify (optional), pulse, close */
     char url[384];
     char sha256[65];
     char version[32];

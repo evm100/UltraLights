@@ -8,7 +8,7 @@
   "oneOf": [
     { "required": ["devices"], "properties": { "t": { "const": "snapshot" }, "devices": { "type": "array", "items": { "$ref": "#/$defs/device" } }, "broker": { "type": "boolean" } }, "additionalProperties": false },
     { "required": ["device"], "properties": { "t": { "const": "device" }, "device": { "$ref": "#/$defs/device" } }, "additionalProperties": false },
-    { "required": ["dev", "out", "state"], "properties": { "t": { "const": "state" }, "dev": { "$ref": "common.schema.json#/$defs/device_id" }, "out": { "$ref": "common.schema.json#/$defs/key" }, "state": { "$ref": "state.schema.json" } }, "additionalProperties": false },
+    { "required": ["dev", "out", "state"], "properties": { "t": { "const": "state" }, "dev": { "$ref": "common.schema.json#/$defs/device_id" }, "out": { "$ref": "common.schema.json#/$defs/key" }, "state": { "$ref": "state.schema.json" }, "at": { "type": "integer", "description": "Server time (unix ms) when the state arrived." } }, "additionalProperties": false },
     { "required": ["dev", "health"], "properties": { "t": { "const": "health" }, "dev": { "$ref": "common.schema.json#/$defs/device_id" }, "health": { "$ref": "health.schema.json" } }, "additionalProperties": false },
     { "required": ["dev", "evt"], "properties": { "t": { "const": "evt" }, "dev": { "$ref": "common.schema.json#/$defs/device_id" }, "evt": { "$ref": "evt.schema.json" } }, "additionalProperties": false },
     { "required": ["error"], "properties": { "t": { "const": "error" }, "error": { "enum": ["invalid", "no_such_output", "broker_offline", "forbidden"] }, "detail": { "type": "string" }, "dev": { "$ref": "common.schema.json#/$defs/device_id" }, "out": { "$ref": "common.schema.json#/$defs/key" } }, "additionalProperties": false },
@@ -31,7 +31,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["key", "kind", "name", "caps", "room_id", "meta", "state", "desired", "can"],
+            "required": ["key", "kind", "name", "caps", "room_id", "meta", "state", "state_at", "desired", "can"],
             "additionalProperties": false,
             "properties": {
               "key": { "$ref": "common.schema.json#/$defs/key" },
@@ -41,6 +41,7 @@
               "room_id": { "type": ["integer", "null"] },
               "meta": { "type": "object", "description": "cct_range, pixels, max_level, channels from a node's info; part, source, leds, reachable from a bridge's." },
               "state": { "oneOf": [ { "type": "null" }, { "$ref": "state.schema.json" } ] },
+              "state_at": { "type": ["integer", "null"], "description": "Server time (unix ms) when state arrived; with pulse_ms_left it gives a valve's remaining run." },
               "desired": { "oneOf": [ { "type": "null" }, { "$ref": "set.schema.json" } ] },
               "can": {
                 "type": "array", "uniqueItems": true,

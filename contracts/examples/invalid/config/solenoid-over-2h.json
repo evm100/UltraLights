@@ -1,0 +1,1 @@
+{ "v": 1, "rev": 1, "outputs": [ { "key": "v", "kind": "solenoid", "channels": { "coil": "r" }, "max_on_ms": 7200001 } ] }
