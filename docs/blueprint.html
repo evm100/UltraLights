@@ -909,7 +909,7 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
               <div class="ph-head"><svg class="ph-icon" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><div><div class="t" style="font-size:15px;letter-spacing:0.02em;text-transform:none;font-weight:500">Lights</div></div><span></span></div>
               <div class="rlist" id="roomlist"></div>
             </div></div>
-            <p class="figcap">Rooms: one-tap OFF/ON per room. Dots show each light; amber means on.</p>
+            <p class="figcap">Rooms: one-tap OFF/ON per room. Dots show each light; amber means on. The room toggle switches lights only: relays and valves keep their own controls, so it never starts a pump or opens a valve.</p>
           </div>
 
           <div class="phone-wrap">
@@ -1073,6 +1073,8 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
             <h4>How grants work</h4>
             <ul class="clean small">
               <li><b>Scope</b>: whole home, rooms or single devices.</li>
+              <li><b>Owners' setup</b>: rooms (add, rename, reorder, delete), device and output names, the room of each output, and two limits that are pushed to the node in its config: max level (a hard cap on the device) and the power-on state. Channel grouping, curves, warmth range and pixel counts describe the wiring and stay with the admin's output mapping. Solenoid run limits arrive with switches.</li>
+              <li><b>Invites</b>: owners invite members and co-owners with a single-use link that expires after 7 days. The person creates an account on the link's page, or signs in and joins. An invite never demotes an owner, and a home always keeps at least one owner. Guest invites arrive with grants.</li>
               <li><b>Abilities</b>: view, control (on/off, level, fades and solenoid pulses), and color (color, white channel, warmth and effects). Motion sensors are view only for everyone. Each output the UI receives lists the viewer's abilities in <code>can</code>, and controls without the ability are not drawn.</li>
               <li><b>Device kinds</b>: lights only, or lights and switches. Solenoids are excluded unless granted explicitly.</li>
               <li><b>Time</b>: an optional weekly window and an expiry date.</li>
@@ -1498,6 +1500,7 @@ docs/        this blueprint, decisions</code></pre>
               <tr><td>Web UI framework?</td><td>Everything in <code>web/</code></td><td>Svelte 5 + Vite, built to static files that nginx serves</td><td><span class="tag keep">Decided</span></td></tr>
               <tr><td>Is the VM reachable from the internet?</td><td>Remote access, certificates, attack surface</td><td>Yes, behind the proxy with strict sign-in</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Secure boot and flash encryption on production boards?</td><td>Irreversible eFuse burns at bring-up</td><td>Yes for production, never on dev boards</td><td><span class="tag rework">Open</span></td></tr>
+              <tr><td>Solenoid owner limit vs firmware cap</td><td>The switches mockup shows an owner limit of 45 min, but the contract caps a pulse at 10 min (<code>max_on_ms</code> ≤ 600000)</td><td>Decide in the switches slice: raise the firmware cap, or keep long runs as repeated pulses</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Is the Member role needed?</td><td>One less role if not</td><td>Keep, it's cheap</td><td><span class="tag rework">Open</span></td></tr>
               <tr><td>Support legacy C3 and hand-built nodes?</td><td>Chip support, builder, firmware images</td><td>Yes: pins as data, node builder with per-chip checks</td><td><span class="tag keep">Decided</span></td></tr>
               <tr><td>How does v5 hand over to the new server?</td><td>Same host, same ports 443 and 8883</td><td>Full cutover in one weekend on the same host (see <a href="#cutover">Cutover</a>). No v5 node configs are migrated: every node is inspected, rewired where needed and recreated in the builder</td><td><span class="tag keep">Decided</span></td></tr>

@@ -3,11 +3,19 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import get_settings
 from ..db import get_db
 from ..access import HOME_ABILITIES, load_access
 from ..models import AuditLog, Home, User
-from ..security import COOKIE, Auth, create_session, end_session, optional_auth, require_auth, verify_or_dummy
+from ..security import (
+    COOKIE,
+    Auth,
+    create_session,
+    end_session,
+    optional_auth,
+    require_auth,
+    set_session_cookie,
+    verify_or_dummy,
+)
 
 router = APIRouter(prefix="/api/auth")
 
@@ -38,9 +46,7 @@ async def login(body: Login, response: Response, db: AsyncSession = Depends(get_
     token, sess = await create_session(db, user)
     db.add(AuditLog(src=f"ui:{user.id}", action="login", target=user.username))
     await db.commit()
-    s = get_settings()
-    response.set_cookie(COOKIE, token, httponly=True, secure=s.cookie_secure, samesite="lax",
-                        max_age=s.session_days * 86400, path="/")
+    set_session_cookie(response, token)
     return await me_view(db, Auth(user, sess, await load_access(db, user)))
 
 

@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI
 
 from . import db as dbm
-from .api import admin, auth, devices, enroll_api, ws
+from .api import admin, auth, devices, enroll_api, homes, ws
 from .bridge import Bridge
 from .config import get_settings
 from .control import Control
@@ -63,6 +63,7 @@ def create_app() -> FastAPI:
     app.include_router(enroll_api.router)
     app.include_router(auth.router)
     app.include_router(devices.router)
+    app.include_router(homes.router)
     app.include_router(admin.router)
     app.include_router(ws.router)
 

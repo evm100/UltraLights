@@ -164,3 +164,20 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(48))
     target: Mapped[str | None] = mapped_column(String(64))
     detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+
+class Invite(Base):
+    """Single-use link that adds a person to a home with a role (members and co-owners;
+    guest invites arrive with grants)."""
+    __tablename__ = "invites"
+    __table_args__ = (CheckConstraint("role IN ('owner', 'member')", name="invites_role"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary(32), unique=True)
+    home_id: Mapped[int] = mapped_column(ForeignKey("homes.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(16))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    used_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

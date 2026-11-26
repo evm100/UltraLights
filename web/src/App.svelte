@@ -7,15 +7,25 @@
   import Home from "./pages/Home.svelte";
   import Light from "./pages/Light.svelte";
   import Admin from "./pages/admin/Admin.svelte";
+  import Rooms from "./pages/Rooms.svelte";
+  import Room from "./pages/Room.svelte";
+  import Settings from "./pages/Settings.svelte";
+  import Invite from "./pages/Invite.svelte";
+  import { homesState, loadHomes, managed } from "./lib/homes.svelte.js";
 
   onMount(restore);
 
   let section = $derived(route.parts[0] || "home");
   let isAdmin = $derived(!!session.user?.admin);
+  // Reload homes on every (re)connect: the server closes the socket when access changes.
+  $effect(() => { if (session.user && live.connected) loadHomes(); });
+  let settingsHome = $derived(managed(homesState.list)[0]);
 </script>
 
 {#if !session.ready}
   <div class="boot"><span class="label">UltraLights</span></div>
+{:else if section === "invite"}
+  <Invite token={route.parts[1] ?? ""} />
 {:else if !session.user}
   <Login />
 {:else if section === "light"}
@@ -28,9 +38,15 @@
     </a>
     <nav>
       <a href="#/" class:active={section === "home"}>Home</a>
+      <a href="#/rooms" class:active={section === "rooms"}>Rooms</a>
       {#if isAdmin}<a href="#/admin" class:active={section === "admin"}>Admin</a>{/if}
     </nav>
     <span class="spacer"></span>
+    {#if settingsHome}
+      <a class="gear" class:active={section === "settings"} href={`#/settings/${settingsHome.id}`} aria-label="Home settings" title="Home settings">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.6 7.6 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 2.6-1.5l2.4 1 2-3.4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      </a>
+    {/if}
     <span class="conn" title={live.connected ? (live.broker ? "Live" : "Live, broker offline") : "Reconnecting"}>
       <span class="dot" class:on={live.connected && live.broker}></span>
     </span>
@@ -38,6 +54,12 @@
   </header>
   {#if section === "admin" && isAdmin}
     <Admin parts={route.parts.slice(1)} />
+  {:else if section === "rooms" && route.parts[1]}
+    {#key route.parts[1]}<Room id={route.parts[1]} />{/key}
+  {:else if section === "rooms"}
+    <Rooms />
+  {:else if section === "settings" && route.parts[1]}
+    {#key route.parts[1]}<Settings id={route.parts[1]} />{/key}
   {:else}
     <Home />
   {/if}
@@ -55,5 +77,7 @@
   nav a { text-decoration: none; padding: 6px 12px; border-radius: 999px; color: var(--muted); font-size: 0.9rem; }
   nav a.active { color: var(--text); background: var(--glass-2); }
   .spacer { flex: 1; }
+  .gear { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: var(--muted); }
+  .gear:hover, .gear.active { color: var(--text); background: var(--glass-2); }
   @media (max-width: 520px) { .brand span { display: none; } }
 </style>

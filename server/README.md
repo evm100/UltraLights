@@ -13,7 +13,9 @@ Every payload going to or coming from a device is validated against `../contract
 | Path | What |
 |---|---|
 | `ulserver/main.py` | App, startup (bridge task, CRL refresh) |
-| `ulserver/api/` | REST: `auth`, `devices` (control), `admin` (builder, provisioning, config, commands, tokens, certs, firmware, users, homes, audit), `enroll_api` (`POST /api/v1/enroll`), `ws` (`/api/ws`) |
+| `ulserver/api/` | REST: `auth`, `devices` (control), `homes` (rooms, room on/off, device and output settings, members, invites; owner tools), `admin` (builder, provisioning, config, commands, tokens, certs, firmware, users, homes, audit), `enroll_api` (`POST /api/v1/enroll`), `ws` (`/api/ws`) |
+| `ulserver/access.py` | Who may do what: the blueprint's roles table, per home membership (pure, tested in `tests/test_access.py`) |
+| `ulserver/manage.py` | Home setup shared by owners and admins: output names and limits written into the node's config, members with the last-owner rule |
 | `ulserver/pki.py` | Root and device CA, device and bridge certificates, CRL, dev-only TLS CA |
 | `ulserver/enroll.py` | Token issue and contract-exact enrollment (idempotent retry, supersedes old certs) |
 | `ulserver/bridge.py` | MQTT bridge: validates inbound messages, stores them, fans them out to browsers |

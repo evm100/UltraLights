@@ -6,14 +6,12 @@ Every route checks the caller's access: an output they can't see is reported as 
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..access import CONTROL, AccessDenied, abilities_for
 from ..bridge import NotConnected
 from ..control import Control, ControlError, OutputInfo
 from ..db import get_db
-from ..models import Home, Room
 from ..security import Auth, require_auth, src_for
 from ..views import devices_for
 
@@ -39,18 +37,6 @@ def authorized(control: Control, auth: Auth, dev: str, out: str, needed: set[str
 @router.get("/devices")
 async def list_devices(auth: Auth = Depends(require_auth), db: AsyncSession = Depends(get_db)) -> list[dict]:
     return await devices_for(db, auth.access)
-
-
-@router.get("/homes")
-async def list_homes(auth: Auth = Depends(require_auth), db: AsyncSession = Depends(get_db)) -> list[dict]:
-    ids = auth.access.home_ids()
-    q = select(Home).order_by(Home.name)
-    if ids is not None:
-        q = q.where(Home.id.in_(ids))
-    homes = (await db.execute(q)).scalars().all()
-    rooms = (await db.execute(select(Room).where(Room.home_id.in_([h.id for h in homes])).order_by(Room.sort, Room.name))).scalars().all()
-    return [{"id": h.id, "name": h.name, "role": auth.access.role(h.id),
-             "rooms": [{"id": r.id, "name": r.name} for r in rooms if r.home_id == h.id]} for h in homes]
 
 
 @router.put("/devices/{dev}/outputs/{out}")

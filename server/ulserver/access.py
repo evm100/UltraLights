@@ -42,6 +42,7 @@ _HOME_CAN: dict[str, frozenset[str]] = {
 }
 
 INPUT_KINDS = frozenset({"motion"})  # sensors are watched, never driven
+LIGHT_KINDS = frozenset({"white", "cct", "rgb", "rgbw", "rgbcct", "argb"})  # what a room toggle switches
 
 # Which ability each set/live field needs. Anything not listed is refused.
 FIELD_ABILITY: dict[str, str] = {

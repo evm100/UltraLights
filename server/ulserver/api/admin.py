@@ -18,6 +18,7 @@ from ..bridge import NotConnected
 from ..control import Control, ControlError
 from ..db import get_db
 from ..enroll import issue_token, write_crl
+from ..manage import ManageError, update_output
 from ..models import (
     AuditLog,
     BoardTemplate,
@@ -371,22 +372,24 @@ class OutputPatch(BaseModel):
 
 
 @router.put("/nodes/{dev}/outputs/{key}")
-async def patch_output(dev: str, key: str, body: OutputPatch, request: Request, db: AsyncSession = Depends(get_db)) -> dict:
+async def patch_output(dev: str, key: str, body: OutputPatch, request: Request, auth: Auth = Depends(require_admin),
+                       db: AsyncSession = Depends(get_db)) -> dict:
+    """Same path as an owner's edit (manage.update_output): a node's names go into its config."""
     n = await _node(db, dev)
     o = (await db.execute(select(Output).where(Output.node_id == n.id, Output.key == key))).scalar_one_or_none()
     if o is None:
         raise HTTPException(404, "no such output")
+    changes: dict[str, Any] = {}
     if body.name is not None:
-        o.name = body.name
+        changes["name"] = body.name
     if body.clear_room:
-        o.room_id = None
+        changes["room_id"] = None
     elif body.room_id is not None:
-        r = await db.get(Room, body.room_id)
-        if r is None or r.home_id != n.home_id:
-            raise HTTPException(422, "room must belong to the node's home")
-        o.room_id = body.room_id
-    await db.commit()
-    return {"ok": True}
+        changes["room_id"] = body.room_id
+    try:
+        return await update_output(db, _ctl(request), request.app.state.hub, n, o, changes, _src(auth))
+    except ManageError as e:
+        raise HTTPException(e.status, e.detail or e.code) from None
 
 
 # ---------------------------------------------------------------- commands
@@ -577,7 +580,8 @@ async def create_home(body: HomeIn, auth: Auth = Depends(require_admin), db: Asy
     h = Home(name=body.name)
     db.add(h)
     await db.flush()
-    db.add(HomeMember(home_id=h.id, user_id=auth.user.id, role="owner"))
+    # No automatic membership: admins see every home anyway. Add owners under People.
+    db.add(AuditLog(src=_src(auth), action="home_created", target=f"home:{h.id}", detail={"name": h.name}))
     await db.commit()
     return {"id": h.id, "name": h.name}
 

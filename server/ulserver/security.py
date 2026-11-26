@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
-from fastapi import Depends, HTTPException, Request, WebSocket
+from fastapi import Depends, HTTPException, Request, Response, WebSocket
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -95,10 +95,20 @@ async def require_auth(request: Request, db: AsyncSession = Depends(get_db)) -> 
     if auth is None:
         raise HTTPException(401, "sign in required")
     if request.method not in ("GET", "HEAD", "OPTIONS"):
-        sent = request.headers.get(CSRF_HEADER, "")
-        if not hmac.compare_digest(sent, auth.session.csrf):
-            raise HTTPException(403, "missing or wrong CSRF header")
+        check_csrf(request, auth)
     return auth
+
+
+def check_csrf(request: Request, auth: Auth) -> None:
+    sent = request.headers.get(CSRF_HEADER, "")
+    if not hmac.compare_digest(sent, auth.session.csrf):
+        raise HTTPException(403, "missing or wrong CSRF header")
+
+
+def set_session_cookie(response: Response, token: str) -> None:
+    s = get_settings()
+    response.set_cookie(COOKIE, token, httponly=True, secure=s.cookie_secure, samesite="lax",
+                        max_age=s.session_days * 86400, path="/")
 
 
 async def require_admin(auth: Auth = Depends(require_auth)) -> Auth:
