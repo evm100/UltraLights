@@ -1,0 +1,2 @@
+{ "v": 1, "label": "Pool party", "scope": ["room:3", "device:ul-91c0e2"], "can": ["control", "color"], "kinds": ["light"],
+  "window": { "days": [5], "from": "16:00", "to": "23:59" }, "expires": "2026-11-30" }

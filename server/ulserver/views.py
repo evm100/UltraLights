@@ -74,7 +74,7 @@ def device_view(n: Node, outputs: list[Output], access: Access) -> dict[str, Any
 
 
 async def devices_for(db: AsyncSession, access: Access) -> list[dict[str, Any]]:
-    homes = access.home_ids()
+    homes = access.device_home_ids()
     q = select(Node).order_by(Node.name)
     if homes is not None:
         q = q.where(Node.home_id.in_(homes))

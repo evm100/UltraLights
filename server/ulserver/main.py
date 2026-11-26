@@ -42,6 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await write_crl(db, pki)
         else:
             log.warning("device CA not initialized: run `ulctl ca init`; enrollment is disabled")
+    sweeps = asyncio.create_task(hub.run_sweeps(), name="guest-sweeps")
     task = None
     if s.bridge_enabled and pki.initialized and (s.pki_dir / "ul-server.crt").exists():
         task = asyncio.create_task(bridge.run(), name="mqtt-bridge")
@@ -51,6 +52,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         bridge.stop()
+        sweeps.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sweeps
         if task:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

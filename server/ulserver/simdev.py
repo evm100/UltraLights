@@ -92,6 +92,7 @@ class SimDevice:
     received: list[tuple[str, dict]] = field(default_factory=list)
     client: aiomqtt.Client | None = None
     connected: asyncio.Event = field(default_factory=asyncio.Event)
+    _valve_tasks: dict[str, asyncio.Task] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self._apply_outputs(contracts.default_outputs(self.board))
@@ -105,6 +106,8 @@ class SimDevice:
         self.state = {k: v for k, v in self.state.items() if k in keep}
         for o in self.outputs:
             self.state.setdefault(o["key"], {"on": False, **({"level": 1.0} if "level" in o["caps"] else {})})
+            if o["kind"] == "solenoid":
+                self.state[o["key"]].pop("level", None)
 
     def info(self) -> dict:
         d = {"v": 1, "id": self.device_id, "chip": self.board["chip"], "fw": "0.0.1",
@@ -208,14 +211,48 @@ class SimDevice:
     async def _on_cmd(self, doc: dict) -> None:
         contracts.validate("cmd", doc)
         ok, err = True, None
-        if doc["op"] == "pulse" and doc["out"] not in self.state:
-            ok, err = False, "no_such_output"
+        if doc["op"] in ("pulse", "close"):
+            out = next((o for o in self.outputs if o["key"] == doc["out"]), None)
+            if out is None:
+                ok, err = False, "no_such_output"
+            elif out["kind"] != "solenoid":
+                ok, err = False, "not_a_solenoid"
+            elif doc["op"] == "pulse":
+                await self._open(out, min(doc["ms"], out["max_on_ms"]))
+            else:
+                await self._close(out["key"])
         elif doc["op"] in ("ota", "selftest"):
             ok, err = False, "unsupported"
         res = {"type": "cmd_result", "cmd_id": doc["id"], "ok": ok}
         if err:
             res["error"] = err
         await self.pub(self.t("evt"), res, "evt")
+
+
+    # Valves, as ul_core: a pulse is clamped to max_on_ms and timed here; the valve reports on
+    # with pulse_ms_left, then closes itself. close ends a run early (a no-op when closed).
+    async def _open(self, out: dict, ms: int) -> None:
+        key = out["key"]
+        if (t := self._valve_tasks.get(key)) and not t.done():
+            t.cancel()
+        self.state[key].update(on=True, pulse_ms_left=ms)
+        log.info("valve %s open for %d ms", key, ms)
+        await self.publish_state(key)
+        self._valve_tasks[key] = asyncio.get_running_loop().create_task(self._run_valve(key, ms))
+
+    async def _run_valve(self, key: str, ms: int) -> None:
+        await asyncio.sleep(ms / 1000)
+        await self._close(key, timer=True)
+
+    async def _close(self, key: str, timer: bool = False) -> None:
+        t = self._valve_tasks.pop(key, None)
+        if t and not t.done() and not timer:
+            t.cancel()
+        if self.state[key].get("on"):
+            self.state[key]["on"] = False
+            self.state[key].pop("pulse_ms_left", None)
+            log.info("valve %s closed", key)
+            await self.publish_state(key)
 
 
 def random_mac() -> str:

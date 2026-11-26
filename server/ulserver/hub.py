@@ -5,6 +5,7 @@ see that output, device views are rendered per client (their outputs and abiliti
 health and events go to admins only.
 """
 import asyncio
+import datetime as dt
 import json
 import logging
 from dataclasses import dataclass, field
@@ -19,6 +20,7 @@ from .views import device_view
 log = logging.getLogger("ul.hub")
 
 ACCESS_CHANGED = 4001  # close code: memberships changed, reconnect for a fresh snapshot
+SWEEP_S = 20  # how often guests' windows and expiry dates are checked
 
 
 @dataclass(eq=False)
@@ -26,6 +28,7 @@ class Client:
     ws: WebSocket
     access: Access
     queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=512))
+    seen: set[str] = field(default_factory=set)  # devices this client has been shown
 
     @property
     def user_id(self) -> int:
@@ -79,7 +82,24 @@ class Hub:
                 v = device_view(node, outputs, c.access)
                 cache[k] = None if v is None else _dump({"t": "device", "device": v})
             if cache[k] is not None:
+                c.seen.add(node.device_id)
                 self._put(c, cache[k])
+            elif node.device_id in c.seen:
+                self._drop(c, ACCESS_CHANGED)  # it left their view (moved out of a guest's room)
+
+    def sweep(self, now: dt.datetime) -> int:
+        """Refresh guests whose grant opened or closed since they connected."""
+        stale = [c for c in self.clients if c.access.stale(now)]
+        for c in stale:
+            self._drop(c, ACCESS_CHANGED)
+        return len(stale)
+
+    async def run_sweeps(self) -> None:
+        while True:
+            await asyncio.sleep(SWEEP_S)
+            n = self.sweep(dt.datetime.now(dt.timezone.utc))
+            if n:
+                log.info("refreshed %d guest connection(s): a grant window opened or closed", n)
 
     def refresh_user(self, user_id: int) -> None:
         """Their access changed: close their sockets so they reconnect with a fresh snapshot."""

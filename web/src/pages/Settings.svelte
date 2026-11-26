@@ -5,6 +5,8 @@
   import { get, post, put, del, errText } from "../lib/api.js";
   import { homesState, loadHomes, managed } from "../lib/homes.svelte.js";
   import { go } from "../lib/router.svelte.js";
+  import { blankGrantForm, buildGrant, grantForm, grantProblem, grantStatus, grantText } from "../lib/grants.js";
+  import GrantEditor from "../components/GrantEditor.svelte";
 
   let { id } = $props();
   let hid = $derived(Number(id));
@@ -21,6 +23,8 @@
   let fresh = $state(null); // the link just created, shown once
   let newRoom = $state("");
   let inviteRole = $state("member");
+  let inviteGrant = $state(blankGrantForm());
+  let editing = $state(null); // { uid, f }: a guest's grant being edited
   let error = $state("");
   let note = $state("");
 
@@ -85,14 +89,34 @@
   }
 
   // ---- people
-  const setRole = (m, role) => run(() => put(`/api/homes/${hid}/members/${m.user_id}`, { role }), `${m.display_name} is now ${role === "owner" ? "an owner" : "a member"}.`);
+  const ROLE_TEXT = { owner: "an owner", member: "a member", guest: "a guest" };
+  function setRole(m, role, select) {
+    if (role === "guest" && !confirm(`Make ${m.display_name} a guest? They'll see nothing in ${home.name} until you give them access.`)) {
+      select.value = m.role;
+      return;
+    }
+    run(() => put(`/api/homes/${hid}/members/${m.user_id}`, { role }), `${m.display_name} is now ${ROLE_TEXT[role]}.`)
+      .then(() => role === "guest" && (editing = { uid: m.user_id, f: blankGrantForm() }));
+  }
+  let names = $derived({
+    rooms: Object.fromEntries((home?.rooms ?? []).map((r) => [r.id, r.name])),
+    devices: Object.fromEntries(devices.map((d) => [d.id, d.name])),
+  });
+  let grantDevices = $derived(devices.map((d) => ({ id: d.id, name: d.name })));
+  const editGrant = (m) => (editing = { uid: m.user_id, f: grantForm(m.grant) });
+  async function saveGrant(m) {
+    const r = await run(() => put(`/api/homes/${hid}/members/${m.user_id}/grant`, buildGrant(editing.f)), `${m.display_name}'s access saved.`);
+    if (r) editing = null;
+  }
   function removeMember(m) {
     const msg = m.you ? `Leave ${home.name}? You lose access to it.` : `Remove ${m.display_name} from ${home.name}?`;
     if (confirm(msg)) run(() => del(`/api/homes/${hid}/members/${m.user_id}`), m.you ? "You left the home." : "Removed.").then(() => m.you && go("/"));
   }
   async function invite() {
-    const r = await run(() => post(`/api/homes/${hid}/invites`, { role: inviteRole }), "Invite link created. It works once and expires in 7 days.");
-    if (r) fresh = r;
+    const body = { role: inviteRole };
+    if (inviteRole === "guest") body.grant = buildGrant(inviteGrant);
+    const r = await run(() => post(`/api/homes/${hid}/invites`, body), "Invite link created. It works once and expires in 7 days.");
+    if (r) { fresh = r; inviteGrant = blankGrantForm(); }
   }
   async function copy(text) {
     try { await navigator.clipboard.writeText(text); note = "Link copied."; } catch { note = "Select the link and copy it."; }
@@ -207,26 +231,50 @@
   {#if canPeople}
     <section class="glass panel stack">
       <h2>People</h2>
-      <p class="small muted">Owners manage devices and people. Members control everything and make scenes and schedules. A home always keeps at least one owner.</p>
+      <p class="small muted">Owners manage devices and people. Members control everything and make scenes and schedules. Guests use only what you give them, optionally at set hours and until a date. A home always keeps at least one owner.</p>
       {#each members as m (m.user_id)}
-        <div class="row">
-          <span class="who"><strong>{m.display_name}</strong> <span class="small muted">{m.username}{m.you ? " · you" : ""}</span></span>
-          {#if m.role === "guest"}
-            <span class="tag">guest</span>
-          {:else}
-            <select value={m.role} aria-label={`Role of ${m.display_name}`} onchange={(e) => setRole(m, e.currentTarget.value)}>
-              <option value="owner">Owner</option><option value="member">Member</option>
+        {@const st = m.role === "guest" ? grantStatus(m.grant_state, m.grant) : null}
+        <div class="member">
+          <div class="row">
+            <span class="who"><strong>{m.display_name}</strong> <span class="small muted">{m.username}{m.you ? " · you" : ""}</span></span>
+            {#if st}<span class={`tag ${st.tone}`}>{st.text}</span>{/if}
+            <select value={m.role} aria-label={`Role of ${m.display_name}`} onchange={(e) => setRole(m, e.currentTarget.value, e.currentTarget)}>
+              <option value="owner">Owner</option><option value="member">Member</option><option value="guest">Guest</option>
             </select>
+            <button class="btn sm ghost" onclick={() => removeMember(m)}>{m.you ? "Leave" : "Remove"}</button>
+          </div>
+          {#if m.role === "guest"}
+            {#if editing?.uid === m.user_id}
+              <form class="glass panel stack" onsubmit={(e) => { e.preventDefault(); saveGrant(m); }}>
+                <GrantEditor bind:f={editing.f} rooms={home.rooms} devices={grantDevices} timezone={home.timezone} />
+                {#if grantProblem(editing.f)}<span class="small faint">{grantProblem(editing.f)}</span>{/if}
+                <div class="row">
+                  <button class="btn sm solid" disabled={!!grantProblem(editing.f)}>Save access</button>
+                  <button type="button" class="btn sm ghost" onclick={() => (editing = null)}>Cancel</button>
+                </div>
+              </form>
+            {:else}
+              <div class="row small"><span class="muted grow">{grantText(m.grant, names)}</span>
+                <button class="btn sm ghost" onclick={() => editGrant(m)}>{m.grant ? "Edit access" : "Give access"}</button></div>
+            {/if}
           {/if}
-          <button class="btn sm ghost" onclick={() => removeMember(m)}>{m.you ? "Leave" : "Remove"}</button>
         </div>
       {/each}
 
       <span class="label">Invite someone</span>
       <div class="row">
-        <select bind:value={inviteRole} aria-label="Invite as"><option value="member">as a member</option><option value="owner">as an owner</option></select>
-        <button class="btn sm solid" onclick={invite}>Create invite link</button>
+        <select bind:value={inviteRole} aria-label="Invite as">
+          <option value="member">as a member</option><option value="owner">as an owner</option><option value="guest">as a guest</option>
+        </select>
+        {#if inviteRole !== "guest"}<button class="btn sm solid" onclick={invite}>Create invite link</button>{/if}
       </div>
+      {#if inviteRole === "guest"}
+        <form class="glass panel stack" onsubmit={(e) => { e.preventDefault(); invite(); }}>
+          <GrantEditor bind:f={inviteGrant} rooms={home.rooms} devices={grantDevices} timezone={home.timezone} />
+          {#if grantProblem(inviteGrant)}<span class="small faint">{grantProblem(inviteGrant)}</span>{/if}
+          <div><button class="btn sm solid" disabled={!!grantProblem(inviteGrant)}>Create guest invite link</button></div>
+        </form>
+      {/if}
       {#if fresh}
         <div class="glass panel stack fresh">
           <span class="small">Send this link to the person you're inviting. It's shown only now.</span>
@@ -236,7 +284,7 @@
       {#if invites.length}
         <span class="label">Open invites</span>
         {#each invites as i (i.id)}
-          <div class="row small"><span>{i.role === "owner" ? "Owner" : "Member"} invite · expires in {days(i.expires_at)} {days(i.expires_at) === 1 ? "day" : "days"}</span>
+          <div class="row small"><span>{i.role === "owner" ? "Owner" : i.role === "guest" ? `Guest${i.grant?.label ? ` (${i.grant.label})` : ""}` : "Member"} invite · expires in {days(i.expires_at)} {days(i.expires_at) === 1 ? "day" : "days"}</span>
             <button class="btn sm ghost" onclick={() => revoke(i)}>Revoke</button></div>
         {/each}
       {/if}
@@ -251,6 +299,9 @@
   .pct { gap: 4px; flex-wrap: nowrap; }
   .pct input { width: 5.5em; }
   .who { flex: 1; min-width: 0; }
+  .member { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .member:first-of-type { border-top: 0; }
+  .grow { flex: 1; min-width: 0; }
   .mini { display: inline-flex; gap: 6px; align-items: center; font-size: 0.85rem; color: var(--muted); }
   .mini input { width: 8em; }
   .link { flex: 1; min-width: 0; font-family: var(--mono); font-size: 0.85rem; }

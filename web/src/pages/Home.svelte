@@ -4,9 +4,11 @@
   import { live } from "../lib/live.svelte.js";
   import { tileItems } from "../lib/tiles.js";
   import Tiles from "../components/Tiles.svelte";
+  import { guestNote } from "../lib/grants.js";
 
   onMount(loadHomes);
   let homes = $derived(homesState.list);
+  let notes = $derived(homes.map(guestNote).filter(Boolean));
 
   let items = $derived(tileItems(Object.values(live.devices)));
   let rooms = $derived(homes.flatMap((h) => h.rooms));
@@ -32,7 +34,8 @@
     </div>
   </section>
 
-  {#if items.length === 0}
+  {#each notes as n}<div class="glass panel muted">{n}</div>{/each}
+  {#if items.length === 0 && !notes.length}
     <div class="glass panel muted">No devices yet{#if Object.keys(live.devices).length === 0}. An admin adds nodes in the node builder.{/if}</div>
   {/if}
 

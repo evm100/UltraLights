@@ -42,6 +42,8 @@ class OutputInfo:
     caps: list[str]
     meta: dict[str, Any]
     desired: dict[str, Any] = field(default_factory=dict)
+    dev: str = ""
+    room_id: int | None = None  # for guest grants scoped to rooms
 
 
 def topic(dev: str, kind: str, out: str | None = None) -> str:
@@ -116,7 +118,7 @@ class Control:
     def _cache(self, n: Node, o: Output) -> None:
         self.outputs[(n.device_id, o.key)] = OutputInfo(
             node_id=n.id, home_id=n.home_id, kind=o.kind, caps=list(o.caps or []), meta=dict(o.meta or {}),
-            desired={k: v for k, v in (o.desired or {}).items() if k in STATE_FIELDS})
+            dev=n.device_id, room_id=o.room_id, desired={k: v for k, v in (o.desired or {}).items() if k in STATE_FIELDS})
 
     def get(self, dev: str, out: str) -> OutputInfo:
         o = self.outputs.get((dev, out))

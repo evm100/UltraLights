@@ -16,7 +16,7 @@ from .access import INPUT_KINDS, LIGHT_KINDS
 from .bridge import NotConnected
 from .control import Control
 from .hub import Hub
-from .models import AuditLog, HomeMember, Node, Output, Room
+from .models import AuditLog, GuestGrant, Home, HomeMember, Node, Output, Room
 
 log = logging.getLogger("ul.manage")
 
@@ -148,6 +148,53 @@ async def set_member(db: AsyncSession, home_id: int, user_id: int, role: str | N
         await db.delete(m)
         db.add(AuditLog(src=src, action="member_removed", target=f"home:{home_id}", detail={"user_id": user_id}))
     else:
+        if m.role == "guest" and role != "guest":
+            g = await db.get(GuestGrant, (home_id, user_id))
+            if g is not None:
+                await db.delete(g)  # a member needs no grant; a guest again starts from none
         m.role = role
         db.add(AuditLog(src=src, action="member_set", target=f"home:{home_id}", detail={"user_id": user_id, "role": role}))
+    await db.commit()
+
+
+async def check_grant(db: AsyncSession, home: Home, doc: Any) -> dict[str, Any]:
+    """A grant document for this home: the contract, rooms and devices that are the home's,
+    and a time zone when it has a window or an expiry date."""
+    try:
+        contracts.validate("grant", doc)
+    except contracts.ContractError as e:
+        raise ManageError(422, "grant_invalid", e.message) from None
+    scope = doc["scope"]
+    if "home" in scope and len(scope) > 1:
+        raise ManageError(422, "grant_invalid", "\"home\" already covers everything; give it alone")
+    rooms = {int(s[5:]) for s in scope if s.startswith("room:")}
+    devs = {s[7:] for s in scope if s.startswith("device:")}
+    if rooms:
+        found = {r for (r,) in await db.execute(select(Room.id).where(Room.id.in_(rooms), Room.home_id == home.id))}
+        if rooms - found:
+            raise ManageError(422, "grant_invalid", "a room in the scope isn't in this home")
+    if devs:
+        found_d = {d for (d,) in await db.execute(select(Node.device_id).where(Node.device_id.in_(devs),
+                                                                               Node.home_id == home.id))}
+        if devs - found_d:
+            raise ManageError(422, "grant_invalid", "a device in the scope isn't in this home")
+    if (doc.get("window") or doc.get("expires")) and not home.timezone:
+        raise ManageError(422, "needs_timezone", "set the home's time zone in settings before giving hours or an end date")
+    return doc
+
+
+async def set_grant(db: AsyncSession, home: Home, user_id: int, doc: dict[str, Any], by: int | None, src: str) -> None:
+    """Give a guest their grant (replacing any earlier one)."""
+    m = await db.get(HomeMember, (home.id, user_id))
+    if m is None:
+        raise ManageError(404, "not_a_member")
+    if m.role != "guest":
+        raise ManageError(409, "not_a_guest", "owners and members don't need a grant")
+    await check_grant(db, home, doc)
+    g = await db.get(GuestGrant, (home.id, user_id))
+    if g is None:
+        db.add(GuestGrant(home_id=home.id, user_id=user_id, doc=doc, updated_by=by))
+    else:
+        g.doc, g.updated_by, g.updated_at = doc, by, func.now()
+    db.add(AuditLog(src=src, action="grant_set", target=f"home:{home.id}", detail={"user_id": user_id, "scope": doc["scope"]}))
     await db.commit()

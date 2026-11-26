@@ -1061,14 +1061,15 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
         <div class="grid2">
           <div class="stack"><span class="label">A guest grant</span>
 <pre><code>{
-  "guest": "pool-party-sat",
-  "scope": ["room:patio", "device:ul-91c0e2"],
-  "can": ["control", "color"],
-  "kinds": ["light"],          // no solenoids
-  "window": "Sat 16:00–23:59",
-  "expires": "2026-11-30",
-  "invite": "link, single use"
-}</code></pre></div>
+  "v": 1,
+  "label": "Pool party",
+  "scope": ["room:3", "device:ul-91c0e2"],
+  "can": ["control", "color"],  // view is implied
+  "kinds": ["light"],           // no solenoids
+  "window": { "days": [5], "from": "16:00", "to": "23:59" },
+  "expires": "2026-11-30"
+}</code></pre>
+            <p class="small muted">contracts/schemas/grant. One grant per guest per home, carried by their single-use invite link and editable by owners afterwards.</p></div>
           <div class="stack">
             <h4>How grants work</h4>
             <ul class="clean small">
@@ -1076,10 +1077,10 @@ footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
               <li><b>Owners' setup</b>: rooms (add, rename, reorder, delete), device and output names, the room of each output, and limits that are pushed to the node in its config and enforced there: a light's max level, a valve's longest run (<code>max_on_ms</code>, 1 minute to 2 hours), and the power-on state (valves always start closed). Channel grouping, curves, warmth range and pixel counts describe the wiring and stay with the admin's output mapping.</li>
               <li><b>Scenes</b> (<code>contracts/schemas/scene</code>): a saved look for some outputs of one home, saved from the current look of a room or the whole home, or written as a document (which is what the AI worker will propose). Applying one sends each output a set with <code>src: scene:&lt;id&gt;</code>, skips what the person can't control, and records the previous states so <b>Undo</b> restores them once. Valves and sensors can't be in a scene.</li>
               <li><b>Schedules</b> (<code>contracts/schemas/schedule</code>): on chosen weekdays, at a clock time or sunrise / sunset with an offset, apply a scene, switch a room's lights, switch one output, or run a valve; an optional <i>until</i> switches the targets off again (sunset to 23:00). They run in the home's time zone, set by an owner with the home's location (only needed for the sun). A schedule acts as the home itself, with <code>src: sched:&lt;id&gt;</code>.</li>
-              <li><b>Invites</b>: owners invite members and co-owners with a single-use link that expires after 7 days. The person creates an account on the link's page, or signs in and joins. An invite never demotes an owner, and a home always keeps at least one owner. Guest invites arrive with grants.</li>
+              <li><b>Invites</b>: owners invite members and co-owners with a single-use link that expires after 7 days. The person creates an account on the link's page, or signs in and joins. An invite only ever raises a role (a member who opens a guest link stays a member), and a home always keeps at least one owner. Guest invites carry the guest's grant; turning a member into a guest starts them with no access until an owner gives some.</li>
               <li><b>Abilities</b>: view, control (on/off, level, fades and solenoid pulses), and color (color, white channel, warmth and effects). Motion sensors are view only for everyone. Each output the UI receives lists the viewer's abilities in <code>can</code>, and controls without the ability are not drawn.</li>
               <li><b>Device kinds</b>: lights only, or lights and switches. Solenoids are excluded unless granted explicitly.</li>
-              <li><b>Time</b>: an optional weekly window and an expiry date.</li>
+              <li><b>Time</b>: an optional weekly window (a window that ends earlier than it starts runs past midnight) and a last day, both in the home's time zone. Outside them the guest sees nothing but stays on the people list. Open pages follow along: the server checks guests' windows every 20 seconds and closes a socket (code 4001) when a grant opens, closes or is edited, or when a light moves out of a guest's room, so the page reloads what they may see.</li>
               <li>Guests join through a single-use invite link and can't see anything outside their grant, including other rooms' names.</li>
               <li>The AI acts as the person asking, so a guest's request can only touch what the guest can touch.</li>
             </ul>
@@ -1476,7 +1477,7 @@ docs/        this blueprint, decisions</code></pre>
             <ol class="steps">
               <li><div><b>Foundations, in two parallel tracks.</b> Shared contracts first. Then the server track (sign-in, database, CA and enrollment, broker, install script) and the firmware track (core, board descriptor, PWM, strip, setup page with DNS, enrollment, MQTT), each building for both C3 and C6.</div></li>
               <li><div><b>Bench, then cutover.</b> A reflashed legacy C3 node, created from a blank builder, enrolls with the server (dev server first, then the deployed one after the weekend cutover). Its white channels and strip (solid color) are controlled live from <code>lights.evm100.org</code> with the light control screen.</div></li>
-              <li><div><b>Homes and people.</b> Roles, guest grants, rooms list, scenes, schedules, relays.</div></li>
+              <li><div><b>Homes and people.</b> Roles, guest grants, rooms list, scenes, schedules, relays. <span class="tag keep">Built</span></div></li>
               <li><div><b>Fleet.</b> Admin panel, health, build worker, OTA, problem reports.</div></li>
               <li><div><b>Color and ARGB.</b> RGB, RGBW, RGB+CCT, building blocks, clips, solenoids. <span class="tag keep">Done early</span> The OpenRGB bridge: one PC, one light.</div></li>
               <li><div><b>Fabrication.</b> PCB bring-up page, self-test, power calibration profiles, secure boot on production boards.</div></li>

@@ -21,6 +21,8 @@
   // Reload homes on every (re)connect: the server closes the socket when access changes.
   $effect(() => { if (session.user && live.connected) loadHomes(); });
   let settingsHome = $derived(managed(homesState.list)[0]);
+  // Scenes and schedules belong to owners and members; a guest-only account doesn't get the tab.
+  let hasScenes = $derived(isAdmin || homesState.list.some((h) => h.role !== "guest"));
 </script>
 
 {#if !session.ready}
@@ -40,7 +42,7 @@
     <nav>
       <a href="#/" class:active={section === "home"}>Home</a>
       <a href="#/rooms" class:active={section === "rooms"}>Rooms</a>
-      <a href="#/scenes" class:active={section === "scenes"}>Scenes</a>
+      {#if hasScenes}<a href="#/scenes" class:active={section === "scenes"}>Scenes</a>{/if}
       {#if isAdmin}<a href="#/admin" class:active={section === "admin"}>Admin</a>{/if}
     </nav>
     <span class="spacer"></span>

@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     LargeBinary,
     String,
@@ -171,11 +172,23 @@ class AuditLog(Base):
     detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
+class GuestGrant(Base):
+    """What a guest may use in a home (contracts/schemas/grant). Goes with the membership."""
+    __tablename__ = "guest_grants"
+    __table_args__ = (ForeignKeyConstraint(["home_id", "user_id"], ["home_members.home_id", "home_members.user_id"],
+                                           ondelete="CASCADE"),)
+    home_id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(primary_key=True)
+    doc: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[datetime] = _now()
+
+
 class Invite(Base):
-    """Single-use link that adds a person to a home with a role (members and co-owners;
-    guest invites arrive with grants)."""
+    """Single-use link that adds a person to a home with a role. A guest invite carries the
+    grant the guest gets."""
     __tablename__ = "invites"
-    __table_args__ = (CheckConstraint("role IN ('owner', 'member')", name="invites_role"),)
+    __table_args__ = (CheckConstraint("role IN ('owner', 'member', 'guest')", name="invites_role"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     token_hash: Mapped[bytes] = mapped_column(LargeBinary(32), unique=True)
     home_id: Mapped[int] = mapped_column(ForeignKey("homes.id", ondelete="CASCADE"), index=True)
@@ -186,6 +199,7 @@ class Invite(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     used_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    grant: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 class Scene(Base):

@@ -15,12 +15,15 @@
   let editing = $state(null); // scene id being renamed
   let toastTimer;
 
+  // Guests don't have scenes or schedules (admins see every home with role null).
+  let homes = $derived(homesState.list.filter((h) => h.role !== "guest"));
+
   async function load() {
     await loadHomes();
     try {
-      const lists = await Promise.all(homesState.list.map((h) => get(`/api/homes/${h.id}/scenes`)));
+      const lists = await Promise.all(homes.map((h) => get(`/api/homes/${h.id}/scenes`)));
       const m = {};
-      homesState.list.forEach((h, i) => { m[h.id] = lists[i]; draft[h.id] ??= { name: "", room_id: "" }; });
+      homes.forEach((h, i) => { m[h.id] = lists[i]; draft[h.id] ??= { name: "", room_id: "" }; });
       scenes = m;
     } catch (e) { error = errText(e); }
   }
@@ -73,11 +76,11 @@
   <section class="hero"><h1>Scenes and schedules</h1></section>
   {#if error}<div class="msg err" role="alert">{error}</div>{/if}
 
-  {#each homesState.list as h (h.id)}
+  {#each homes as h (h.id)}
     {@const list = scenes[h.id] ?? []}
     {@const mine = h.can.includes("scenes")}
     <section class="stack">
-      {#if homesState.list.length > 1}<span class="label">{h.name}</span>{/if}
+      {#if homes.length > 1}<span class="label">{h.name}</span>{/if}
       {#if !list.length}<div class="glass panel muted small">No scenes yet{mine ? ". Set the lights the way you like them, then save the look below." : "."}</div>{/if}
       <div class="scenes">
         {#each list as s (s.id)}

@@ -6,6 +6,7 @@
   import { session, login, restore } from "../lib/session.svelte.js";
   import { loadHomes } from "../lib/homes.svelte.js";
   import { go } from "../lib/router.svelte.js";
+  import { canText, whenText } from "../lib/grants.js";
 
   let { token } = $props();
   let offer = $state(null);
@@ -32,7 +33,12 @@
   });
   const create = (e) => { e.preventDefault(); accept({ ...f, username: f.username.trim().toLowerCase() }); };
   const signIn = (e) => { e.preventDefault(); act(() => login(f.username.trim().toLowerCase(), f.password)); };
-  const roleText = (r) => (r === "owner" ? "an owner" : "a member");
+  const roleText = (r) => ({ owner: "an owner", member: "a member", guest: "a guest" })[r];
+  const ABOUT = {
+    owner: "Owners control everything and manage devices and people.",
+    member: "Members control everything and make scenes and schedules.",
+    guest: "Guests use the lights the owner has shared with them.",
+  };
 </script>
 
 <main class="wrap">
@@ -41,7 +47,14 @@
     {#if offer}
       <h1>Join {offer.home}</h1>
       <p class="muted">{offer.invited_by ? `${offer.invited_by} invited you` : "You're invited"} as {roleText(offer.role)}.
-        {offer.role === "owner" ? "Owners control everything and manage devices and people." : "Members control everything and make scenes and schedules."}</p>
+        {ABOUT[offer.role]}</p>
+      {#if offer.grant}
+        <ul class="small clean">
+          {#if offer.grant.label}<li>{offer.grant.label}</li>{/if}
+          <li>{canText(offer.grant.can)}</li>
+          {#if whenText(offer.grant)}<li>{whenText(offer.grant)}</li>{/if}
+        </ul>
+      {/if}
       {#if error}<div class="msg err" role="alert">{error}</div>{/if}
 
       {#if session.user}
@@ -74,4 +87,5 @@
 <style>
   .wrap { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
   .card { width: min(420px, 100%); padding: 28px; }
+  .clean { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 </style>

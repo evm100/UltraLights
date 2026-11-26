@@ -6,6 +6,7 @@
   import { live } from "../lib/live.svelte.js";
   import { homesState, loadHomes } from "../lib/homes.svelte.js";
   import { roomCards, tileItems } from "../lib/tiles.js";
+  import { guestNote } from "../lib/grants.js";
 
   onMount(loadHomes);
   let cards = $derived(roomCards(homesState.list, tileItems(Object.values(live.devices))));
@@ -30,7 +31,9 @@
   {#each cards as c (c.home.id)}
     <section class="stack">
       {#if cards.length > 1}<span class="label">{c.home.name}</span>{/if}
-      {#if !c.rooms.length}
+      {#if guestNote(c.home)}
+        <div class="glass panel muted small">{guestNote(c.home)}</div>
+      {:else if !c.rooms.length}
         <div class="glass panel muted small">No rooms yet{#if c.home.can.includes("manage")}. Add them in <a href={`#/settings/${c.home.id}`}>settings</a>.{:else}.{/if}</div>
       {/if}
       <div class="rooms">

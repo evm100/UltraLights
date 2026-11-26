@@ -17,16 +17,19 @@ Home abilities:
   updates  approve offered firmware updates
   report   report a problem
 
-Guests get output abilities only through grants. Until grants exist (Homes and people
-phase, guests slice) a guest membership grants nothing.
+Guests get output abilities only through their grant (grants.py): the outputs in its scope
+and kinds, with its abilities, while it is in force (window, expiry). Without a grant, or
+outside it, a guest sees nothing in that home.
 """
+import datetime as dt
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import HomeMember, User
+from .grants import LIGHT_KINDS, Rule, rule_from
+from .models import GuestGrant, Home, HomeMember, User
 
 HOME_ROLES = ("owner", "member", "guest")
 
@@ -42,7 +45,7 @@ _HOME_CAN: dict[str, frozenset[str]] = {
 }
 
 INPUT_KINDS = frozenset({"motion"})  # sensors are watched, never driven
-LIGHT_KINDS = frozenset({"white", "cct", "rgb", "rgbw", "rgbcct", "argb"})  # what a room toggle switches
+# LIGHT_KINDS (grants.py) is what a room toggle switches.
 
 # Which ability each set/live field needs. Anything not listed is refused.
 FIELD_ABILITY: dict[str, str] = {
@@ -55,6 +58,8 @@ class Target(Protocol):
     """An output as access sees it (control.OutputInfo and access.Out both fit)."""
     home_id: int | None
     kind: str
+    dev: str
+    room_id: int | None
 
 
 @dataclass(frozen=True)
@@ -84,10 +89,20 @@ class Access:
     user_id: int
     admin: bool = False
     roles: dict[int, str] = field(default_factory=dict)  # home id -> owner | member | guest
+    grants: dict[int, Rule] = field(default_factory=dict)  # home id -> a guest's grant there
 
     def view_key(self) -> tuple:
         """Equal keys see devices identically (the hub renders one view per key)."""
-        return (self.admin, tuple(sorted(self.roles.items())))
+        return (self.admin, tuple(sorted(self.roles.items())), tuple(sorted(self.grants.items(), key=lambda x: x[0])))
+
+    def stale(self, now: dt.datetime) -> bool:
+        """A grant has opened or closed since this was loaded (window or expiry)."""
+        return any(r.active != r.active_at(now) for r in self.grants.values())
+
+    def grant(self, home_id: int | None) -> Rule | None:
+        """The guest's grant in this home while it is in force."""
+        r = self.grants.get(home_id) if self.role(home_id) == "guest" else None
+        return r if r is not None and r.active else None
 
     def role(self, home_id: int | None) -> str | None:
         return None if home_id is None else self.roles.get(home_id)
@@ -97,6 +112,13 @@ class Access:
         if self.admin:
             return None
         return {h for h, r in self.roles.items() if r in ("owner", "member")}
+
+    def device_home_ids(self) -> set[int] | None:
+        """Homes with devices this person may see some of: theirs, and guest homes in force."""
+        homes = self.home_ids()
+        if homes is None:
+            return None
+        return homes | {h for h in self.roles if self.grant(h) is not None}
 
     def sees_home(self, home_id: int | None) -> bool:
         """Sees every device in the home, even one with no outputs yet (owners, members, admins)."""
@@ -114,7 +136,10 @@ class Access:
         role = self.role(t.home_id)
         if role in ("owner", "member"):
             return _limit_kind(t.kind, frozenset(OUTPUT_ABILITIES))
-        return frozenset()  # guests: grants come later
+        g = self.grant(t.home_id)
+        if g is None or not g.covers(t.kind, getattr(t, "dev", ""), getattr(t, "room_id", None)):
+            return frozenset()
+        return _limit_kind(t.kind, g.can)
 
     def sees(self, t: Target) -> bool:
         return VIEW in self.output_can(t)
@@ -142,6 +167,13 @@ def abilities_for(fields: dict[str, Any]) -> set[str]:
 ADMIN_ACCESS = Access(user_id=0, admin=True)  # admin panel views and tools
 
 
-async def load_access(db: AsyncSession, user: User) -> Access:
+async def load_access(db: AsyncSession, user: User, now: dt.datetime | None = None) -> Access:
     rows = await db.execute(select(HomeMember.home_id, HomeMember.role).where(HomeMember.user_id == user.id))
-    return Access(user_id=user.id, admin=user.is_admin, roles={h: r for h, r in rows})
+    roles = {h: r for h, r in rows}
+    grants: dict[int, Rule] = {}
+    if "guest" in roles.values():
+        now = now or dt.datetime.now(dt.timezone.utc)
+        q = (select(GuestGrant.home_id, GuestGrant.doc, Home.timezone).join(Home, Home.id == GuestGrant.home_id)
+             .where(GuestGrant.user_id == user.id))
+        grants = {h: rule_from(doc, tz, now) for h, doc, tz in await db.execute(q) if roles.get(h) == "guest"}
+    return Access(user_id=user.id, admin=user.is_admin, roles=roles, grants=grants)

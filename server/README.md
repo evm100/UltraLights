@@ -12,10 +12,11 @@ Every payload going to or coming from a device is validated against `../contract
 
 | Path | What |
 |---|---|
-| `ulserver/main.py` | App, startup (bridge task, CRL refresh) |
-| `ulserver/api/` | REST: `auth`, `devices` (control), `homes` (rooms, room on/off, device and output settings, members, invites; owner tools), `scenes`, `schedules` (also the home's time zone and location), `admin` (builder, provisioning, config, commands, tokens, certs, firmware, users, homes, audit), `enroll_api` (`POST /api/v1/enroll`), `ws` (`/api/ws`) |
+| `ulserver/main.py` | App, startup (bridge task, CRL refresh, guest window sweeps) |
+| `ulserver/api/` | REST: `auth`, `devices` (control), `homes` (rooms, room on/off, device and output settings, members, guest grants, invites; owner tools), `scenes`, `schedules` (also the home's time zone and location), `admin` (builder, provisioning, config, commands, tokens, certs, firmware, users, homes, audit), `enroll_api` (`POST /api/v1/enroll`), `ws` (`/api/ws`) |
 | `ulserver/access.py` | Who may do what: the blueprint's roles table, per home membership (pure, tested in `tests/test_access.py`) |
-| `ulserver/manage.py` | Home setup shared by owners and admins: output names and limits written into the node's config, members with the last-owner rule |
+| `ulserver/grants.py` | Guest grants as rules: scope, kinds, abilities, weekly window and last day in the home's time zone (pure, tested in `tests/test_grants_pure.py`); the hub re-checks open guest sockets every 20 s |
+| `ulserver/manage.py` | Home setup shared by owners and admins: output names and limits written into the node's config, members with the last-owner rule, guest grant checks |
 | `ulserver/scenes.py`, `actions.py` | Scenes (check, capture, apply, undo) and the actions schedules run, shared by the API and the scheduler's fire endpoint |
 | `ulserver/scheduler.py`, `schedule_times.py`, `sun.py` | The scheduler service (decides when, calls the API's loopback-only `/api/internal/schedules/{id}/fire`), schedule occurrences in the home's time zone, sunrise and sunset |
 | `ulserver/pki.py` | Root and device CA, device and bridge certificates, CRL, dev-only TLS CA |

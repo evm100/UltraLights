@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lights.evm100.org/contracts/v1/grant.schema.json",
+  "title": "Guest grant (REST /api/homes/{id}/members/{user}/grant and guest invites, stored by the server)",
+  "description": "What one guest may see and do in one home. A guest sees nothing outside the grant, not even other rooms' names. View is always included. Times are in the home's time zone. Outside the window or after the expiry date the guest sees nothing, but stays in the home's people list until an owner removes them.",
+  "type": "object",
+  "required": ["v", "scope", "can", "kinds"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "label": { "type": "string", "maxLength": 48, "description": "For the owner's list, e.g. \"Pool party\"." },
+    "scope": {
+      "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^(home|room:[1-9][0-9]*|device:ul-[0-9a-f]{6})$" },
+      "description": "\"home\" (everything), \"room:<id>\" (outputs assigned to that room) or \"device:<id>\" (every output of that device)."
+    },
+    "can": {
+      "type": "array", "uniqueItems": true, "items": { "enum": ["control", "color"] },
+      "description": "On top of view: control (on/off, level, fades, valve runs) and color (color, white, warmth, effects). Empty = look only."
+    },
+    "kinds": {
+      "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["light", "switch", "solenoid", "sensor"] },
+      "description": "Which outputs in the scope: lights, switches (relays), solenoids (valves, only when listed) and sensors (always view only)."
+    },
+    "window": {
+      "type": "object", "required": ["from", "to"], "additionalProperties": false,
+      "properties": {
+        "days": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 6 }, "uniqueItems": true, "minItems": 1,
+                  "description": "Weekdays the window opens on, 0 = Monday. Absent = every day." },
+        "from": { "$ref": "#/$defs/hhmm" },
+        "to": { "$ref": "#/$defs/hhmm", "description": "Earlier than from = ends the next day (Fri 20:00 to 02:00). Equal = the whole day." }
+      },
+      "description": "Weekly hours when the grant works. Absent = any time."
+    },
+    "expires": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Last day the grant works (through the end of that day). Absent = no end." }
+  },
+  "$defs": {
+    "hhmm": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+  }
+}

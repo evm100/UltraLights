@@ -30,7 +30,7 @@ async def websocket(ws: WebSocket) -> None:
     await ws.accept()
     hub: Hub = ws.app.state.hub
     control: Control = ws.app.state.control
-    client = Client(ws, auth.access)
+    client = Client(ws, auth.access, seen={d["id"] for d in snapshot})
     hub.add(client)
     src = src_for(auth)
     await ws.send_text(json.dumps({"t": "snapshot", "devices": snapshot,

@@ -173,7 +173,7 @@ def test_members_and_last_owner(app_client, home):
     r = c.put(f"/api/homes/{hid}/members/{own_id}", json={"role": "member"})
     assert r.status_code == 409 and r.json()["detail"]["error"] == "last_owner"
     assert c.delete(f"/api/homes/{hid}/members/{own_id}").status_code == 409
-    assert c.put(f"/api/homes/{hid}/members/{mem_id}", json={"role": "guest"}).status_code == 422
+    assert c.put(f"/api/homes/{hid}/members/{mem_id}", json={"role": "visitor"}).status_code == 422
     # Co-owner first, then the original owner may step down.
     assert c.put(f"/api/homes/{hid}/members/{mem_id}", json={"role": "owner"}).status_code == 200
     assert c.put(f"/api/homes/{hid}/members/{own_id}", json={"role": "member"}).status_code == 200

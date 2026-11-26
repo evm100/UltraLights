@@ -88,7 +88,9 @@ def test_one_person_many_roles(pki, world):
         pir = next(o for o in seen[devs["mem"]]["outputs"] if o["key"] == "pir")
         assert lamp["can"] == ["view", "control", "color"] and pir["can"] == ["view"]
         assert "admin" not in seen[devs["own"]]
-        assert {h["id"] for h in c.get("/api/homes").json()} == {homes["own"], homes["mem"]}
+        listed = {h["id"]: h for h in c.get("/api/homes").json()}
+        assert set(listed) == {homes["own"], homes["mem"], homes["gst"]}
+        assert listed[homes["gst"]]["rooms"] == [] and listed[homes["gst"]]["grant"] is None  # no grant yet
 
         # Allowed: passes access, then fails only because tests run without a broker.
         assert c.put(f"/api/devices/{devs['own']}/outputs/lamp", json={"on": True, "color": [255, 0, 0]}).status_code == 503

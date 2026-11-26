@@ -10,12 +10,22 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..access import MANAGE, PEOPLE, AccessDenied, load_access
+from ..access import MANAGE, PEOPLE, Access, AccessDenied, load_access
 from ..actions import room_power as switch_room
 from ..bridge import NotConnected
 from ..db import get_db
-from ..manage import ManageError, output_settings, push_device, rename_device, set_member, update_output
-from ..models import AuditLog, Home, HomeMember, Invite, Node, Output, Room, User
+from ..grants import describe
+from ..manage import (
+    ManageError,
+    check_grant,
+    output_settings,
+    push_device,
+    rename_device,
+    set_grant,
+    set_member,
+    update_output,
+)
+from ..models import AuditLog, GuestGrant, Home, HomeMember, Invite, Node, Output, Room, User
 from ..security import (
     Auth,
     check_csrf,
@@ -71,19 +81,59 @@ async def _managed_node(db: AsyncSession, auth: Auth, dev: str) -> Node:
     return n
 
 
+async def guest_rooms(db: AsyncSession, access: Access, hid: int) -> set[int]:
+    """Rooms a guest may know about: those in their grant, and the rooms of outputs they can
+    see. Nothing while the grant isn't in force."""
+    g = access.grant(hid)
+    if g is None:
+        return set()
+    if g.whole_home:
+        return {r for (r,) in await db.execute(select(Room.id).where(Room.home_id == hid))}
+    seen = set(g.rooms)
+    rows = await db.execute(select(Node.device_id, Output.kind, Output.room_id).join(Node, Node.id == Output.node_id)
+                            .where(Node.home_id == hid, Output.room_id.is_not(None)))
+    for dev, kind, rid in rows:
+        if g.covers(kind, dev, rid):
+            seen.add(rid)
+    return seen
+
+
+async def _grant_doc(db: AsyncSession, hid: int, uid: int) -> dict[str, Any] | None:
+    g = await db.get(GuestGrant, (hid, uid))
+    return g.doc if g else None
+
+
 # ---------------------------------------------------------------- homes and rooms
 @router.get("/homes")
 async def list_homes(auth: Auth = Depends(require_auth), db: AsyncSession = Depends(get_db)) -> list[dict]:
-    ids = auth.access.home_ids()
+    """The caller's homes. A guest sees only the rooms their grant reaches, and their grant."""
+    a = auth.access
     q = select(Home).order_by(Home.name)
-    if ids is not None:
-        q = q.where(Home.id.in_(ids))
+    if not a.admin:
+        q = q.where(Home.id.in_(a.roles))
     homes = (await db.execute(q)).scalars().all()
     rooms = (await db.execute(select(Room).where(Room.home_id.in_([h.id for h in homes]))
                               .order_by(Room.sort, Room.name))).scalars().all()
-    return [{"id": h.id, "name": h.name, "role": auth.access.role(h.id), "can": sorted(auth.access.home_can(h.id)),
-             "timezone": h.timezone, "has_location": h.latitude is not None,
-             "rooms": [{"id": r.id, "name": r.name} for r in rooms if r.home_id == h.id]} for h in homes]
+    now = dt.datetime.now(UTC)
+    out = []
+    for h in homes:
+        v: dict[str, Any] = {"id": h.id, "name": h.name, "role": a.role(h.id), "can": sorted(a.home_can(h.id)),
+                             "timezone": h.timezone, "has_location": h.latitude is not None}
+        mine = [r for r in rooms if r.home_id == h.id]
+        if a.role(h.id) == "guest" and not a.admin:
+            allowed = await guest_rooms(db, a, h.id)
+            mine = [r for r in mine if r.id in allowed]
+            doc = await _grant_doc(db, h.id, a.user_id)
+            v["grant"] = None if doc is None else {**_grant_public(doc), **describe(doc, h.timezone, now)}
+            v["timezone"] = v["has_location"] = None
+        v["rooms"] = [{"id": r.id, "name": r.name} for r in mine]
+        out.append(v)
+    return out
+
+
+def _grant_public(doc: dict[str, Any]) -> dict[str, Any]:
+    """What a guest is told about their own grant: when it works and what it lets them do."""
+    return {k: doc[k] for k in ("label", "can", "window", "expires") if k in doc}
 
 
 class RoomIn(BaseModel):
@@ -140,6 +190,7 @@ async def delete_room(hid: int, rid: int, request: Request, auth: Auth = Depends
     db.add(AuditLog(src=src_for(auth), action="room_deleted", target=f"room:{rid}", detail={"name": r.name}))
     await db.commit()
     for n in (await db.execute(select(Node).where(Node.id.in_(node_ids)))).scalars():
+        await request.app.state.control.load_node(db, n)
         await push_device(db, request.app.state.hub, n)
     return {"ok": True}
 
@@ -153,8 +204,8 @@ async def room_power(hid: int, rid: int, body: PowerIn, request: Request, auth: 
                      db: AsyncSession = Depends(get_db)) -> dict:
     """One-tap room on/off: every light in the room the caller can control. Relays and
     valves keep their own controls, so a room toggle never starts a pump or opens a valve."""
-    if not auth.access.sees_home(hid):
-        raise HTTPException(404, {"error": "no_such_home"})
+    if not auth.access.sees_home(hid) and rid not in await guest_rooms(db, auth.access, hid):
+        raise HTTPException(404, {"error": "no_such_room"})
     await _room(db, hid, rid)
     try:
         r = await switch_room(db, request.app.state.control, hid, rid, body.on, auth.access, src_for(auth))
@@ -211,16 +262,45 @@ async def put_output_settings(dev: str, out: str, body: OutputSettingsIn, reques
 
 # ---------------------------------------------------------------- members
 class RoleIn(BaseModel):
-    role: str = Field(pattern="^(owner|member)$")  # guests arrive with grants
+    role: str = Field(pattern="^(owner|member|guest)$")  # a guest sees nothing until given a grant
+
+
+class InviteIn(BaseModel):
+    role: str = Field(pattern="^(owner|member|guest)$")
+    grant: dict[str, Any] | None = None  # required for a guest (contracts/schemas/grant)
 
 
 @router.get("/homes/{hid}/members")
 async def members(hid: int, auth: Auth = Depends(require_auth), db: AsyncSession = Depends(get_db)) -> list[dict]:
     await _home(db, auth, hid, PEOPLE)
-    rows = (await db.execute(select(HomeMember, User).join(User, User.id == HomeMember.user_id)
+    h = await db.get(Home, hid)
+    rows = (await db.execute(select(HomeMember, User, GuestGrant).join(User, User.id == HomeMember.user_id)
+                             .outerjoin(GuestGrant, (GuestGrant.home_id == HomeMember.home_id)
+                                        & (GuestGrant.user_id == HomeMember.user_id))
                              .where(HomeMember.home_id == hid).order_by(User.username))).all()
-    return [{"user_id": u.id, "username": u.username, "display_name": u.display_name or u.username,
-             "role": m.role, "you": u.id == auth.user.id} for m, u in rows]
+    now = dt.datetime.now(UTC)
+    out = []
+    for m, u, g in rows:
+        v = {"user_id": u.id, "username": u.username, "display_name": u.display_name or u.username,
+             "role": m.role, "you": u.id == auth.user.id}
+        if m.role == "guest":
+            v["grant"] = g.doc if g else None
+            v["grant_state"] = describe(g.doc, h.timezone, now) if g else {"active": False, "expired": False}
+        out.append(v)
+    return out
+
+
+@router.put("/homes/{hid}/members/{uid}/grant")
+async def put_grant(hid: int, uid: int, doc: dict[str, Any], request: Request, auth: Auth = Depends(require_auth),
+                    db: AsyncSession = Depends(get_db)) -> dict:
+    """Set what a guest may use (contracts/schemas/grant). Their open pages refresh."""
+    h = await _home(db, auth, hid, PEOPLE)
+    try:
+        await set_grant(db, h, uid, doc, auth.user.id, src_for(auth))
+    except ManageError as e:
+        raise _err(e) from None
+    request.app.state.hub.refresh_user(uid)
+    return {"ok": True, "state": describe(doc, h.timezone, dt.datetime.now(UTC))}
 
 
 @router.put("/homes/{hid}/members/{uid}")
@@ -249,16 +329,26 @@ async def delete_member(hid: int, uid: int, request: Request, auth: Auth = Depen
 
 # ---------------------------------------------------------------- invites
 def _invite_view(i: Invite) -> dict[str, Any]:
-    return {"id": i.id, "role": i.role, "created_at": i.created_at.isoformat(), "expires_at": i.expires_at.isoformat()}
+    v = {"id": i.id, "role": i.role, "created_at": i.created_at.isoformat(), "expires_at": i.expires_at.isoformat()}
+    if i.grant is not None:
+        v["grant"] = i.grant
+    return v
 
 
 @router.post("/homes/{hid}/invites")
-async def create_invite(hid: int, body: RoleIn, request: Request, auth: Auth = Depends(require_auth),
+async def create_invite(hid: int, body: InviteIn, request: Request, auth: Auth = Depends(require_auth),
                         db: AsyncSession = Depends(get_db)) -> dict:
-    """A single-use link, shown once. Only its hash is stored."""
-    await _home(db, auth, hid, PEOPLE)
+    """A single-use link, shown once. Only its hash is stored. A guest invite carries the grant."""
+    h = await _home(db, auth, hid, PEOPLE)
+    if (body.role == "guest") != (body.grant is not None):
+        raise HTTPException(422, {"error": "invalid", "detail": "a guest invite needs a grant, and only a guest invite has one"})
+    if body.grant is not None:
+        try:
+            await check_grant(db, h, body.grant)
+        except ManageError as e:
+            raise _err(e) from None
     token = secrets.token_urlsafe(32)
-    i = Invite(token_hash=sha256(token), home_id=hid, role=body.role, created_by=auth.user.id,
+    i = Invite(token_hash=sha256(token), home_id=hid, role=body.role, grant=body.grant, created_by=auth.user.id,
                expires_at=dt.datetime.now(UTC) + dt.timedelta(days=INVITE_DAYS))
     db.add(i)
     db.add(AuditLog(src=src_for(auth), action="invite_created", target=f"home:{hid}", detail={"role": body.role}))
@@ -304,6 +394,7 @@ async def view_invite(token: str, auth: Auth | None = Depends(optional_auth), db
     home = await db.get(Home, i.home_id)
     by = await db.get(User, i.created_by) if i.created_by else None
     return {"home": home.name if home else "", "role": i.role,
+            "grant": _grant_public(i.grant) if i.grant else None,
             "invited_by": (by.display_name or by.username) if by else None,
             "expires_at": i.expires_at.isoformat(),
             "signed_in_as": auth.user.username if auth else None}
@@ -334,10 +425,20 @@ async def accept_invite(token: str, body: AcceptIn, request: Request, response: 
         await db.flush()
         db.add(AuditLog(src=f"invite:{i.id}", action="user_created", target=user.username, detail={"home_id": i.home_id}))
     m = await db.get(HomeMember, (i.home_id, user.id))
+    rank = {"guest": 0, "member": 1, "owner": 2}
     if m is None:
         db.add(HomeMember(home_id=i.home_id, user_id=user.id, role=i.role))
-    elif m.role != "owner":
-        m.role = i.role  # an invite never demotes an owner
+        await db.flush()
+    elif rank[i.role] > rank[m.role]:
+        m.role = i.role  # an invite only ever raises a role
+    if i.role == "guest" and i.grant is not None and (m is None or m.role == "guest"):
+        g = await db.get(GuestGrant, (i.home_id, user.id))
+        if g is None:
+            db.add(GuestGrant(home_id=i.home_id, user_id=user.id, doc=i.grant, updated_by=i.created_by))
+        else:
+            g.doc, g.updated_by = i.grant, i.created_by
+    if m is not None and m.role != "guest":
+        await db.execute(GuestGrant.__table__.delete().where(GuestGrant.home_id == i.home_id, GuestGrant.user_id == user.id))
     i.used_at, i.used_by = dt.datetime.now(UTC), user.id
     db.add(AuditLog(src=f"ui:{user.id}", action="invite_accepted", target=f"home:{i.home_id}", detail={"role": i.role}))
     if auth is None:

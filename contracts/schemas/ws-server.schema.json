@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lights.evm100.org/contracts/v1/ws-server.schema.json",
   "title": "Server to browser WebSocket message (/api/ws)",
-  "description": "snapshot first, then incremental updates, each filtered to what the viewer may see. health and evt go to admins only; device views carry an admin block only for admins. Close code 4001 means the viewer's access changed: reconnect for a fresh snapshot.",
+  "description": "snapshot first, then incremental updates, each filtered to what the viewer may see. health and evt go to admins only; device views carry an admin block only for admins. Close code 4001 means the viewer's access changed (a role or grant was edited, a guest's window opened or closed, or a device left their view): reconnect for a fresh snapshot.",
   "type": "object",
   "required": ["t"],
   "oneOf": [
