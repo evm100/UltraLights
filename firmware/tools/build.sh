@@ -19,8 +19,21 @@ B="$FW/build/$PROFILE"
 cd "$FW"
 args=("$@")
 [[ ${#args[@]} -eq 0 ]] && args=(build)
-python "$IDF_PATH/tools/idf.py" -B "$B" \
-    -DIDF_TARGET="$TARGET" \
-    -DSDKCONFIG="$B/sdkconfig" \
-    -DSDKCONFIG_DEFAULTS="$FW/sdkconfig.defaults;$FRAG" \
-    "${args[@]}"
+idf() {
+    python "$IDF_PATH/tools/idf.py" -B "$B" \
+        -DIDF_TARGET="$TARGET" \
+        -DSDKCONFIG="$B/sdkconfig" \
+        -DSDKCONFIG_DEFAULTS="$FW/sdkconfig.defaults;$FRAG" \
+        "$@"
+}
+# ESP-IDF finds components only when a build directory is configured, so a component added
+# since then (a new ul_* folder) would be silently left out of the image. Reconfigure when
+# the set of component folders differs from the last successful build.
+STAMP="$B/.ul_components"
+COMPONENTS="$(cd "$FW/components" && printf '%s\n' */ | tr -d / | tr '\n' ' ')"
+if [[ -f "$B/CMakeCache.txt" && "$(cat "$STAMP" 2>/dev/null)" != "$COMPONENTS" ]]; then
+    echo "components changed since the last build of $PROFILE: reconfiguring" >&2
+    idf reconfigure
+fi
+idf "${args[@]}"
+echo "$COMPONENTS" > "$STAMP"
