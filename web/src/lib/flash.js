@@ -55,7 +55,11 @@ export async function flash({ pkg, blob, boardOffset, chip, eraseAll, log, progr
       reportProgress: (i, written, total) => progress?.(i, fileArray.length, written / total),
     });
     log("Done. Resetting the board.");
-    await loader.after("hard_reset");
+    // Not after("hard_reset"): esptool-js's HardReset only drops RTS, and the connect sequence
+    // already left RTS low, so there's no edge and the chip stays in the flasher stub until
+    // something else (a serial monitor opening the port) resets it. Pulse it like esptool.py:
+    // DTR low (IO9/IO0 released, so it boots the app), RTS high (EN low, in reset), then RTS low.
+    await loader.after("custom_reset", undefined, "D0|R1|W100|R0");
   } finally {
     await transport.disconnect().catch(() => {});
   }
