@@ -28,7 +28,7 @@
 </script>
 
 <main class="page stack" style="gap:24px">
-  <a class="small muted" href="#/rooms">← Rooms</a>
+  <a class="small muted" href="#/">← Home</a>
   {#if !room}
     {#if homesState.loaded}<p class="muted">This room isn't available.</p>{/if}
   {:else}

@@ -24,7 +24,7 @@
 
 <main class="page stack" style="gap:28px">
   <section class="hero stack">
-    <h1>{homes.length === 1 ? homes[0].name : "Home"}</h1>
+    <h1>Lights</h1>
     <div class="row">
       <span class="chip glass"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V17h5v-1.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z" fill="none" stroke="var(--accent)" stroke-width="1.6"/></svg>{lightsOn} on</span>
       {#if items.some((x) => !x.caps.includes("level"))}

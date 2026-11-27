@@ -108,7 +108,7 @@
 
 <main class="screen" style={`--tint:${css(shown, on ? 0.18 + level * 0.35 : 0.04)}`}>
   <header>
-    <a class="back" href="#/" aria-label="Back">
+    <a class="back" href="#/lights" aria-label="Back" onclick={(e) => { if (history.length > 1) { e.preventDefault(); history.back(); } }}>
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </a>
     <div class="title">

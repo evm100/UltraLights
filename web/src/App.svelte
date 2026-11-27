@@ -40,8 +40,8 @@
       <span>UltraLights</span>
     </a>
     <nav>
-      <a href="#/" class:active={section === "home"}>Home</a>
-      <a href="#/rooms" class:active={section === "rooms"}>Rooms</a>
+      <a href="#/" class:active={section === "home" || section === "rooms"}>Home</a>
+      <a href="#/lights" class:active={section === "lights"}>Lights</a>
       {#if hasScenes}<a href="#/scenes" class:active={section === "scenes"}>Scenes</a>{/if}
       {#if isAdmin}<a href="#/admin" class:active={section === "admin"}>Admin</a>{/if}
     </nav>
@@ -60,14 +60,14 @@
     <Admin parts={route.parts.slice(1)} />
   {:else if section === "rooms" && route.parts[1]}
     {#key route.parts[1]}<Room id={route.parts[1]} />{/key}
-  {:else if section === "rooms"}
-    <Rooms />
+  {:else if section === "lights"}
+    <Home />
   {:else if section === "scenes"}
     <Scenes />
   {:else if section === "settings" && route.parts[1]}
     {#key route.parts[1]}<Settings id={route.parts[1]} />{/key}
   {:else}
-    <Home />
+    <Rooms />
   {/if}
 {/if}
 

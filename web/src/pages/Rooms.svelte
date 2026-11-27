@@ -1,5 +1,5 @@
 <script>
-  // Rooms: one card per room with a one-tap ON/OFF for its lights (never its relays or valves)
+  // Home tab: one card per room with a one-tap ON/OFF for its lights (never its relays or valves)
   // and a dot per light, amber when on. Tapping the card opens the room.
   import { onMount } from "svelte";
   import { post, errText } from "../lib/api.js";
@@ -25,7 +25,7 @@
 </script>
 
 <main class="page stack" style="gap:28px">
-  <section class="hero"><h1>Rooms</h1></section>
+  <section class="hero"><h1>Home</h1></section>
   {#if error}<div class="msg err" role="alert">{error}</div>{/if}
 
   {#each cards as c (c.home.id)}
